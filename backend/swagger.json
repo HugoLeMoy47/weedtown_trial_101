@@ -1,0 +1,9 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "WeedTown API",
+    "version": "1.0.0",
+    "description": "Documentación de la API RESTful para WeedTown."
+  },
+  "paths": {}
+}

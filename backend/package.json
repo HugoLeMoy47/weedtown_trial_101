@@ -1,0 +1,23 @@
+{
+  "name": "weedtown-backend",
+  "version": "1.0.0",
+  "main": "app.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon app.js",
+    "start": "node app.js",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "morgan": "^1.10.0",
+    "prisma": "^5.0.0",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}
