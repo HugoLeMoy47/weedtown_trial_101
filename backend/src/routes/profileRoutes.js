@@ -2,21 +2,24 @@
 const express = require('express');
 const router = express.Router();
 
-// Simulación de base de datos en memoria
-let userProfile = {
-  email: '',
-  name: '',
-  phone: '',
-  fullName: '',
-  bio: '',
-  age: '',
-  birthdate: '',
-  gender: ''
-};
+const prisma = require('../lib/prisma');
 
-// Obtener perfil
-router.get('/', (req, res) => {
-  res.json(userProfile);
+// Obtener perfil por id (o email)
+router.get('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID requerido' });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true, email: true, name: true, avatar: true, phone: true, fullName: true, bio: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true
+      }
+    });
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(user);
+  } catch (e) {
+    res.status(500).json({ error: 'Error al obtener perfil' });
+  }
 });
 
 // Validación simple de perfil
@@ -32,13 +35,34 @@ function validateProfile(data) {
 }
 
 // Actualizar perfil
-router.post('/', (req, res) => {
-  const errors = validateProfile(req.body);
+router.post('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const data = req.body;
+  const errors = validateProfile(data);
   if (errors.length > 0) {
     return res.status(400).json({ errors });
   }
-  userProfile = { ...userProfile, ...req.body };
-  res.json({ message: 'Perfil actualizado', user: userProfile });
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        name: data.name,
+        avatar: data.avatar,
+        phone: data.phone,
+        fullName: data.fullName,
+        bio: data.bio,
+        age: data.age ? Number(data.age) : null,
+        birthdate: data.birthdate ? new Date(data.birthdate) : null,
+        gender: data.gender
+      },
+      select: {
+        id: true, email: true, name: true, avatar: true, phone: true, fullName: true, bio: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true
+      }
+    });
+    res.json({ message: 'Perfil actualizado', user });
+  } catch (e) {
+    res.status(500).json({ error: 'Error al actualizar perfil' });
+  }
 });
 
 module.exports = router;

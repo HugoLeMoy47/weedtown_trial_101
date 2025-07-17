@@ -3,59 +3,82 @@ const express = require('express');
 const router = express.Router();
 
 
-// Simulación de base de datos de posteos
-let posts = [];
-for (let i = 1; i <= 100; i++) {
-  posts.push({
-    id: i,
-    author: 'Usuario' + ((i % 10) + 1),
-    content: 'Posteo número ' + i,
-    image: '',
-    createdAt: new Date().toISOString()
-  });
-}
+const prisma = require('../lib/prisma');
 
 // GET /api/posts?page=1
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const pageSize = 20;
-  const start = (page - 1) * pageSize;
-  const end = start + pageSize;
-  const paginated = posts.slice(start, end);
-  res.json({
-    posts: paginated,
-    page,
-    totalPages: Math.ceil(posts.length / pageSize),
-    total: posts.length
-  });
+  const skip = (page - 1) * pageSize;
+  try {
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({
+        skip,
+        take: pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: { author: { select: { id: true, name: true, avatar: true } } }
+      }),
+      prisma.post.count()
+    ]);
+    res.json({
+      posts,
+      page,
+      totalPages: Math.ceil(total / pageSize),
+      total
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Error al obtener posteos' });
+  }
 });
 
 // Crear posteo con hashtags
-router.post('/', (req, res) => {
-  const { content, image, hashtags } = req.body;
-  const newPost = {
-    id: posts.length + 1,
-    author: 'Usuario' + ((posts.length % 10) + 1), // Simulado
-    content,
-    image: image || '',
-    hashtags: Array.isArray(hashtags) ? hashtags : [],
-    createdAt: new Date().toISOString()
-  };
-  posts.unshift(newPost);
-  res.json(newPost);
+router.post('/', async (req, res) => {
+  const { content, image, hashtags, authorId } = req.body;
+  if (!content || !authorId) return res.status(400).json({ error: 'Faltan campos requeridos' });
+  try {
+    const post = await prisma.post.create({
+      data: {
+        content,
+        image: image || '',
+        authorId: Number(authorId),
+        // hashtags: implementar relación si se modela en Prisma
+      }
+    });
+    res.json(post);
+  } catch (e) {
+    res.status(500).json({ error: 'Error al crear posteo' });
+  }
 });
-// Buscar posteos, usuarios y hashtags
-router.get('/search', (req, res) => {
+// Buscar posteos por contenido o autor
+router.get('/search', async (req, res) => {
   const q = (req.query.q || '').toLowerCase();
   if (!q) return res.json({ results: [] });
-  let results = posts.filter(post =>
-    post.content.toLowerCase().includes(q) ||
-    post.author.toLowerCase().includes(q) ||
-    (post.hashtags && post.hashtags.some(tag => tag.toLowerCase().includes(q.replace('#',''))))
-  );
-  res.json({ results });
+  try {
+    const results = await prisma.post.findMany({
+      where: {
+        OR: [
+          { content: { contains: q, mode: 'insensitive' } },
+          { author: { name: { contains: q, mode: 'insensitive' } } }
+        ]
+      },
+      orderBy: { createdAt: 'desc' },
+      include: { author: { select: { id: true, name: true, avatar: true } } }
+    });
+    res.json({ results });
+  } catch (e) {
+    res.status(500).json({ error: 'Error en la búsqueda' });
+  }
 });
-router.post('/:id/like', (req, res) => res.json({ msg: 'Like' }));
-router.post('/:id/comment', (req, res) => res.json({ msg: 'Comentar' }));
+// Like a un post (requiere modelo de likes en Prisma)
+router.post('/:id/like', async (req, res) => {
+  // Implementar lógica de likes si se modela en Prisma
+  res.json({ msg: 'Like (no implementado aún)' });
+});
+
+// Comentar un post (requiere modelo de comentarios en Prisma)
+router.post('/:id/comment', async (req, res) => {
+  // Implementar lógica de comentarios si se modela en Prisma
+  res.json({ msg: 'Comentar (no implementado aún)' });
+});
 
 module.exports = router;
