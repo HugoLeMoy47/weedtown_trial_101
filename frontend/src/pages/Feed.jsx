@@ -12,7 +12,16 @@ const Feed = () => (
     <Navbar />
     <main>
       <h2>Feed de Posteos</h2>
-      {mockPosts.map(post => <PostCard key={post.id} post={post} />)}
+      {posts.length === 0 ? <div>No hay posteos aún.</div> :
+        <>
+          {posts.map(post => <PostCard key={post.id} post={post} />)}
+          <div style={{marginTop:16,display:'flex',gap:8,justifyContent:'center'}}>
+            <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}>Anterior</button>
+            <span style={{color:'#fff'}}>Página {page} de {totalPages}</span>
+            <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}>Siguiente</button>
+          </div>
+        </>
+      }
     </main>
   </>
 );

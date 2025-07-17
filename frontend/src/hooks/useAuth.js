@@ -1,7 +1,16 @@
-import { useState } from 'react';
+import { useState, useContext, createContext } from 'react';
+
+export const authContext = createContext();
 
 export function useAuth() {
+  return useContext(authContext);
+}
+
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  // Lógica de autenticación aquí
-  return { user, setUser };
+  return (
+    <authContext.Provider value={{ user, setUser }}>
+      {children}
+    </authContext.Provider>
+  );
 }

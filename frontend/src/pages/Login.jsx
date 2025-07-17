@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { login } from '../services/auth';
+import { useAuth } from '../hooks/useAuth';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const { setUser } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     try {
-      await login(email, password);
-      // Redirigir a home/feed o guardar token
-      window.location.href = '/';
+      // Simulación de login exitoso y usuario
+      const res = await login(email, password);
+      setUser({ email, name: res.data?.name || email.split('@')[0] });
+      navigate('/home');
     } catch (err) {
       setError('Credenciales inválidas');
     }

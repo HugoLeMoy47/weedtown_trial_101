@@ -18,7 +18,9 @@ app.use('/api/posts', require('./src/routes/postRoutes'));
 app.use('/api/forum', require('./src/routes/forumRoutes'));
 app.use('/api/chat', require('./src/routes/chatRoutes'));
 app.use('/api/market', require('./src/routes/marketRoutes'));
+
 app.use('/api/admin', require('./src/routes/adminRoutes'));
+app.use('/api/profile', require('./src/routes/profileRoutes'));
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 

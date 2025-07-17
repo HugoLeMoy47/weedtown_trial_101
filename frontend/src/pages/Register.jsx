@@ -7,17 +7,36 @@ const Register = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState([]);
+
+  const validate = () => {
+    const errors = [];
+    if (!/^\S+@\S+\.\S+$/.test(email)) errors.push('Correo inválido');
+    if (!username || username.length < 2) errors.push('Nombre de usuario muy corto');
+    if (!password || password.length < 6) errors.push('La contraseña debe tener al menos 6 caracteres');
+    return errors;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setFieldErrors([]);
+    const clientErrors = validate();
+    if (clientErrors.length > 0) {
+      setFieldErrors(clientErrors);
+      return;
+    }
     try {
       await register({ email, name: username, password });
       setSuccess('¡Registro exitoso! Ahora puedes iniciar sesión.');
       setEmail(''); setUsername(''); setPassword('');
     } catch (err) {
-      setError('No se pudo registrar. Intenta con otro correo o usuario.');
+      if (err.response && err.response.data && err.response.data.errors) {
+        setFieldErrors(err.response.data.errors);
+      } else {
+        setError('No se pudo registrar. Intenta con otro correo o usuario.');
+      }
     }
   };
 
@@ -49,6 +68,11 @@ const Register = () => {
           required
           style={{ width: '100%', marginBottom: 12, padding: 8 }}
         />
+        {fieldErrors.length > 0 && (
+          <ul style={{ color: 'red', marginBottom: 8 }}>
+            {fieldErrors.map((err, i) => <li key={i}>{err}</li>)}
+          </ul>
+        )}
         {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         {success && <div style={{ color: 'green', marginBottom: 8 }}>{success}</div>}
         <button type="submit" style={{ width: '100%', padding: 10, background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4 }}>
