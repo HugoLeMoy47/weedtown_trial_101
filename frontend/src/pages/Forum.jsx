@@ -14,7 +14,16 @@ const Forum = () => {
 
   useEffect(() => {
     api.get('/forum/categories')
-      .then(res => setCategories(res.data))
+      .then(res => {
+        // Si la respuesta no es un array, conviértela en array vacío
+        if (Array.isArray(res.data)) {
+          setCategories(res.data);
+        } else if (res.data && Array.isArray(res.data.categories)) {
+          setCategories(res.data.categories);
+        } else {
+          setCategories([]);
+        }
+      })
       .catch(() => setError('No se pudieron cargar las categorías.'));
   }, []);
 

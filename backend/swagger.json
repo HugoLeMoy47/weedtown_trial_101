@@ -3,7 +3,102 @@
   "info": {
     "title": "WeedTown API",
     "version": "1.0.0",
-    "description": "Documentación de la API RESTful para WeedTown."
+    "description": "API para la red social WeedTown."
   },
-  "paths": {}
+  "servers": [
+    { "url": "http://localhost:4000/api" }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Iniciar sesión",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
+                },
+                "required": ["email", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login exitoso" },
+          "401": { "description": "Credenciales inválidas" }
+        }
+      }
+    },
+    "/posts": {
+      "get": {
+        "summary": "Obtener feed de posteos",
+        "responses": {
+          "200": { "description": "Lista de posteos" }
+        }
+      },
+      "post": {
+        "summary": "Crear posteo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": { "type": "string" },
+                  "image": { "type": "string" }
+                },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Posteo creado" },
+          "400": { "description": "Datos inválidos" }
+        }
+      }
+    },
+    "/forum/categories": {
+      "get": {
+        "summary": "Obtener categorías de foros",
+        "responses": {
+          "200": { "description": "Lista de categorías" }
+        }
+      },
+      "post": {
+        "summary": "Crear nueva categoría de foro",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Categoría creada" },
+          "400": { "description": "Datos inválidos" }
+        }
+      }
+    },
+    "/chat/contacts": {
+      "get": {
+        "summary": "Obtener lista de contactos para chat",
+        "responses": {
+          "200": { "description": "Lista de contactos" }
+        }
+      }
+    }
+  }
 }
