@@ -15,7 +15,15 @@ const Chat = () => {
 
   useEffect(() => {
     api.get('/chat/contacts')
-      .then(res => setContacts(res.data))
+      .then(res => {
+        if (Array.isArray(res.data)) {
+          setContacts(res.data);
+        } else if (res.data && Array.isArray(res.data.contacts)) {
+          setContacts(res.data.contacts);
+        } else {
+          setContacts([]);
+        }
+      })
       .catch(() => setError('No se pudo cargar la lista de contactos.'));
   }, []);
 
