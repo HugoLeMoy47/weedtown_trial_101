@@ -4,6 +4,7 @@ import api from '../services/api';
 const PostModal = ({ onClose, onPost }) => {
   const [content, setContent] = useState('');
   const [image, setImage] = useState('');
+  const [hashtags, setHashtags] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -13,7 +14,9 @@ const PostModal = ({ onClose, onPost }) => {
     setLoading(true);
     try {
       // Aquí deberías manejar la subida de imagen real
-      const res = await api.post('/posts', { content, image });
+      // hashtags separados por espacios o comas
+      const tags = hashtags.split(/[ ,]+/).filter(Boolean);
+      const res = await api.post('/posts', { content, image, hashtags: tags });
       onPost(res.data);
     } catch {
       setError('No se pudo crear el posteo.');
@@ -38,6 +41,13 @@ const PostModal = ({ onClose, onPost }) => {
           placeholder="URL de imagen (opcional)"
           value={image}
           onChange={e => setImage(e.target.value)}
+          style={{width:'100%',marginBottom:12,padding:8}}
+        />
+        <input
+          type="text"
+          placeholder="Hashtags (ej: weed cannabis relax)"
+          value={hashtags}
+          onChange={e => setHashtags(e.target.value)}
           style={{width:'100%',marginBottom:12,padding:8}}
         />
         {error && <div style={{color:'red',marginBottom:8}}>{error}</div>}

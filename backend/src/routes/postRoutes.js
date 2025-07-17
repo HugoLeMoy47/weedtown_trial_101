@@ -30,7 +30,31 @@ router.get('/', (req, res) => {
   });
 });
 
-router.post('/', (req, res) => res.json({ msg: 'Crear posteo' }));
+// Crear posteo con hashtags
+router.post('/', (req, res) => {
+  const { content, image, hashtags } = req.body;
+  const newPost = {
+    id: posts.length + 1,
+    author: 'Usuario' + ((posts.length % 10) + 1), // Simulado
+    content,
+    image: image || '',
+    hashtags: Array.isArray(hashtags) ? hashtags : [],
+    createdAt: new Date().toISOString()
+  };
+  posts.unshift(newPost);
+  res.json(newPost);
+});
+// Buscar posteos, usuarios y hashtags
+router.get('/search', (req, res) => {
+  const q = (req.query.q || '').toLowerCase();
+  if (!q) return res.json({ results: [] });
+  let results = posts.filter(post =>
+    post.content.toLowerCase().includes(q) ||
+    post.author.toLowerCase().includes(q) ||
+    (post.hashtags && post.hashtags.some(tag => tag.toLowerCase().includes(q.replace('#',''))))
+  );
+  res.json({ results });
+});
 router.post('/:id/like', (req, res) => res.json({ msg: 'Like' }));
 router.post('/:id/comment', (req, res) => res.json({ msg: 'Comentar' }));
 
