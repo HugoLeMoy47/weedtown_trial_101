@@ -57,6 +57,18 @@ function Feed() {
     setShowModal(false);
   };
 
+  const handleUpdated = (updated) => {
+    const apply = list => list.map(p => (p.id === updated.id ? updated : p));
+    setPosts(apply);
+    setSearchResults(prev => (prev === null ? prev : apply(prev)));
+  };
+
+  const handleDeleted = (id) => {
+    const apply = list => list.filter(p => p.id !== id);
+    setPosts(apply);
+    setSearchResults(prev => (prev === null ? prev : apply(prev)));
+  };
+
   const showing = searchResults !== null ? searchResults : posts;
 
   return (
@@ -108,7 +120,7 @@ function Feed() {
                 {searchResults !== null ? 'Sin resultados.' : 'No hay posteos aún. ¡Sé quien inicie la conversación!'}
               </Typography>
             ) : (
-              showing.map(post => <PostCard key={post.id} post={post} />)
+              showing.map(post => <PostCard key={post.id} post={post} onUpdated={handleUpdated} onDeleted={handleDeleted} />)
             )}
             {searchResults === null && totalPages > 1 && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

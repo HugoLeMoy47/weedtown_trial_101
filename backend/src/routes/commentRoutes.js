@@ -40,4 +40,55 @@ router.delete('/:id/reaction', requireAuth, async (req, res) => {
   }
 });
 
+// Editar comentario propio
+router.put('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const content = (req.body.content || '').trim();
+  if (!id) return res.status(400).json({ error: 'ID de comentario inválido' });
+  if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+  try {
+    const comment = await prisma.comment.findUnique({ where: { id }, select: { authorId: true } });
+    if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+    if (comment.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes editar tu propio contenido' });
+    const updated = await prisma.comment.update({
+      where: { id },
+      data: { content },
+      include: {
+        author: { select: { id: true, name: true, avatar: true } },
+        reactions: { select: { type: true, userId: true } }
+      }
+    });
+    const { reactions, ...rest } = updated;
+    const counts = { LIKE: 0, ROLA: 0, INTERESA: 0, MOLESTA: 0 };
+    let myReaction = null;
+    for (const r of reactions) {
+      counts[r.type] += 1;
+      if (r.userId === req.user.id) myReaction = r.type;
+    }
+    res.json({ ...rest, reactions: counts, myReaction });
+  } catch (e) {
+    console.error('Error al editar comentario:', e);
+    res.status(500).json({ error: 'Error al editar el comentario' });
+  }
+});
+
+// Eliminar comentario propio
+router.delete('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID de comentario inválido' });
+  try {
+    const comment = await prisma.comment.findUnique({ where: { id }, select: { authorId: true } });
+    if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+    if (comment.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
+    await prisma.$transaction([
+      prisma.reaction.deleteMany({ where: { commentId: id } }),
+      prisma.comment.delete({ where: { id } })
+    ]);
+    res.json({ deleted: true, id });
+  } catch (e) {
+    console.error('Error al eliminar comentario:', e);
+    res.status(500).json({ error: 'Error al eliminar el comentario' });
+  }
+});
+
 module.exports = router;

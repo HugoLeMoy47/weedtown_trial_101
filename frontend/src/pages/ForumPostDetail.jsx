@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link as RouterLink } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container, Alert, CircularProgress, Box, Breadcrumbs, Link, Typography
 } from '@mui/material';
 import Navbar from '../components/Navbar';
 import ForumPostCard from '../components/ForumPostCard';
+import ForumComments from '../components/ForumComments';
 import api from '../services/api';
 
 const ForumPostDetail = () => {
   const { slug, id } = useParams();
+  const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -19,6 +21,9 @@ const ForumPostDetail = () => {
       .catch(() => setError('No se encontró el post.'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const handleDeleted = useCallback(() => navigate(`/forum/${slug}`, { replace: true }), [navigate, slug]);
+  const handleCountChange = useCallback(() => {}, []);
 
   return (
     <>
@@ -42,10 +47,8 @@ const ForumPostDetail = () => {
           </Box>
         ) : post && (
           <>
-            <ForumPostCard post={post} detail />
-            <Alert severity="info" sx={{ mt: 2 }}>
-              Los hilos de discusión llegan en la siguiente entrega de este hito.
-            </Alert>
+            <ForumPostCard post={post} detail onUpdated={setPost} onDeleted={handleDeleted} />
+            <ForumComments postId={post.id} onCountChange={handleCountChange} />
           </>
         )}
       </Container>

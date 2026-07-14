@@ -246,4 +246,202 @@ router.delete('/posts/:id/reaction', requireAuth, async (req, res) => {
   }
 });
 
+// ---------- Hilos de comentarios (anidado hasta 3 niveles) ----------
+
+const MAX_DEPTH = 2; // niveles 0, 1 y 2 = 3 niveles visibles; más profundo se aplana
+
+const forumCommentInclude = {
+  author: { select: { id: true, name: true, avatar: true } },
+  parent: { select: { id: true, author: { select: { id: true, name: true } } } },
+  reactions: { select: { type: true, userId: true } }
+};
+
+function serializeForumComment(comment, currentUserId) {
+  const { reactions, ...rest } = comment;
+  const { counts, myReaction } = summarizeReactions(reactions, currentUserId);
+  if (rest.deletedAt) {
+    rest.content = '';
+    rest.image = null;
+  }
+  return { ...rest, deleted: Boolean(rest.deletedAt), reactions: counts, myReaction };
+}
+
+// GET /api/forum/posts/:id/comments — todos los comentarios del post (el árbol se arma en el cliente)
+router.get('/posts/:id/comments', optionalAuth, async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!postId) return res.status(400).json({ error: 'ID inválido' });
+  try {
+    const comments = await prisma.forumComment.findMany({
+      where: { postId },
+      orderBy: { createdAt: 'asc' },
+      include: forumCommentInclude
+    });
+    res.json({ comments: comments.map(c => serializeForumComment(c, req.user?.id)) });
+  } catch (e) {
+    console.error('Error al listar comentarios del foro:', e);
+    res.status(500).json({ error: 'Error al obtener los comentarios' });
+  }
+});
+
+// POST /api/forum/posts/:id/comments — comentar o responder (parentId opcional)
+router.post('/posts/:id/comments', requireAuth, async (req, res) => {
+  const postId = Number(req.params.id);
+  const content = (req.body.content || '').trim();
+  const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
+  const parentId = req.body.parentId ? Number(req.body.parentId) : null;
+  if (!postId) return res.status(400).json({ error: 'ID inválido' });
+  if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+  try {
+    const post = await prisma.forumPost.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
+    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+
+    let depth = 0;
+    if (parentId) {
+      const parent = await prisma.forumComment.findUnique({
+        where: { id: parentId },
+        select: { id: true, postId: true, depth: true, authorId: true, deletedAt: true }
+      });
+      if (!parent || parent.postId !== postId) {
+        return res.status(400).json({ error: 'Comentario padre inválido' });
+      }
+      // Más allá del nivel máximo se aplana: sigue colgando del padre pero sin más sangría
+      depth = Math.min(parent.depth + 1, MAX_DEPTH);
+    }
+
+    const comment = await prisma.forumComment.create({
+      data: { content, image, postId, parentId, depth, authorId: req.user.id },
+      include: forumCommentInclude
+    });
+    res.json(serializeForumComment(comment, req.user.id));
+  } catch (e) {
+    console.error('Error al comentar en el foro:', e);
+    res.status(500).json({ error: 'Error al crear el comentario' });
+  }
+});
+
+// POST /api/forum/comments/:id/reaction — reaccionar a un comentario (puntúa)
+router.post('/comments/:id/reaction', requireAuth, async (req, res) => {
+  const forumCommentId = Number(req.params.id);
+  const type = req.body.type;
+  if (!forumCommentId) return res.status(400).json({ error: 'ID inválido' });
+  if (!REACTION_TYPES.includes(type)) {
+    return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
+  }
+  try {
+    const comment = await prisma.forumComment.findUnique({ where: { id: forumCommentId }, select: { id: true, deletedAt: true } });
+    if (!comment || comment.deletedAt) return res.status(404).json({ error: 'Comentario no encontrado' });
+    const { myReaction } = await toggleReaction(req.user.id, { forumCommentId }, type);
+    const [reactions, fresh] = await Promise.all([
+      reactionCounts({ forumCommentId }),
+      prisma.forumComment.findUnique({ where: { id: forumCommentId }, select: { score: true } })
+    ]);
+    res.json({ forumCommentId, myReaction, reactions, score: fresh.score });
+  } catch (e) {
+    console.error('Error al reaccionar al comentario del foro:', e);
+    res.status(500).json({ error: 'Error al registrar la reacción' });
+  }
+});
+
+// ---------- Editar / eliminar contenido propio ----------
+
+// PUT /api/forum/posts/:id — editar post propio
+router.put('/posts/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const title = req.body.title !== undefined ? (req.body.title || '').trim() : undefined;
+  const content = req.body.content !== undefined ? (req.body.content || '').trim() : undefined;
+  if (title !== undefined && (title.length < 3 || title.length > 200)) {
+    return res.status(400).json({ error: 'El título debe tener entre 3 y 200 caracteres' });
+  }
+  if (content !== undefined && !content) {
+    return res.status(400).json({ error: 'El contenido no puede estar vacío' });
+  }
+  try {
+    const post = await prisma.forumPost.findUnique({ where: { id }, select: { authorId: true } });
+    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    if (post.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes editar tu propio contenido' });
+    const updated = await prisma.forumPost.update({
+      where: { id },
+      data: { title, content },
+      include: forumPostInclude
+    });
+    res.json(serializeForumPost(updated, req.user.id));
+  } catch (e) {
+    console.error('Error al editar post del foro:', e);
+    res.status(500).json({ error: 'Error al editar el post' });
+  }
+});
+
+// DELETE /api/forum/posts/:id — eliminar post propio (con todo su hilo)
+router.delete('/posts/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  try {
+    const post = await prisma.forumPost.findUnique({ where: { id }, select: { authorId: true } });
+    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    if (post.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
+    await prisma.$transaction([
+      prisma.reaction.deleteMany({ where: { OR: [{ forumPostId: id }, { forumComment: { postId: id } }] } }),
+      prisma.notification.deleteMany({ where: { OR: [{ forumPostId: id }, { forumComment: { postId: id } }] } }),
+      prisma.forumComment.deleteMany({ where: { postId: id } }),
+      prisma.forumPost.delete({ where: { id } })
+    ]);
+    res.json({ deleted: true, id });
+  } catch (e) {
+    console.error('Error al eliminar post del foro:', e);
+    res.status(500).json({ error: 'Error al eliminar el post' });
+  }
+});
+
+// PUT /api/forum/comments/:id — editar comentario propio
+router.put('/comments/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const content = (req.body.content || '').trim();
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+  try {
+    const comment = await prisma.forumComment.findUnique({ where: { id }, select: { authorId: true, deletedAt: true } });
+    if (!comment || comment.deletedAt) return res.status(404).json({ error: 'Comentario no encontrado' });
+    if (comment.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes editar tu propio contenido' });
+    const updated = await prisma.forumComment.update({ where: { id }, data: { content }, include: forumCommentInclude });
+    res.json(serializeForumComment(updated, req.user.id));
+  } catch (e) {
+    console.error('Error al editar comentario del foro:', e);
+    res.status(500).json({ error: 'Error al editar el comentario' });
+  }
+});
+
+// DELETE /api/forum/comments/:id — eliminar comentario propio
+// Con respuestas: borrado suave ([eliminado]) para no romper el hilo; sin respuestas: borrado real
+router.delete('/comments/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  try {
+    const comment = await prisma.forumComment.findUnique({
+      where: { id },
+      select: { authorId: true, deletedAt: true, _count: { select: { replies: true } } }
+    });
+    if (!comment || comment.deletedAt) return res.status(404).json({ error: 'Comentario no encontrado' });
+    if (comment.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
+
+    if (comment._count.replies > 0) {
+      await prisma.$transaction([
+        prisma.reaction.deleteMany({ where: { forumCommentId: id } }),
+        prisma.forumComment.update({ where: { id }, data: { deletedAt: new Date(), content: '', image: null, score: 0 } })
+      ]);
+      res.json({ deleted: true, soft: true, id });
+    } else {
+      await prisma.$transaction([
+        prisma.reaction.deleteMany({ where: { forumCommentId: id } }),
+        prisma.notification.deleteMany({ where: { forumCommentId: id } }),
+        prisma.forumComment.delete({ where: { id } })
+      ]);
+      res.json({ deleted: true, soft: false, id });
+    }
+  } catch (e) {
+    console.error('Error al eliminar comentario del foro:', e);
+    res.status(500).json({ error: 'Error al eliminar el comentario' });
+  }
+});
+
 module.exports = router;

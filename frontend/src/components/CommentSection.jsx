@@ -1,16 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box, Stack, Avatar, Typography, TextField, IconButton, CircularProgress, Alert, Divider
+  Box, Stack, Avatar, Typography, TextField, IconButton, CircularProgress, Alert, Divider, Button
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import ImagePicker from './ImagePicker';
+import OwnerActions from './OwnerActions';
+import { useAuth } from '../hooks/useAuth';
 
-const CommentItem = ({ comment }) => {
+const CommentItem = ({ comment, onEdited, onDeleted }) => {
+  const { user } = useAuth();
   const [reactions, setReactions] = useState(comment.reactions || EMPTY_COUNTS);
   const [myReaction, setMyReaction] = useState(comment.myReaction || null);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(comment.content);
   const date = comment.createdAt ? new Date(comment.createdAt) : null;
+  const isMine = user && comment.author?.id === user.id;
 
   const handleReact = async (type) => {
     const prev = { reactions, myReaction };
@@ -37,7 +43,7 @@ const CommentItem = ({ comment }) => {
         {(comment.author?.name || '?').charAt(0).toUpperCase()}
       </Avatar>
       <Box sx={{ flex: 1 }}>
-        <Stack direction="row" spacing={1} alignItems="baseline">
+        <Stack direction="row" spacing={1} alignItems="center">
           <Typography variant="subtitle2">{comment.author?.name || 'Anónimo'}</Typography>
           {date && (
             <Typography variant="caption" color="text.secondary">
@@ -46,8 +52,32 @@ const CommentItem = ({ comment }) => {
               </time>
             </Typography>
           )}
+          {isMine && (
+            <OwnerActions
+              deleteLabel="este comentario"
+              onEdit={() => { setEditText(comment.content); setEditing(true); }}
+              onDelete={async () => {
+                await api.delete(`/comments/${comment.id}`);
+                onDeleted(comment.id);
+              }}
+            />
+          )}
         </Stack>
-        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 0.5 }}>{comment.content}</Typography>
+        {editing ? (
+          <Box sx={{ mb: 0.5 }}>
+            <TextField fullWidth size="small" multiline value={editText} onChange={e => setEditText(e.target.value)} />
+            <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+              <Button size="small" variant="contained" disabled={!editText.trim()} onClick={async () => {
+                const res = await api.put(`/comments/${comment.id}`, { content: editText });
+                onEdited(res.data);
+                setEditing(false);
+              }}>Guardar</Button>
+              <Button size="small" color="secondary" onClick={() => setEditing(false)}>Cancelar</Button>
+            </Stack>
+          </Box>
+        ) : (
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 0.5 }}>{comment.content}</Typography>
+        )}
         {comment.image && (
           <Box
             component="img"
@@ -124,7 +154,18 @@ const CommentSection = ({ postId, onCountChange }) => {
         </Typography>
       ) : (
         <Stack divider={<Divider flexItem />}>
-          {comments.map(c => <CommentItem key={c.id} comment={c} />)}
+          {comments.map(c => (
+            <CommentItem
+              key={c.id}
+              comment={c}
+              onEdited={(updated) => setComments(prev => prev.map(x => (x.id === updated.id ? { ...x, ...updated } : x)))}
+              onDeleted={(id) => setComments(prev => {
+                const next = prev.filter(x => x.id !== id);
+                onCountChange?.(next.length);
+                return next;
+              })}
+            />
+          ))}
         </Stack>
       )}
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1.5 }}>

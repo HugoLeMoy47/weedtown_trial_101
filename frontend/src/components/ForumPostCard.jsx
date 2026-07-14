@@ -1,15 +1,40 @@
 import React, { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
-  Card, CardContent, CardActions, Typography, Stack, Chip, Button, Box, Avatar, Tooltip
+  Card, CardContent, CardActions, Typography, Stack, Chip, Button, Box, Avatar, Tooltip,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert
 } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import WhatshotIcon from '@mui/icons-material/Whatshot';
 import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
+import OwnerActions from './OwnerActions';
+import { useAuth } from '../hooks/useAuth';
 import { REACTION_SCORE } from '../lib/forum';
 
-const ForumPostCard = ({ post, showSubforum = false, detail = false }) => {
+const ForumPostCard = ({ post, showSubforum = false, detail = false, onUpdated, onDeleted }) => {
+  const { user } = useAuth();
+  const isMine = user && post.author?.id === user.id;
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(post.title);
+  const [editContent, setEditContent] = useState(post.content);
+  const [editError, setEditError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleEditSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setEditError('');
+    try {
+      const res = await api.put(`/forum/posts/${post.id}`, { title: editTitle, content: editContent });
+      onUpdated?.(res.data);
+      setEditing(false);
+    } catch (err) {
+      setEditError(err.response?.data?.error || 'No se pudo guardar.');
+    } finally {
+      setSaving(false);
+    }
+  };
   const [reactions, setReactions] = useState(post.reactions || EMPTY_COUNTS);
   const [myReaction, setMyReaction] = useState(post.myReaction || null);
   const [score, setScore] = useState(post.score ?? 0);
@@ -69,6 +94,18 @@ const ForumPostCard = ({ post, showSubforum = false, detail = false }) => {
               {date && <> · <time dateTime={date.toISOString()}>{date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}</time></>}
             </Typography>
           </Stack>
+          {detail && isMine && (
+            <Box sx={{ ml: 'auto' }}>
+              <OwnerActions
+                deleteLabel="este post y todo su hilo"
+                onEdit={() => { setEditTitle(post.title); setEditContent(post.content); setEditing(true); }}
+                onDelete={async () => {
+                  await api.delete(`/forum/posts/${post.id}`);
+                  onDeleted?.();
+                }}
+              />
+            </Box>
+          )}
         </Stack>
 
         {detail ? (
@@ -119,6 +156,23 @@ const ForumPostCard = ({ post, showSubforum = false, detail = false }) => {
           </Button>
         )}
       </CardActions>
+
+      <Dialog open={editing} onClose={() => setEditing(false)} fullWidth maxWidth="sm" aria-labelledby="edit-forum-post-title">
+        <form onSubmit={handleEditSave}>
+          <DialogTitle id="edit-forum-post-title">Editar post</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="Título" value={editTitle} onChange={e => setEditTitle(e.target.value)} required fullWidth inputProps={{ maxLength: 200 }} />
+              <TextField label="Contenido" value={editContent} onChange={e => setEditContent(e.target.value)} required fullWidth multiline minRows={4} />
+              {editError && <Alert severity="error" role="alert">{editError}</Alert>}
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setEditing(false)} color="secondary">Cancelar</Button>
+            <Button type="submit" variant="contained" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Button>
+          </DialogActions>
+        </form>
+      </Dialog>
     </Card>
   );
 };

@@ -108,6 +108,64 @@ router.get('/search', optionalAuth, async (req, res) => {
   }
 });
 
+// Editar post propio (contenido y hashtags)
+router.put('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const content = (req.body.content || '').trim();
+  if (!id) return res.status(400).json({ error: 'ID de post inválido' });
+  if (!content) return res.status(400).json({ error: 'El contenido no puede estar vacío' });
+  const tags = Array.isArray(req.body.hashtags)
+    ? [...new Set(req.body.hashtags.map(t => String(t).replace(/^#/, '').trim().toLowerCase()).filter(Boolean))]
+    : null;
+  try {
+    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true } });
+    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    if (post.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes editar tu propio contenido' });
+
+    const updated = await prisma.post.update({
+      where: { id },
+      data: {
+        content,
+        ...(tags !== null && {
+          hashtags: {
+            deleteMany: {},
+            create: tags.map(tag => ({
+              hashtag: { connectOrCreate: { where: { tag }, create: { tag } } }
+            }))
+          }
+        })
+      },
+      include: postInclude
+    });
+    res.json(serializePost(updated, req.user.id));
+  } catch (e) {
+    console.error('Error al editar posteo:', e);
+    res.status(500).json({ error: 'Error al editar el posteo' });
+  }
+});
+
+// Eliminar post propio (con comentarios y reacciones)
+router.delete('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID de post inválido' });
+  try {
+    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true } });
+    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    if (post.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
+    await prisma.$transaction([
+      prisma.reaction.deleteMany({ where: { OR: [{ postId: id }, { comment: { postId: id } }] } }),
+      prisma.comment.deleteMany({ where: { postId: id } }),
+      prisma.hashtagOnPost.deleteMany({ where: { postId: id } }),
+      prisma.media.deleteMany({ where: { postId: id } }),
+      prisma.post.delete({ where: { id } })
+    ]);
+    res.json({ deleted: true, id });
+  } catch (e) {
+    console.error('Error al eliminar posteo:', e);
+    res.status(500).json({ error: 'Error al eliminar el posteo' });
+  }
+});
+
 // Reaccionar a un post: misma reacción = quitar, distinta = reemplazar (HU-RC-001)
 async function reactToPost(req, res, type) {
   const postId = Number(req.params.id);

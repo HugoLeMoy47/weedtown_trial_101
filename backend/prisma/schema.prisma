@@ -189,6 +189,7 @@ model ForumComment {
   image         String?
   score         Int            @default(0)
   depth         Int            @default(0)
+  deletedAt     DateTime?
   author        User           @relation(fields: [authorId], references: [id])
   authorId      Int
   post          ForumPost      @relation(fields: [postId], references: [id])
