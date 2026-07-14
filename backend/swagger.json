@@ -2,46 +2,192 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeedTown API",
-    "version": "1.0.0",
-    "description": "API para la red social WeedTown."
+    "version": "2.0.0",
+    "description": "API de la red social WeedTown. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Las rutas de foro, chat, market y admin son stubs pendientes de implementación."
   },
   "servers": [
-    { "url": "http://localhost:4000/api" }
+    { "url": "http://localhost:4000" }
   ],
-  "paths": {
-    "/auth/login": {
-      "post": {
-        "summary": "Iniciar sesión",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "email": { "type": "string" },
-                  "password": { "type": "string" }
-                },
-                "required": ["email", "password"]
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT emitido por el backend tras el flujo OAuth de Mastodon (expira en 7 días)."
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "mastodonInstance": { "type": "string", "example": "mastodon.social" },
+          "acct": { "type": "string", "example": "usuario@mastodon.social" },
+          "displayName": { "type": "string", "nullable": true },
+          "email": { "type": "string", "nullable": true },
+          "name": { "type": "string" },
+          "avatar": { "type": "string", "nullable": true },
+          "phone": { "type": "string", "nullable": true },
+          "fullName": { "type": "string", "nullable": true },
+          "bio": { "type": "string", "nullable": true },
+          "age": { "type": "integer", "nullable": true },
+          "birthdate": { "type": "string", "format": "date-time", "nullable": true },
+          "gender": { "type": "string", "nullable": true, "enum": ["masculino", "femenino", "otro", null] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Post": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "authorId": { "type": "integer" },
+          "content": { "type": "string" },
+          "image": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "author": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" },
+              "avatar": { "type": "string", "nullable": true }
+            }
+          },
+          "hashtags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "postId": { "type": "integer" },
+                "hashtagId": { "type": "integer" },
+                "hashtag": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "tag": { "type": "string" }
+                  }
+                }
               }
             }
           }
-        },
+        }
+      },
+      "ProfileInput": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "avatar": { "type": "string" },
+          "phone": { "type": "string", "example": "+521234567890" },
+          "fullName": { "type": "string" },
+          "bio": { "type": "string" },
+          "age": { "type": "integer", "minimum": 0, "maximum": 120 },
+          "birthdate": { "type": "string", "format": "date" },
+          "gender": { "type": "string", "enum": ["masculino", "femenino", "otro", ""] }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Sistema" },
+    { "name": "Auth", "description": "Identidad federada con Mastodon" },
+    { "name": "Posts" },
+    { "name": "Perfil" },
+    { "name": "Pendientes", "description": "Stubs sin lógica real todavía (foro, chat, market, admin)" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Sistema"],
+        "summary": "Estado del proceso y conexión a la base de datos",
         "responses": {
-          "200": { "description": "Login exitoso" },
-          "401": { "description": "Credenciales inválidas" }
+          "200": { "description": "Proceso y BD operativos" },
+          "503": { "description": "Proceso vivo pero sin conexión a la BD" }
         }
       }
     },
-    "/posts": {
+    "/api/auth/mastodon/start": {
       "get": {
-        "summary": "Obtener feed de posteos",
+        "tags": ["Auth"],
+        "summary": "Inicia el flujo OAuth con una instancia de Mastodon",
+        "description": "Registra dinámicamente la app en la instancia si es la primera vez y redirige a su pantalla de autorización con un state firmado (expira en 10 minutos).",
+        "parameters": [
+          {
+            "name": "instance",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "mastodon.social"
+          }
+        ],
         "responses": {
-          "200": { "description": "Lista de posteos" }
+          "302": { "description": "Redirección a https://{instance}/oauth/authorize" },
+          "400": { "description": "Instancia inválida", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/auth/mastodon/callback": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Callback OAuth (uso interno del flujo)",
+        "description": "Canjea el código por un access token, obtiene el perfil con verify_credentials, hace upsert del usuario y redirige al frontend con el JWT en el fragmento: {FRONTEND_URL}/auth/callback#token=...",
+        "parameters": [
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirección al frontend con el token, o a /login?error=... si falla" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Usuario de la sesión actual",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Usuario autenticado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "description": "Sin token o token inválido", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/posts": {
+      "get": {
+        "tags": ["Posts"],
+        "summary": "Feed paginado de posteos (20 por página)",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página del feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "posts": { "type": "array", "items": { "$ref": "#/components/schemas/Post" } },
+                    "page": { "type": "integer" },
+                    "totalPages": { "type": "integer" },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "post": {
-        "summary": "Crear posteo",
+        "tags": ["Posts"],
+        "summary": "Crear posteo (el autor sale del token)",
+        "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -50,7 +196,8 @@
                 "type": "object",
                 "properties": {
                   "content": { "type": "string" },
-                  "image": { "type": "string" }
+                  "image": { "type": "string", "description": "URL de imagen (opcional)" },
+                  "hashtags": { "type": "array", "items": { "type": "string" }, "example": ["viaje", "nomada"] }
                 },
                 "required": ["content"]
               }
@@ -58,46 +205,118 @@
           }
         },
         "responses": {
-          "201": { "description": "Posteo creado" },
-          "400": { "description": "Datos inválidos" }
+          "200": { "description": "Posteo creado con autor y hashtags", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Post" } } } },
+          "400": { "description": "Faltan campos requeridos", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "No autenticado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
-    "/forum/categories": {
+    "/api/posts/search": {
       "get": {
-        "summary": "Obtener categorías de foros",
+        "tags": ["Posts"],
+        "summary": "Buscar posteos por contenido o nombre de autor",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
         "responses": {
-          "200": { "description": "Lista de categorías" }
-        }
-      },
-      "post": {
-        "summary": "Crear nueva categoría de foro",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" }
-                },
-                "required": ["name"]
+          "200": {
+            "description": "Resultados de búsqueda",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": { "type": "array", "items": { "$ref": "#/components/schemas/Post" } }
+                  }
+                }
               }
             }
           }
-        },
-        "responses": {
-          "201": { "description": "Categoría creada" },
-          "400": { "description": "Datos inválidos" }
         }
       }
     },
-    "/chat/contacts": {
+    "/api/profile/me": {
       "get": {
-        "summary": "Obtener lista de contactos para chat",
+        "tags": ["Perfil"],
+        "summary": "Perfil propio",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
-          "200": { "description": "Lista de contactos" }
+          "200": { "description": "Perfil del usuario autenticado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "description": "No autenticado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
+      },
+      "put": {
+        "tags": ["Perfil"],
+        "summary": "Actualizar perfil propio",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProfileInput" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Perfil actualizado" },
+          "400": { "description": "Errores de validación" },
+          "401": { "description": "No autenticado" }
+        }
+      }
+    },
+    "/api/profile/{id}": {
+      "get": {
+        "tags": ["Perfil"],
+        "summary": "Perfil público por id",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Perfil del usuario", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "404": { "description": "Usuario no encontrado" }
+        }
+      }
+    },
+    "/api/posts/{id}/like": {
+      "post": {
+        "tags": ["Pendientes"],
+        "summary": "Dar like a un posteo (stub)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+      }
+    },
+    "/api/posts/{id}/comment": {
+      "post": {
+        "tags": ["Pendientes"],
+        "summary": "Comentar un posteo (stub)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+      }
+    },
+    "/api/forum/categories": {
+      "get": {
+        "tags": ["Pendientes"],
+        "summary": "Categorías del foro (stub)",
+        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+      }
+    },
+    "/api/chat/contacts": {
+      "get": {
+        "tags": ["Pendientes"],
+        "summary": "Contactos de chat (stub)",
+        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+      }
+    },
+    "/api/market": {
+      "get": {
+        "tags": ["Pendientes"],
+        "summary": "Propiedades en arrendamiento (stub)",
+        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": ["Pendientes"],
+        "summary": "Gestión de usuarios (stub)",
+        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
       }
     }
   }
