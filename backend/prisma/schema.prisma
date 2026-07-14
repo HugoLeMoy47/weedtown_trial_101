@@ -29,10 +29,15 @@ model User {
   posts            Post[]
   comments         Comment[]
   reactions        Reaction[]
-  chats            Chat[]       @relation("UserChats")
-  messages         Message[]    @relation("UserMessages")
+  chats            Chat[]           @relation("UserChats")
+  messages         Message[]        @relation("UserMessages")
   forumPosts       ForumPost[]
-  marketItems      MarketItem[] @relation("UserMarketItems")
+  forumComments    ForumComment[]
+  subforums        SubForum[]       @relation("UserSubforums")
+  subforumFollows  SubForumFollow[]
+  notifications    Notification[]   @relation("NotificationRecipient")
+  notificationActs Notification[]   @relation("NotificationActor")
+  marketItems      MarketItem[]     @relation("UserMarketItems")
   media            Media[]
 
   @@unique([mastodonInstance, mastodonId])
@@ -95,19 +100,25 @@ enum ReactionType {
 }
 
 model Reaction {
-  id        Int          @id @default(autoincrement())
-  type      ReactionType
-  user      User         @relation(fields: [userId], references: [id])
-  userId    Int
-  post      Post?        @relation(fields: [postId], references: [id])
-  postId    Int?
-  comment   Comment?     @relation(fields: [commentId], references: [id])
-  commentId Int?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id             Int           @id @default(autoincrement())
+  type           ReactionType
+  user           User          @relation(fields: [userId], references: [id])
+  userId         Int
+  post           Post?         @relation(fields: [postId], references: [id])
+  postId         Int?
+  comment        Comment?      @relation(fields: [commentId], references: [id])
+  commentId      Int?
+  forumPost      ForumPost?    @relation(fields: [forumPostId], references: [id])
+  forumPostId    Int?
+  forumComment   ForumComment? @relation(fields: [forumCommentId], references: [id])
+  forumCommentId Int?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@unique([userId, postId])
   @@unique([userId, commentId])
+  @@unique([userId, forumPostId])
+  @@unique([userId, forumCommentId])
 }
 
 model Chat {
@@ -127,22 +138,96 @@ model Message {
   createdAt DateTime @default(now())
 }
 
-model ForumCategory {
-  id    Int         @id @default(autoincrement())
-  name  String      @unique
-  posts ForumPost[]
+// Foros estilo Reddit: subforos creados por la comunidad, posts con puntaje
+// (reacciones: LIKE/ROLA/INTERESA = +1, MOLESTA = -1) e hilos anidados
+model SubForum {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique
+  slug        String           @unique
+  description String?
+  creator     User             @relation("UserSubforums", fields: [creatorId], references: [id])
+  creatorId   Int
+  posts       ForumPost[]
+  followers   SubForumFollow[]
+  notifications Notification[]
+  createdAt   DateTime         @default(now())
+}
+
+model SubForumFollow {
+  user       User     @relation(fields: [userId], references: [id])
+  userId     Int
+  subforum   SubForum @relation(fields: [subforumId], references: [id])
+  subforumId Int
+  createdAt  DateTime @default(now())
+
+  @@id([userId, subforumId])
 }
 
 model ForumPost {
-  id          Int            @id @default(autoincrement())
-  title       String
-  content     String
-  author      User           @relation(fields: [authorId], references: [id])
-  authorId    Int
-  category    ForumCategory  @relation(fields: [categoryId], references: [id])
-  categoryId  Int
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id            Int            @id @default(autoincrement())
+  title         String
+  content       String
+  image         String?
+  score         Int            @default(0)
+  author        User           @relation(fields: [authorId], references: [id])
+  authorId      Int
+  subforum      SubForum       @relation(fields: [subforumId], references: [id])
+  subforumId    Int
+  comments      ForumComment[]
+  reactions     Reaction[]
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([subforumId, createdAt])
+  @@index([subforumId, score])
+}
+
+model ForumComment {
+  id            Int            @id @default(autoincrement())
+  content       String
+  image         String?
+  score         Int            @default(0)
+  depth         Int            @default(0)
+  author        User           @relation(fields: [authorId], references: [id])
+  authorId      Int
+  post          ForumPost      @relation(fields: [postId], references: [id])
+  postId        Int
+  parent        ForumComment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  parentId      Int?
+  replies       ForumComment[] @relation("CommentReplies")
+  reactions     Reaction[]
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([postId, parentId])
+}
+
+// Centro de notificaciones in-app
+enum NotificationType {
+  REPLY_POST
+  REPLY_COMMENT
+  NEW_SUBFORUM_POST
+}
+
+model Notification {
+  id             Int              @id @default(autoincrement())
+  type           NotificationType
+  recipient      User             @relation("NotificationRecipient", fields: [recipientId], references: [id])
+  recipientId    Int
+  actor          User             @relation("NotificationActor", fields: [actorId], references: [id])
+  actorId        Int
+  subforum       SubForum?        @relation(fields: [subforumId], references: [id])
+  subforumId     Int?
+  forumPost      ForumPost?       @relation(fields: [forumPostId], references: [id])
+  forumPostId    Int?
+  forumComment   ForumComment?    @relation(fields: [forumCommentId], references: [id])
+  forumCommentId Int?
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([recipientId, readAt])
 }
 
 model MarketItem {
