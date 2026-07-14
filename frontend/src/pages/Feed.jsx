@@ -2,12 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import Navbar from '../components/Navbar';
 import PostCard from '../components/PostCard';
-
-const mockPosts = [
-  { id: 1, author: 'Usuario1', content: '¡Hola WeedTown!', image: '', createdAt: '2025-07-17' },
-  { id: 2, author: 'Usuario2', content: 'Primera publicación', image: '', createdAt: '2025-07-17' },
-];
-
+import PostModal from '../components/PostModal';
 
 function Feed() {
   const [posts, setPosts] = useState([]);

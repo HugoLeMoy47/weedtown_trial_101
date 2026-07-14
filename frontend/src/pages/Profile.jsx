@@ -1,18 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import Navbar from '../components/Navbar';
+import { useAuth } from '../hooks/useAuth';
 
-const Profile = ({ user, setUser }) => {
-  const [form, setForm] = useState({
-    phone: user?.phone || '',
-    fullName: user?.fullName || '',
-    bio: user?.bio || '',
-    age: user?.age || '',
-    birthdate: user?.birthdate || '',
-    gender: user?.gender || ''
-  });
+const emptyForm = { phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
+
+const Profile = () => {
+  const { setUser } = useAuth();
+  const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState([]);
+
+  useEffect(() => {
+    api.get('/profile/me')
+      .then(res => {
+        const u = res.data;
+        setForm({
+          phone: u.phone || '',
+          fullName: u.fullName || '',
+          bio: u.bio || '',
+          age: u.age ?? '',
+          birthdate: u.birthdate ? u.birthdate.slice(0, 10) : '',
+          gender: u.gender || ''
+        });
+      })
+      .catch(() => setError('No se pudo cargar el perfil. ¿Iniciaste sesión?'))
+      .finally(() => setLoading(false));
+  }, []);
 
   const validate = () => {
     const errors = [];
@@ -39,8 +55,8 @@ const Profile = ({ user, setUser }) => {
       return;
     }
     try {
-      const res = await api.post('/profile', form);
-      setUser({ ...user, ...form });
+      const res = await api.put('/profile/me', form);
+      setUser(res.data.user);
       setSuccess('Perfil actualizado correctamente');
     } catch (err) {
       if (err.response && err.response.data && err.response.data.errors) {
@@ -52,32 +68,37 @@ const Profile = ({ user, setUser }) => {
   };
 
   return (
-    <div style={{ maxWidth: 500, margin: '3rem auto', background: '#222', padding: 24, borderRadius: 8 }}>
-      <h2>Mi perfil</h2>
-      <form onSubmit={handleSubmit}>
-        <input name="fullName" placeholder="Nombre completo" value={form.fullName} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
-        <input name="phone" placeholder="Teléfono" value={form.phone} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
-        <input name="age" placeholder="Edad" value={form.age} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
-        <input name="birthdate" type="date" placeholder="Fecha de nacimiento" value={form.birthdate} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
-        <select name="gender" value={form.gender} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }}>
-          <option value="">Género</option>
-          <option value="masculino">Masculino</option>
-          <option value="femenino">Femenino</option>
-          <option value="otro">Otro</option>
-        </select>
-        <textarea name="bio" placeholder="Biografía" value={form.bio} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
-        {fieldErrors.length > 0 && (
-          <ul style={{ color: 'red', marginBottom: 8 }}>
-            {fieldErrors.map((err, i) => <li key={i}>{err}</li>)}
-          </ul>
+    <>
+      <Navbar />
+      <div style={{ maxWidth: 500, margin: '3rem auto', background: '#222', padding: 24, borderRadius: 8 }}>
+        <h2>Mi perfil</h2>
+        {loading ? <div>Cargando...</div> : (
+          <form onSubmit={handleSubmit}>
+            <input name="fullName" placeholder="Nombre completo" value={form.fullName} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
+            <input name="phone" placeholder="Teléfono" value={form.phone} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
+            <input name="age" placeholder="Edad" value={form.age} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
+            <input name="birthdate" type="date" placeholder="Fecha de nacimiento" value={form.birthdate} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
+            <select name="gender" value={form.gender} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }}>
+              <option value="">Género</option>
+              <option value="masculino">Masculino</option>
+              <option value="femenino">Femenino</option>
+              <option value="otro">Otro</option>
+            </select>
+            <textarea name="bio" placeholder="Biografía" value={form.bio} onChange={handleChange} style={{ width: '100%', marginBottom: 12, padding: 8 }} />
+            {fieldErrors.length > 0 && (
+              <ul style={{ color: 'red', marginBottom: 8 }}>
+                {fieldErrors.map((err, i) => <li key={i}>{err}</li>)}
+              </ul>
+            )}
+            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+            {success && <div style={{ color: 'green', marginBottom: 8 }}>{success}</div>}
+            <button type="submit" style={{ width: '100%', padding: 10, background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4 }}>
+              Guardar cambios
+            </button>
+          </form>
         )}
-        {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
-        {success && <div style={{ color: 'green', marginBottom: 8 }}>{success}</div>}
-        <button type="submit" style={{ width: '100%', padding: 10, background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4 }}>
-          Guardar cambios
-        </button>
-      </form>
-    </div>
+      </div>
+    </>
   );
 };
 

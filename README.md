@@ -12,12 +12,12 @@ WeedTown combina funcionalidades sociales como foros, publicaciones con imágene
 
 ## 🧩 Funcionalidades Principales
 
-- ✅ Registro/Login con email y redes sociales
-- 📰 Feed de posteos con texto e imágenes
-- 🗣️ Foros tipo blog con categorías temáticas
-- 💬 Chat 1 a 1 en tiempo real
-- 🏠 Espacio de comercio para arrendamiento de inmuebles
-- 🛠️ Panel administrativo para gestión de usuarios y contenido
+- ✅ Identidad federada con **Mastodon** (OAuth 2.0, cualquier instancia del fediverso)
+- 📰 Feed de posteos con texto, imágenes y hashtags
+- 🗣️ Foros tipo blog con categorías temáticas *(pendiente)*
+- 💬 Chat 1 a 1 en tiempo real *(pendiente)*
+- 🏠 Espacio de comercio para arrendamiento de inmuebles *(pendiente)*
+- 🛠️ Panel administrativo para gestión de usuarios y contenido *(pendiente)*
 
 ---
 
@@ -26,16 +26,36 @@ WeedTown combina funcionalidades sociales como foros, publicaciones con imágene
 ### Frontend
 - **React** para la versión web
 - **React Native** para apps móviles (iOS y Android)
-- **TailwindCSS** o **Styled Components** para estilos
 
 ### Backend
 - **Node.js** con **Express**
-- **Autenticación** con JWT y OAuth (Google, Facebook)
-- **Socket.IO** para chat en tiempo real
+- **Autenticación federada** vía OAuth 2.0 de Mastodon (registro dinámico de app por instancia) + JWT propio para la sesión
+- **Socket.IO** para chat en tiempo real *(pendiente)*
 
 ### Base de Datos
-- **PostgreSQL**
+- **PostgreSQL** gestionado en **Supabase** (dev/pruebas; producción puede apuntar a cualquier Postgres)
 - **Prisma ORM** para modelado y consultas
+
+---
+
+## 🚀 Arranque local
+
+1. **Supabase**: crea un proyecto y copia las cadenas de conexión (pooler puerto 6543 y directa puerto 5432).
+2. **Backend**:
+   ```bash
+   cd backend
+   cp .env.example .env   # completar DATABASE_URL, DIRECT_URL y JWT_SECRET
+   npm install
+   npx prisma migrate dev # crea las tablas en Supabase
+   npm run dev            # http://localhost:4000 (health check en /health)
+   ```
+3. **Frontend**:
+   ```bash
+   cd frontend
+   npm install
+   npm start              # http://localhost:3000
+   ```
+4. En `/login` escribe tu instancia de Mastodon (p. ej. `mastodon.social`) y autoriza la app.
 
 ### Otros Servicios
 - **Cloudinary** o **Amazon S3** para almacenamiento de imágenes

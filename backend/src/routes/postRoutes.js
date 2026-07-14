@@ -4,6 +4,12 @@ const router = express.Router();
 
 
 const prisma = require('../lib/prisma');
+const { requireAuth } = require('../middlewares/requireAuth');
+
+const postInclude = {
+  author: { select: { id: true, name: true, avatar: true } },
+  hashtags: { include: { hashtag: true } }
+};
 
 // GET /api/posts?page=1
 router.get('/', async (req, res) => {
@@ -16,7 +22,7 @@ router.get('/', async (req, res) => {
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
-        include: { author: { select: { id: true, name: true, avatar: true } } }
+        include: postInclude
       }),
       prisma.post.count()
     ]);
@@ -27,25 +33,35 @@ router.get('/', async (req, res) => {
       total
     });
   } catch (e) {
+    console.error('Error al obtener posteos:', e);
     res.status(500).json({ error: 'Error al obtener posteos' });
   }
 });
 
-// Crear posteo con hashtags
-router.post('/', async (req, res) => {
-  const { content, image, hashtags, authorId } = req.body;
-  if (!content || !authorId) return res.status(400).json({ error: 'Faltan campos requeridos' });
+// Crear posteo con hashtags (el autor sale del token)
+router.post('/', requireAuth, async (req, res) => {
+  const { content, image, hashtags } = req.body;
+  if (!content) return res.status(400).json({ error: 'Faltan campos requeridos' });
+  const tags = Array.isArray(hashtags)
+    ? [...new Set(hashtags.map(t => String(t).replace(/^#/, '').trim().toLowerCase()).filter(Boolean))]
+    : [];
   try {
     const post = await prisma.post.create({
       data: {
         content,
-        image: image || '',
-        authorId: Number(authorId),
-        // hashtags: implementar relación si se modela en Prisma
-      }
+        image: image || null,
+        authorId: req.user.id,
+        hashtags: {
+          create: tags.map(tag => ({
+            hashtag: { connectOrCreate: { where: { tag }, create: { tag } } }
+          }))
+        }
+      },
+      include: postInclude
     });
     res.json(post);
   } catch (e) {
+    console.error('Error al crear posteo:', e);
     res.status(500).json({ error: 'Error al crear posteo' });
   }
 });
@@ -62,10 +78,11 @@ router.get('/search', async (req, res) => {
         ]
       },
       orderBy: { createdAt: 'desc' },
-      include: { author: { select: { id: true, name: true, avatar: true } } }
+      include: postInclude
     });
     res.json({ results });
   } catch (e) {
+    console.error('Error en la búsqueda:', e);
     res.status(500).json({ error: 'Error en la búsqueda' });
   }
 });

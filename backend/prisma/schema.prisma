@@ -3,32 +3,47 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id          Int          @id @default(autoincrement())
-  email       String       @unique
-  password    String
-  name        String
-  avatar      String?
-  phone       String?
-  fullName    String?
-  bio         String?
-  age         Int?
-  birthdate   DateTime?
-  gender      String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  posts       Post[]
-  comments    Comment[]
-  likes       Like[]
-  chats       Chat[]       @relation("UserChats")
-  messages    Message[]    @relation("UserMessages")
-  forumPosts  ForumPost[]
-  marketItems MarketItem[] @relation("UserMarketItems")
-  media       Media[]
+  id               Int          @id @default(autoincrement())
+  // Identidad federada Mastodon: (instancia, id de cuenta) identifica al usuario
+  mastodonInstance String
+  mastodonId       String
+  acct             String
+  displayName      String?
+  email            String?      @unique
+  name             String
+  avatar           String?
+  phone            String?
+  fullName         String?
+  bio              String?
+  age              Int?
+  birthdate        DateTime?
+  gender           String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  posts            Post[]
+  comments         Comment[]
+  likes            Like[]
+  chats            Chat[]       @relation("UserChats")
+  messages         Message[]    @relation("UserMessages")
+  forumPosts       ForumPost[]
+  marketItems      MarketItem[] @relation("UserMarketItems")
+  media            Media[]
+
+  @@unique([mastodonInstance, mastodonId])
+}
+
+model MastodonApp {
+  id           Int      @id @default(autoincrement())
+  instance     String   @unique
+  clientId     String
+  clientSecret String
+  createdAt    DateTime @default(now())
 }
 
 model Post {
