@@ -27,6 +27,7 @@ app.get('/health', async (req, res) => {
 // Rutas principales
 app.use('/api/auth', require('./src/routes/authRoutes'));
 app.use('/api/posts', require('./src/routes/postRoutes'));
+app.use('/api/comments', require('./src/routes/commentRoutes'));
 app.use('/api/forum', require('./src/routes/forumRoutes'));
 app.use('/api/chat', require('./src/routes/chatRoutes'));
 app.use('/api/market', require('./src/routes/marketRoutes'));

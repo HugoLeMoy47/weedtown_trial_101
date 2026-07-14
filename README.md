@@ -27,7 +27,8 @@
 | Perfil de usuario (ver y editar el propio, datos opcionales) | ✅ Funcionando |
 | UI Material Design con modo claro/oscuro accesible | ✅ Funcionando |
 | Base de datos PostgreSQL en Supabase (Prisma ORM) | ✅ Funcionando |
-| Likes y comentarios | 🚧 Modelado en BD, endpoints pendientes — **siguiente** |
+| Reacciones cannábicas en posts y comentarios (👍 Me gusta, 🌿 Me rola, 👀 Me interesa, 😒 Me molesta) | ✅ Funcionando |
+| Comentarios en posteos | ✅ Funcionando |
 | Foros con categorías | 🚧 Modelado en BD, endpoints stub — **siguiente** |
 | Chat 1 a 1 en tiempo real (Socket.IO) | 🚧 Modelado en BD, endpoints stub — **siguiente** |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto) | 📋 Planificado |
@@ -169,6 +170,12 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/posts?page=` | — | Feed paginado (20 por página) |
 | POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`) |
 | GET | `/api/posts/search?q=` | — | Búsqueda por contenido o autor |
+| POST | `/api/posts/:id/reaction` | 🔒 | Reaccionar (`type`: LIKE/ROLA/INTERESA/MOLESTA; misma = quitar, distinta = reemplazar) |
+| DELETE | `/api/posts/:id/reaction` | 🔒 | Quitar la reacción propia |
+| POST | `/api/posts/:id/like` | 🔒 | Alias de compatibilidad → reacción LIKE |
+| POST | `/api/posts/:id/comment` | 🔒 | Comentar un posteo |
+| GET | `/api/posts/:id/comments` | — | Comentarios con conteos de reacciones |
+| POST/DELETE | `/api/comments/:id/reaction` | 🔒 | Reaccionar / quitar reacción en un comentario |
 | GET | `/api/profile/me` | 🔒 | Perfil propio |
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
 | GET | `/api/profile/:id` | — | Perfil público por id |
@@ -180,7 +187,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 ## 🗺️ Roadmap
 
 **Fase 1 — Robustecer la red social** *(actual)*
-1. Likes y comentarios en posteos (los modelos ya existen en Prisma).
+1. ~~Reacciones cannábicas y comentarios en posteos~~ ✅ (HU-RC-001)
 2. Foros reales: categorías y publicaciones por categoría.
 3. Chat 1 a 1 en tiempo real (Socket.IO en el backend).
 4. Endurecimiento: helmet, rate limiting en auth, CORS restringido, límites de payload, PII fuera de los perfiles públicos, rotación de secretos.

@@ -71,7 +71,44 @@
                 }
               }
             }
-          }
+          },
+          "reactions": { "$ref": "#/components/schemas/ReactionCounts" },
+          "myReaction": { "$ref": "#/components/schemas/ReactionType" },
+          "commentCount": { "type": "integer" }
+        }
+      },
+      "ReactionType": {
+        "type": "string",
+        "nullable": true,
+        "enum": ["LIKE", "ROLA", "INTERESA", "MOLESTA"],
+        "description": "LIKE = Me gusta, ROLA = Me rola, INTERESA = Me interesa, MOLESTA = Me molesta"
+      },
+      "ReactionCounts": {
+        "type": "object",
+        "properties": {
+          "LIKE": { "type": "integer" },
+          "ROLA": { "type": "integer" },
+          "INTERESA": { "type": "integer" },
+          "MOLESTA": { "type": "integer" }
+        }
+      },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "postId": { "type": "integer" },
+          "content": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "author": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" },
+              "avatar": { "type": "string", "nullable": true }
+            }
+          },
+          "reactions": { "$ref": "#/components/schemas/ReactionCounts" },
+          "myReaction": { "$ref": "#/components/schemas/ReactionType" }
         }
       },
       "ProfileInput": {
@@ -99,6 +136,8 @@
     { "name": "Sistema" },
     { "name": "Auth", "description": "Identidad federada con Mastodon" },
     { "name": "Posts" },
+    { "name": "Reacciones", "description": "Reacciones cannábicas: Me gusta, Me rola, Me interesa, Me molesta — una por usuario por objeto" },
+    { "name": "Comentarios" },
     { "name": "Perfil" },
     { "name": "Pendientes", "description": "Stubs sin lógica real todavía (foro, chat, market, admin)" }
   ],
@@ -275,20 +314,136 @@
         }
       }
     },
+    "/api/posts/{id}/reaction": {
+      "post": {
+        "tags": ["Reacciones"],
+        "summary": "Reaccionar a un posteo (misma reacción = quitar, distinta = reemplazar)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "type": { "$ref": "#/components/schemas/ReactionType" } },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Reacción registrada; devuelve myReaction y conteos frescos" },
+          "400": { "description": "Tipo de reacción inválido" },
+          "401": { "description": "No autenticado" },
+          "404": { "description": "Post no encontrado" }
+        }
+      },
+      "delete": {
+        "tags": ["Reacciones"],
+        "summary": "Quitar la reacción propia de un posteo",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Reacción eliminada; devuelve conteos frescos" },
+          "401": { "description": "No autenticado" }
+        }
+      }
+    },
     "/api/posts/{id}/like": {
       "post": {
-        "tags": ["Pendientes"],
-        "summary": "Dar like a un posteo (stub)",
+        "tags": ["Reacciones"],
+        "summary": "Alias de compatibilidad: equivale a reaccionar con LIKE",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+        "responses": {
+          "200": { "description": "Reacción LIKE registrada (o quitada si ya existía)" },
+          "401": { "description": "No autenticado" }
+        }
       }
     },
     "/api/posts/{id}/comment": {
       "post": {
-        "tags": ["Pendientes"],
-        "summary": "Comentar un posteo (stub)",
+        "tags": ["Comentarios"],
+        "summary": "Comentar un posteo",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "content": { "type": "string" } },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Comentario creado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Comment" } } } },
+          "400": { "description": "Comentario vacío" },
+          "401": { "description": "No autenticado" },
+          "404": { "description": "Post no encontrado" }
+        }
+      }
+    },
+    "/api/posts/{id}/comments": {
+      "get": {
+        "tags": ["Comentarios"],
+        "summary": "Listar comentarios de un posteo (con conteos de reacciones)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": {
+            "description": "Comentarios del post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "comments": { "type": "array", "items": { "$ref": "#/components/schemas/Comment" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/comments/{id}/reaction": {
+      "post": {
+        "tags": ["Reacciones"],
+        "summary": "Reaccionar a un comentario (misma reacción = quitar, distinta = reemplazar)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "type": { "$ref": "#/components/schemas/ReactionType" } },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Reacción registrada; devuelve myReaction y conteos frescos" },
+          "400": { "description": "Tipo de reacción inválido" },
+          "401": { "description": "No autenticado" },
+          "404": { "description": "Comentario no encontrado" }
+        }
+      },
+      "delete": {
+        "tags": ["Reacciones"],
+        "summary": "Quitar la reacción propia de un comentario",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Reacción eliminada; devuelve conteos frescos" },
+          "401": { "description": "No autenticado" }
+        }
       }
     },
     "/api/forum/categories": {
