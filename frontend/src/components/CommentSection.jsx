@@ -5,6 +5,7 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
+import ImagePicker from './ImagePicker';
 
 const CommentItem = ({ comment }) => {
   const [reactions, setReactions] = useState(comment.reactions || EMPTY_COUNTS);
@@ -47,6 +48,18 @@ const CommentItem = ({ comment }) => {
           )}
         </Stack>
         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 0.5 }}>{comment.content}</Typography>
+        {comment.image && (
+          <Box
+            component="img"
+            src={comment.image}
+            alt="Imagen adjunta al comentario"
+            loading="lazy"
+            sx={{
+              maxWidth: '100%', maxHeight: 320, borderRadius: 2, display: 'block', mb: 0.5,
+              border: 1, borderColor: 'divider'
+            }}
+          />
+        )}
         <ReactionBar reactions={reactions} myReaction={myReaction} onReact={handleReact} size="small" />
       </Box>
     </Stack>
@@ -58,6 +71,7 @@ const CommentSection = ({ postId, onCountChange }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [input, setInput] = useState('');
+  const [imageFile, setImageFile] = useState(null);
   const [sending, setSending] = useState(false);
 
   const load = useCallback(() => {
@@ -77,12 +91,20 @@ const CommentSection = ({ postId, onCountChange }) => {
     setSending(true);
     setError('');
     try {
-      const res = await api.post(`/posts/${postId}/comment`, { content });
+      let imageUrl;
+      if (imageFile) {
+        const form = new FormData();
+        form.append('image', imageFile);
+        const up = await api.post('/media/upload', form);
+        imageUrl = up.data.url;
+      }
+      const res = await api.post(`/posts/${postId}/comment`, { content, image: imageUrl });
       setComments(prev => [...prev, res.data]);
       setInput('');
+      setImageFile(null);
       onCountChange?.(comments.length + 1);
-    } catch {
-      setError('No se pudo publicar el comentario.');
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo publicar el comentario.');
     } finally {
       setSending(false);
     }
@@ -105,19 +127,22 @@ const CommentSection = ({ postId, onCountChange }) => {
           {comments.map(c => <CommentItem key={c.id} comment={c} />)}
         </Stack>
       )}
-      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Escribe un comentario…"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          inputProps={{ 'aria-label': 'Escribir comentario' }}
-          disabled={sending}
-        />
-        <IconButton type="submit" color="primary" aria-label="Publicar comentario" disabled={sending || !input.trim()}>
-          <SendIcon />
-        </IconButton>
+      <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1.5 }}>
+        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Escribe un comentario…"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            inputProps={{ 'aria-label': 'Escribir comentario' }}
+            disabled={sending}
+          />
+          <ImagePicker file={imageFile} onChange={setImageFile} disabled={sending} size="small" />
+          <IconButton type="submit" color="primary" aria-label="Publicar comentario" disabled={sending || !input.trim()}>
+            <SendIcon />
+          </IconButton>
+        </Box>
       </Box>
     </Box>
   );

@@ -6,6 +6,9 @@ node_modules/
 .env.local
 .env.*.local
 
+# Imágenes subidas por usuarios (dev local)
+/backend/uploads/
+
 # Builds
 /frontend/build/
 /mobile/android/

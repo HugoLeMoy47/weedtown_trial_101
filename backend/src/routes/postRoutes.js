@@ -146,17 +146,18 @@ router.delete('/:id/reaction', requireAuth, async (req, res) => {
   }
 });
 
-// Comentar un post
+// Comentar un post (imagen opcional, ya subida vía /api/media/upload)
 router.post('/:id/comment', requireAuth, async (req, res) => {
   const postId = Number(req.params.id);
   const content = (req.body.content || '').trim();
+  const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
   if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
   if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
   try {
     const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     const comment = await prisma.comment.create({
-      data: { content, postId, authorId: req.user.id },
+      data: { content, image, postId, authorId: req.user.id },
       include: commentInclude
     });
     res.json(serializeComment(comment, req.user.id));

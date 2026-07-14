@@ -28,6 +28,13 @@ app.get('/health', async (req, res) => {
 app.use('/api/auth', require('./src/routes/authRoutes'));
 app.use('/api/posts', require('./src/routes/postRoutes'));
 app.use('/api/comments', require('./src/routes/commentRoutes'));
+app.use('/api/media', require('./src/routes/mediaRoutes'));
+
+// Imágenes subidas (posts y comentarios)
+app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
+  immutable: true,
+  maxAge: '30d'
+}));
 app.use('/api/forum', require('./src/routes/forumRoutes'));
 app.use('/api/chat', require('./src/routes/chatRoutes'));
 app.use('/api/market', require('./src/routes/marketRoutes'));

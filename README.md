@@ -29,6 +29,7 @@
 | Base de datos PostgreSQL en Supabase (Prisma ORM) | ✅ Funcionando |
 | Reacciones cannábicas en posts y comentarios (👍 Me gusta, 🌿 Me rola, 👀 Me interesa, 😒 Me molesta) | ✅ Funcionando |
 | Comentarios en posteos | ✅ Funcionando |
+| Imagen opcional en posts y comentarios (≤5 MB, anonimizada sin EXIF/GPS en el cliente) | ✅ Funcionando |
 | Foros con categorías | 🚧 Modelado en BD, endpoints stub — **siguiente** |
 | Chat 1 a 1 en tiempo real (Socket.IO) | 🚧 Modelado en BD, endpoints stub — **siguiente** |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto) | 📋 Planificado |
@@ -176,6 +177,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | POST | `/api/posts/:id/comment` | 🔒 | Comentar un posteo |
 | GET | `/api/posts/:id/comments` | — | Comentarios con conteos de reacciones |
 | POST/DELETE | `/api/comments/:id/reaction` | 🔒 | Reaccionar / quitar reacción en un comentario |
+| POST | `/api/media/upload` | 🔒 | Subir imagen (multipart, ≤5 MB, JPG/PNG/WebP) → devuelve URL |
 | GET | `/api/profile/me` | 🔒 | Perfil propio |
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
 | GET | `/api/profile/:id` | — | Perfil público por id |

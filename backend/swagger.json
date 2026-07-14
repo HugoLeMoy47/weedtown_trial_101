@@ -98,6 +98,7 @@
           "id": { "type": "integer" },
           "postId": { "type": "integer" },
           "content": { "type": "string" },
+          "image": { "type": "string", "nullable": true, "description": "URL de imagen adjunta (opcional)" },
           "createdAt": { "type": "string", "format": "date-time" },
           "author": {
             "type": "object",
@@ -138,6 +139,7 @@
     { "name": "Posts" },
     { "name": "Reacciones", "description": "Reacciones cannábicas: Me gusta, Me rola, Me interesa, Me molesta — una por usuario por objeto" },
     { "name": "Comentarios" },
+    { "name": "Media", "description": "Subida de imágenes anonimizadas" },
     { "name": "Perfil" },
     { "name": "Pendientes", "description": "Stubs sin lógica real todavía (foro, chat, market, admin)" }
   ],
@@ -407,6 +409,40 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/media/upload": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Subir una imagen (para post o comentario)",
+        "description": "Multipart/form-data con campo 'image'. Máx. 5 MB; formatos JPG, PNG o WebP. El cliente debe enviar la imagen ya anonimizada (sin EXIF/GPS); el archivo se guarda con nombre aleatorio y se devuelve su URL.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image": { "type": "string", "format": "binary" }
+                },
+                "required": ["image"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Imagen almacenada",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "url": { "type": "string" } } }
+              }
+            }
+          },
+          "400": { "description": "Archivo demasiado grande o formato no permitido" },
+          "401": { "description": "No autenticado" }
         }
       }
     },
