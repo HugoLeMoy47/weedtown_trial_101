@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Box, Card, CardContent, CircularProgress, Typography, Alert, Button, Stack } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 
 const AuthCallback = () => {
@@ -24,16 +25,23 @@ const AuthCallback = () => {
   }, [navigate, loginWithToken]);
 
   return (
-    <div style={{ maxWidth: 400, margin: '3rem auto', background: '#222', padding: 24, borderRadius: 8, textAlign: 'center' }}>
-      {error ? (
-        <>
-          <div style={{ color: 'red', marginBottom: 12 }}>{error}</div>
-          <button onClick={() => navigate('/login')}>Volver al login</button>
-        </>
-      ) : (
-        <div>Conectando con tu cuenta…</div>
-      )}
-    </div>
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+      <Card sx={{ maxWidth: 420, width: '100%' }}>
+        <CardContent sx={{ p: 4 }}>
+          {error ? (
+            <Stack spacing={2}>
+              <Alert severity="error" role="alert">{error}</Alert>
+              <Button variant="contained" onClick={() => navigate('/login')}>Volver al login</Button>
+            </Stack>
+          ) : (
+            <Stack spacing={2} alignItems="center" role="status" aria-live="polite">
+              <CircularProgress />
+              <Typography color="text.secondary">Conectando con tu cuenta…</Typography>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+    </Box>
   );
 };
 

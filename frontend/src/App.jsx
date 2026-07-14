@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 import Feed from './pages/Feed';
 import Login from './pages/Login';
@@ -7,25 +7,30 @@ import Forum from './pages/Forum';
 import Chat from './pages/Chat';
 import Profile from './pages/Profile';
 import AuthCallback from './pages/AuthCallback';
+import RequireAuth from './components/RequireAuth';
 
 import { AuthProvider } from './hooks/useAuth';
+import { ColorModeProvider } from './theme';
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/" element={<Login />} />
-          <Route path="/home" element={<Feed />} />
-          <Route path="/feed" element={<Feed />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/forum" element={<Forum />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/profile" element={<Profile />} />
-        </Routes>
-      </Router>
-    </AuthProvider>
+    <ColorModeProvider>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            <Route path="/" element={<Navigate to="/feed" replace />} />
+            <Route path="/home" element={<Navigate to="/feed" replace />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/feed" element={<RequireAuth><Feed /></RequireAuth>} />
+            <Route path="/forum" element={<RequireAuth><Forum /></RequireAuth>} />
+            <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
+            <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+            <Route path="*" element={<Navigate to="/feed" replace />} />
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ColorModeProvider>
   );
 }
 

@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  Container, Box, Paper, Typography, TextField, IconButton, List, ListItemButton,
+  ListItemAvatar, ListItemText, Avatar, Alert, Stack
+} from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
 import io from 'socket.io-client';
 
-const socket = io('http://localhost:4000');
+const socket = io('http://localhost:4000', { autoConnect: false });
 
 const Chat = () => {
   const [contacts, setContacts] = useState([]);
@@ -28,9 +33,9 @@ const Chat = () => {
   }, []);
 
   useEffect(() => {
-    if(selected) {
+    if (selected) {
       api.get(`/chat/messages/${selected}`)
-        .then(res => setMessages(res.data))
+        .then(res => setMessages(Array.isArray(res.data) ? res.data : []))
         .catch(() => setError('No se pudieron cargar los mensajes.'));
       socket.emit('join', selected);
     }
@@ -47,8 +52,9 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = () => {
-    if(input.trim() && selected) {
+  const sendMessage = (e) => {
+    e.preventDefault();
+    if (input.trim() && selected) {
       socket.emit('message', { to: selected, text: input });
       setMessages(prev => [...prev, { from: 'yo', text: input }]);
       setInput('');
@@ -58,31 +64,69 @@ const Chat = () => {
   return (
     <>
       <Navbar />
-      <main style={{display:'flex',height:'80vh'}}>
-        <aside style={{width:200,background:'#222',padding:12}}>
-          <h3>Contactos</h3>
-          {contacts.map(c => (
-            <div key={c.id} style={{padding:8,background:selected===c.id?'#4caf50':'#333',color:'#fff',borderRadius:4,marginBottom:4,cursor:'pointer'}} onClick={()=>setSelected(c.id)}>
-              {c.name}
-            </div>
-          ))}
-        </aside>
-        <section style={{flex:1,display:'flex',flexDirection:'column',background:'#181818',padding:12}}>
-          <div style={{flex:1,overflowY:'auto'}}>
-            {messages.map((msg,i) => (
-              <div key={i} style={{textAlign:msg.from==='yo'?'right':'left',margin:'8px 0'}}>
-                <span style={{background:msg.from==='yo'?'#4caf50':'#333',color:'#fff',padding:'6px 12px',borderRadius:16,display:'inline-block'}}>{msg.text}</span>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-          <div style={{display:'flex',marginTop:8}}>
-            <input value={input} onChange={e=>setInput(e.target.value)} style={{flex:1,padding:8}} placeholder="Escribe un mensaje..." />
-            <button onClick={sendMessage} style={{marginLeft:8}}>Enviar</button>
-          </div>
-          {error && <div style={{color:'red'}}>{error}</div>}
-        </section>
-      </main>
+      <Container maxWidth="md" component="main" sx={{ py: 3 }}>
+        <Typography variant="h5" component="h1" gutterBottom>Chat</Typography>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          El chat en tiempo real está en construcción — la mensajería se activará próximamente.
+        </Alert>
+        {error && <Alert severity="error" role="alert" sx={{ mb: 2 }}>{error}</Alert>}
+
+        <Paper sx={{ display: 'flex', height: '65vh', overflow: 'hidden' }}>
+          <Box sx={{ width: 220, borderRight: 1, borderColor: 'divider', overflowY: 'auto' }} component="aside" aria-label="Contactos">
+            <Typography variant="subtitle2" sx={{ p: 2, pb: 1 }} color="text.secondary">Contactos</Typography>
+            <List dense disablePadding>
+              {contacts.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>Sin contactos aún.</Typography>
+              ) : (
+                contacts.map(c => (
+                  <ListItemButton key={c.id} selected={selected === c.id} onClick={() => setSelected(c.id)}>
+                    <ListItemAvatar>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                        {(c.name || '?').charAt(0).toUpperCase()}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText primary={c.name} />
+                  </ListItemButton>
+                ))
+              )}
+            </List>
+          </Box>
+
+          <Stack sx={{ flex: 1 }}>
+            <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }} aria-live="polite">
+              {messages.map((msg, i) => (
+                <Box key={i} sx={{ display: 'flex', justifyContent: msg.from === 'yo' ? 'flex-end' : 'flex-start', mb: 1 }}>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      px: 2, py: 1, maxWidth: '75%', borderRadius: 4,
+                      bgcolor: msg.from === 'yo' ? 'primary.main' : 'action.hover',
+                      color: msg.from === 'yo' ? 'primary.contrastText' : 'text.primary'
+                    }}
+                  >
+                    <Typography variant="body2">{msg.text}</Typography>
+                  </Paper>
+                </Box>
+              ))}
+              <div ref={messagesEndRef} />
+            </Box>
+            <Box component="form" onSubmit={sendMessage} sx={{ display: 'flex', gap: 1, p: 2, borderTop: 1, borderColor: 'divider' }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Escribe un mensaje…"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                inputProps={{ 'aria-label': 'Escribir mensaje' }}
+                disabled={!selected}
+              />
+              <IconButton type="submit" color="primary" aria-label="Enviar mensaje" disabled={!selected || !input.trim()}>
+                <SendIcon />
+              </IconButton>
+            </Box>
+          </Stack>
+        </Paper>
+      </Container>
     </>
   );
 };

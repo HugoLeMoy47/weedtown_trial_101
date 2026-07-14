@@ -1,23 +1,34 @@
 import React, { useState } from 'react';
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert, Stack
+} from '@mui/material';
 import api from '../services/api';
 
-const PostModal = ({ onClose, onPost }) => {
+const PostModal = ({ open, onClose, onPost }) => {
   const [content, setContent] = useState('');
   const [image, setImage] = useState('');
   const [hashtags, setHashtags] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const reset = () => {
+    setContent(''); setImage(''); setHashtags(''); setError('');
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      // Aquí deberías manejar la subida de imagen real
-      // hashtags separados por espacios o comas
       const tags = hashtags.split(/[ ,]+/).filter(Boolean);
-      const res = await api.post('/posts', { content, image, hashtags: tags });
+      const res = await api.post('/posts', { content, image: image || undefined, hashtags: tags });
       onPost(res.data);
+      reset();
     } catch {
       setError('No se pudo crear el posteo.');
     } finally {
@@ -26,37 +37,46 @@ const PostModal = ({ onClose, onPost }) => {
   };
 
   return (
-    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
-      <form onSubmit={handleSubmit} style={{background:'#222',padding:24,borderRadius:8,minWidth:300}}>
-        <h3>Nuevo posteo</h3>
-        <textarea
-          placeholder="¿Qué quieres compartir?"
-          value={content}
-          onChange={e => setContent(e.target.value)}
-          required
-          style={{width:'100%',marginBottom:12,padding:8}}
-        />
-        <input
-          type="text"
-          placeholder="URL de imagen (opcional)"
-          value={image}
-          onChange={e => setImage(e.target.value)}
-          style={{width:'100%',marginBottom:12,padding:8}}
-        />
-        <input
-          type="text"
-          placeholder="Hashtags (ej: weed cannabis relax)"
-          value={hashtags}
-          onChange={e => setHashtags(e.target.value)}
-          style={{width:'100%',marginBottom:12,padding:8}}
-        />
-        {error && <div style={{color:'red',marginBottom:8}}>{error}</div>}
-        <button type="submit" disabled={loading} style={{marginRight:8}}>
-          {loading ? 'Publicando...' : 'Publicar'}
-        </button>
-        <button type="button" onClick={onClose}>Cancelar</button>
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm" aria-labelledby="post-modal-title">
+      <form onSubmit={handleSubmit}>
+        <DialogTitle id="post-modal-title">Nuevo posteo</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="¿Qué quieres compartir?"
+              value={content}
+              onChange={e => setContent(e.target.value)}
+              required
+              multiline
+              minRows={3}
+              fullWidth
+              autoFocus
+            />
+            <TextField
+              label="URL de imagen (opcional)"
+              type="url"
+              value={image}
+              onChange={e => setImage(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Hashtags"
+              value={hashtags}
+              onChange={e => setHashtags(e.target.value)}
+              fullWidth
+              helperText="Separados por espacios o comas, sin #. Ej: viaje nomada cdmx"
+            />
+            {error && <Alert severity="error" role="alert">{error}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleClose} color="secondary">Cancelar</Button>
+          <Button type="submit" variant="contained" disabled={loading}>
+            {loading ? 'Publicando…' : 'Publicar'}
+          </Button>
+        </DialogActions>
       </form>
-    </div>
+    </Dialog>
   );
 };
 

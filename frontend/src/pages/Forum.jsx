@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Container, Typography, Button, Alert, Stack, Chip, Card, CardContent, Box
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
 import ForumCategoryModal from '../components/ForumCategoryModal';
-
 
 const Forum = () => {
   const [categories, setCategories] = useState([]);
@@ -15,7 +18,6 @@ const Forum = () => {
   useEffect(() => {
     api.get('/forum/categories')
       .then(res => {
-        // Si la respuesta no es un array, conviértela en array vacío
         if (Array.isArray(res.data)) {
           setCategories(res.data);
         } else if (res.data && Array.isArray(res.data.categories)) {
@@ -28,15 +30,15 @@ const Forum = () => {
   }, []);
 
   useEffect(() => {
-    if(selected) {
+    if (selected) {
       api.get(`/forum?category=${selected}`)
-        .then(res => setPosts(res.data))
+        .then(res => setPosts(Array.isArray(res.data) ? res.data : []))
         .catch(() => setError('No se pudieron cargar los posts del foro.'));
     }
   }, [selected]);
 
   const handleCreateCategory = (cat) => {
-    setCategories([...categories, cat]);
+    setCategories(prev => [...prev, cat]);
     setShowModal(false);
     setSuccess('¡Categoría creada exitosamente!');
     setTimeout(() => setSuccess(''), 3000);
@@ -45,33 +47,55 @@ const Forum = () => {
   return (
     <>
       <Navbar />
-      <main>
-        <h2>Foros temáticos</h2>
-        {error && <div style={{color:'red'}}>{error}</div>}
-        {success && <div style={{color:'green'}}>{success}</div>}
-        <div style={{marginBottom:16}}>
-          <strong>Categorías:</strong>
-          <button onClick={()=>setShowModal(true)} style={{marginLeft:8,background:'#2196f3',color:'#fff',border:'none',borderRadius:4,padding:'4px 12px'}}>+ Nueva categoría</button>
-          {categories.length === 0 ? <span> Cargando...</span> :
+      <Container maxWidth="md" component="main" sx={{ py: 3 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+          <Typography variant="h5" component="h1">Foros temáticos</Typography>
+          <Button startIcon={<AddIcon />} variant="outlined" onClick={() => setShowModal(true)}>
+            Nueva categoría
+          </Button>
+        </Stack>
+
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Los foros están en construcción — pronto podrás crear publicaciones por categoría.
+        </Alert>
+        {error && <Alert severity="error" role="alert" sx={{ mb: 2 }}>{error}</Alert>}
+        {success && <Alert severity="success" role="status" sx={{ mb: 2 }}>{success}</Alert>}
+
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, mb: 3 }}>
+          {categories.length === 0 ? (
+            <Typography color="text.secondary">Aún no hay categorías.</Typography>
+          ) : (
             categories.map(cat => (
-              <button key={cat} onClick={() => setSelected(cat)} style={{margin:4,background:selected===cat?'#4caf50':'#333',color:'#fff',border:'none',borderRadius:4,padding:'4px 12px'}}>
-                {cat}
-              </button>
+              <Chip
+                key={cat}
+                label={cat}
+                color={selected === cat ? 'primary' : 'default'}
+                onClick={() => setSelected(cat)}
+                clickable
+              />
             ))
-          }
-        </div>
-        <div>
-          {selected && posts.length === 0 && <div>No hay publicaciones en esta categoría.</div>}
+          )}
+        </Stack>
+
+        <Stack spacing={2}>
+          {selected && posts.length === 0 && (
+            <Typography color="text.secondary">No hay publicaciones en esta categoría.</Typography>
+          )}
           {posts.map(post => (
-            <div key={post.id} style={{background:'#222',margin:'12px 0',padding:12,borderRadius:8}}>
-              <strong>{post.title}</strong>
-              <div>{post.content}</div>
-              <small>por {post.author} - {post.createdAt}</small>
-            </div>
+            <Card key={post.id} component="article">
+              <CardContent>
+                <Typography variant="h6" component="h2">{post.title}</Typography>
+                <Typography variant="body1" sx={{ my: 1 }}>{post.content}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  por {post.author} — {post.createdAt}
+                </Typography>
+              </CardContent>
+            </Card>
           ))}
-        </div>
-        {showModal && <ForumCategoryModal onClose={()=>setShowModal(false)} onCreate={handleCreateCategory} />}
-      </main>
+        </Stack>
+
+        <ForumCategoryModal open={showModal} onClose={() => setShowModal(false)} onCreate={handleCreateCategory} />
+      </Container>
     </>
   );
 };
