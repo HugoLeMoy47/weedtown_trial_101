@@ -41,7 +41,7 @@ Monorepo con cuatro módulos:
 │   └── src/
 │       ├── components/ Navbar, PostCard, PostModal, ForumCategoryModal
 │       ├── hooks/      useAuth (AuthProvider + sesión en localStorage)
-│       ├── pages/      Login, AuthCallback, Feed, Home, Forum, Chat, Profile
+│       ├── pages/      Login, AuthCallback, Feed, Forum, Chat, Profile
 │       └── services/   api.js (axios con Authorization automático)
 ├── mobile/             App móvil (Expo / React Native) — demo
 └── admin-panel/        Panel administrativo — pendiente

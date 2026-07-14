@@ -1,5 +1,0 @@
-{
-  "name": "weedtown",
-  "private": true,
-  "description": "Monorepo de WeedTown: backend (Express + Prisma), frontend (React), mobile (Expo)"
-}
