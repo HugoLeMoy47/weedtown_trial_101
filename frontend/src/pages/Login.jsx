@@ -63,7 +63,7 @@ const Login = () => {
               <Typography variant="h5" component="h1">WeedTown</Typography>
             </Stack>
             <Typography variant="body1" color="text.secondary" textAlign="center">
-              Tu red para nómadas digitales. Inicia sesión con tu cuenta del fediverso.
+              La red de la comunidad cannábica mexicana. Un espacio seguro y con respeto — inicia sesión con tu cuenta del fediverso.
             </Typography>
 
             <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>

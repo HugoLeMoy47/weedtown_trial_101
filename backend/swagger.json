@@ -3,7 +3,7 @@
   "info": {
     "title": "WeedTown API",
     "version": "2.0.0",
-    "description": "API de la red social WeedTown. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Las rutas de foro, chat, market y admin son stubs pendientes de implementación."
+    "description": "API de WeedTown, red social de la comunidad cannábica de México. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Las rutas de foro, chat, mercado y admin son stubs pendientes de implementación."
   },
   "servers": [
     { "url": "http://localhost:4000" }
@@ -197,7 +197,7 @@
                 "properties": {
                   "content": { "type": "string" },
                   "image": { "type": "string", "description": "URL de imagen (opcional)" },
-                  "hashtags": { "type": "array", "items": { "type": "string" }, "example": ["viaje", "nomada"] }
+                  "hashtags": { "type": "array", "items": { "type": "string" }, "example": ["cultura", "420", "cdmx"] }
                 },
                 "required": ["content"]
               }
@@ -308,7 +308,7 @@
     "/api/market": {
       "get": {
         "tags": ["Pendientes"],
-        "summary": "Propiedades en arrendamiento (stub)",
+        "summary": "Artículos del mercado comunitario (stub)",
         "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
       }
     },

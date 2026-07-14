@@ -1,8 +1,20 @@
-# WeedTown 🌍🌿
+# WeedTown 🇲🇽🌿
 
-**WeedTown** es una red social para nómadas digitales: compartir experiencias, conectar con otros viajeros y acceder a espacios de arrendamiento de inmuebles en distintas partes del mundo. Combina feed social, foros temáticos, chat en tiempo real y un espacio de comercio, accesible desde web y móvil, con panel administrativo para moderación.
+**WeedTown** es una red social para la **comunidad cannábica de México**: un espacio digital de **seguridad y respeto** donde la comunidad pacheca puede compartir, aprender, conectar y crecer sin estigma. Combina feed social, foros temáticos y chat, y en una fase posterior un **mercado de tangibles e intangibles diversos** (merch, arte, glass, talleres, servicios) creado por y para la comunidad.
 
-La identidad de los usuarios es **federada**: no hay registro propio, se inicia sesión con cualquier cuenta de **Mastodon** (fediverso) vía OAuth 2.0.
+---
+
+## 🌱 Visión y principios
+
+- **Seguridad primero**: la privacidad no es una feature, es la base. La identidad es **federada vía Mastodon**: WeedTown no crea contraseñas, no exige email y permite participar con el seudónimo del fediverso. Los datos personales del perfil son opcionales.
+- **Respeto y comunidad**: espacio libre de estigma, con moderación orientada a proteger a las personas usuarias. La cultura cannábica mexicana es el centro: educación, reducción de riesgos, arte y cultura.
+- **Legalidad**: el contenido y el futuro mercado operan dentro del marco legal mexicano. El mercado está pensado para productos y servicios lícitos de la cultura cannábica (parafernalia, merch, arte, cursos, asesorías) — **no** para la compraventa de sustancias.
+- **Minimalismo funcional**: interfaz Material Design (claro/oscuro), accesible y sin fricción.
+
+## 🎯 Prioridades
+
+1. **Robustecer la red social** (fase actual): likes y comentarios, foros por categoría, chat en tiempo real, moderación.
+2. **Mercado comunitario** (fase posterior): catálogo de tangibles e intangibles con perfiles de vendedor de la propia comunidad.
 
 ---
 
@@ -12,15 +24,16 @@ La identidad de los usuarios es **federada**: no hay registro propio, se inicia 
 |---|---|
 | Identidad federada con Mastodon (cualquier instancia) | ✅ Funcionando |
 | Feed de posteos con texto, imagen y hashtags (paginado + búsqueda) | ✅ Funcionando |
-| Perfil de usuario (ver y editar el propio) | ✅ Funcionando |
+| Perfil de usuario (ver y editar el propio, datos opcionales) | ✅ Funcionando |
+| UI Material Design con modo claro/oscuro accesible | ✅ Funcionando |
 | Base de datos PostgreSQL en Supabase (Prisma ORM) | ✅ Funcionando |
-| Likes y comentarios | 🚧 Modelado en BD, endpoints pendientes |
-| Foros con categorías | 🚧 Modelado en BD, endpoints stub |
-| Chat 1 a 1 en tiempo real (Socket.IO) | 🚧 Modelado en BD, endpoints stub |
-| Comercio / arrendamiento de inmuebles | 🚧 Modelado en BD, endpoints stub |
-| Panel administrativo | 🚧 Pendiente |
-| App móvil (Expo) | 🚧 Demo mínima, no conectada al flujo actual |
+| Likes y comentarios | 🚧 Modelado en BD, endpoints pendientes — **siguiente** |
+| Foros con categorías | 🚧 Modelado en BD, endpoints stub — **siguiente** |
+| Chat 1 a 1 en tiempo real (Socket.IO) | 🚧 Modelado en BD, endpoints stub — **siguiente** |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto) | 📋 Planificado |
+| Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
+| Panel administrativo / moderación | 📋 Planificado |
+| App móvil (Expo) | 🚧 Demo mínima, no conectada al flujo actual |
 
 ---
 
@@ -37,14 +50,15 @@ Monorepo con cuatro módulos:
 │       ├── lib/        Cliente Prisma (singleton)
 │       ├── middlewares/  errorHandler, requireAuth (JWT)
 │       └── routes/     auth, posts, profile, forum*, chat*, market*, admin*  (* = stub)
-├── frontend/           Web (React 18 + CRA + React Router)
+├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
 │   └── src/
-│       ├── components/ Navbar, PostCard, PostModal, ForumCategoryModal
+│       ├── components/ Navbar, PostCard, PostModal, RequireAuth, ...
 │       ├── hooks/      useAuth (AuthProvider + sesión en localStorage)
 │       ├── pages/      Login, AuthCallback, Feed, Forum, Chat, Profile
-│       └── services/   api.js (axios con Authorization automático)
+│       ├── services/   api.js (axios con Authorization automático)
+│       └── theme.js    Tema Material claro/oscuro (sistema + toggle persistido)
 ├── mobile/             App móvil (Expo / React Native) — demo
-└── admin-panel/        Panel administrativo — pendiente
+└── admin-panel/        Panel de moderación — pendiente
 ```
 
 ### Autenticación federada (Mastodon OAuth 2.0)
@@ -72,7 +86,7 @@ sequenceDiagram
 
 Puntos clave del diseño:
 - **Multi-instancia**: la app se registra dinámicamente en cada instancia de Mastodon la primera vez que un usuario de esa instancia inicia sesión (tabla `MastodonApp`).
-- **Sin contraseñas propias**: el modelo `User` no guarda password; la identidad única es `(mastodonInstance, mastodonId)`. Mastodon no expone el email, por eso es opcional.
+- **Seudonimato por diseño**: el modelo `User` no guarda password y el email es opcional (Mastodon no lo expone); la identidad única es `(mastodonInstance, mastodonId)`.
 - **Sesión**: JWT propio firmado con `JWT_SECRET`, enviado en el header `Authorization: Bearer`. El `state` de OAuth también va firmado (anti-CSRF, expira en 10 minutos).
 
 ---
@@ -84,12 +98,14 @@ Puntos clave del diseño:
 | API | Node.js 18+, Express 4 |
 | Identidad | OAuth 2.0 de Mastodon + JWT (`jsonwebtoken`) |
 | Base de datos | PostgreSQL gestionado en **Supabase** (dev/pruebas); Prisma ORM 6 |
-| Web | React 18, React Router 6, Axios (Create React App) |
+| Web | React 18, **MUI v5** (Material Design, claro/oscuro), React Router 6, Axios |
 | Móvil | Expo / React Native |
 | Docs API | Swagger UI en `/api-docs` |
 | Tiempo real | Socket.IO *(pendiente de implementar en backend)* |
 
-En producción la base de datos puede apuntar a cualquier PostgreSQL: solo cambian `DATABASE_URL` y `DIRECT_URL`.
+Notas:
+- En producción la base de datos puede apuntar a cualquier PostgreSQL: solo cambian `DATABASE_URL` y `DIRECT_URL`.
+- MUI está **fijado en v5**: la v9 es incompatible con Create React App (react-scripts 5). No actualizar de major sin migrar el bundler.
 
 ---
 
@@ -157,19 +173,27 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
 | GET | `/api/profile/:id` | — | Perfil público por id |
 
-🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de foro, chat, market y admin existen como stubs y responden mensajes fijos hasta su implementación.
+🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de foro, chat, mercado y admin existen como stubs y responden mensajes fijos hasta su implementación.
 
 ---
 
 ## 🗺️ Roadmap
 
-1. **Endurecimiento**: helmet, rate limiting en auth, CORS restringido por origen, límites de payload, ocultar PII de perfiles públicos, rotación de secretos, cookies httpOnly.
-2. **Features**: likes y comentarios, foros, chat en tiempo real (Socket.IO en backend), market de inmuebles, panel admin.
-3. **Móvil**: conectar la app Expo al flujo de auth y API actuales.
-4. **Infra**: almacenamiento de imágenes (Cloudinary/S3), Docker, CI con tests.
+**Fase 1 — Robustecer la red social** *(actual)*
+1. Likes y comentarios en posteos (los modelos ya existen en Prisma).
+2. Foros reales: categorías y publicaciones por categoría.
+3. Chat 1 a 1 en tiempo real (Socket.IO en el backend).
+4. Endurecimiento: helmet, rate limiting en auth, CORS restringido, límites de payload, PII fuera de los perfiles públicos, rotación de secretos.
+5. Herramientas de moderación básicas (reportes, bloqueo).
+
+**Fase 2 — Mercado comunitario**
+- Catálogo de tangibles e intangibles lícitos (merch, arte, glass, talleres, cursos, servicios), perfiles de vendedor, búsqueda por categoría. El modelo `MarketItem` existente evolucionará hacia este diseño.
+
+**Fase 3 — Alcance**
+- App móvil (Expo) conectada al flujo real, panel de moderación/administración, almacenamiento de imágenes (Cloudinary/S3), Docker y CI con tests.
 
 ---
 
 ## 🤝 Contribuciones
 
-¡Las contribuciones son bienvenidas! Abre un issue o pull request para sugerencias o mejoras.
+¡Las contribuciones son bienvenidas! Abre un issue o pull request para sugerencias o mejoras. Este proyecto se construye con y para la comunidad — el respeto es innegociable.

@@ -64,7 +64,7 @@ const PostModal = ({ open, onClose, onPost }) => {
               value={hashtags}
               onChange={e => setHashtags(e.target.value)}
               fullWidth
-              helperText="Separados por espacios o comas, sin #. Ej: viaje nomada cdmx"
+              helperText="Separados por espacios o comas, sin #. Ej: cultura 420 cdmx"
             />
             {error && <Alert severity="error" role="alert">{error}</Alert>}
           </Stack>
