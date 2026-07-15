@@ -3,7 +3,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Stack, IconButton, Tooltip, CircularProgress
 } from '@mui/material';
-import SpaIcon from '@mui/icons-material/Spa';
+import { BrandMark, BrandWordmark } from '../components/BrandLogo';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useAuth } from '../hooks/useAuth';
@@ -58,9 +58,9 @@ const Login = () => {
       <Card sx={{ maxWidth: 420, width: '100%' }} component="main">
         <CardContent sx={{ p: 4 }}>
           <Stack spacing={3} alignItems="center">
-            <Stack direction="row" spacing={1} alignItems="center">
-              <SpaIcon color="primary" fontSize="large" aria-hidden="true" />
-              <Typography variant="h5" component="h1">WeedTown</Typography>
+            <Stack spacing={1.5} alignItems="center">
+              <BrandMark size={96} />
+              <BrandWordmark variant="h4" component="h1" />
             </Stack>
             <Typography variant="body1" color="text.secondary" textAlign="center">
               La red de la comunidad cannábica mexicana. Un espacio seguro y con respeto — inicia sesión con tu cuenta del fediverso.

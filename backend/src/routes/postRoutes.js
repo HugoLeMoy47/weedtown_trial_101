@@ -6,6 +6,20 @@ const prisma = require('../lib/prisma');
 const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
 const { REACTION_TYPES, summarizeReactions, toggleReaction, reactionCounts } = require('../lib/reactions');
 
+// Topes de contenido: defensa contra payloads abusivos
+const MAX_POST_LENGTH = 2000;
+const MAX_COMMENT_LENGTH = 1000;
+const MAX_HASHTAGS = 10;
+const MAX_TAG_LENGTH = 30;
+const IMAGE_URL_RE = /^https?:\/\/\S{1,500}$/;
+
+function parseHashtags(raw) {
+  if (!Array.isArray(raw)) return null;
+  return [...new Set(
+    raw.map(t => String(t).replace(/^#/, '').trim().toLowerCase()).filter(Boolean)
+  )].filter(tag => tag.length <= MAX_TAG_LENGTH).slice(0, MAX_HASHTAGS);
+}
+
 const postInclude = {
   author: { select: { id: true, name: true, avatar: true } },
   hashtags: { include: { hashtag: true } },
@@ -60,11 +74,16 @@ router.get('/', optionalAuth, async (req, res) => {
 
 // Crear posteo con hashtags (el autor sale del token)
 router.post('/', requireAuth, async (req, res) => {
-  const { content, image, hashtags } = req.body;
+  const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+  const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
   if (!content) return res.status(400).json({ error: 'Faltan campos requeridos' });
-  const tags = Array.isArray(hashtags)
-    ? [...new Set(hashtags.map(t => String(t).replace(/^#/, '').trim().toLowerCase()).filter(Boolean))]
-    : [];
+  if (content.length > MAX_POST_LENGTH) {
+    return res.status(400).json({ error: `El posteo no puede superar ${MAX_POST_LENGTH} caracteres` });
+  }
+  if (image && !IMAGE_URL_RE.test(image)) {
+    return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
+  }
+  const tags = parseHashtags(req.body.hashtags) || [];
   try {
     const post = await prisma.post.create({
       data: {
@@ -114,9 +133,10 @@ router.put('/:id', requireAuth, async (req, res) => {
   const content = (req.body.content || '').trim();
   if (!id) return res.status(400).json({ error: 'ID de post inválido' });
   if (!content) return res.status(400).json({ error: 'El contenido no puede estar vacío' });
-  const tags = Array.isArray(req.body.hashtags)
-    ? [...new Set(req.body.hashtags.map(t => String(t).replace(/^#/, '').trim().toLowerCase()).filter(Boolean))]
-    : null;
+  if (content.length > MAX_POST_LENGTH) {
+    return res.status(400).json({ error: `El posteo no puede superar ${MAX_POST_LENGTH} caracteres` });
+  }
+  const tags = parseHashtags(req.body.hashtags);
   try {
     const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
@@ -211,6 +231,12 @@ router.post('/:id/comment', requireAuth, async (req, res) => {
   const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
   if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
   if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+  if (content.length > MAX_COMMENT_LENGTH) {
+    return res.status(400).json({ error: `El comentario no puede superar ${MAX_COMMENT_LENGTH} caracteres` });
+  }
+  if (image && !IMAGE_URL_RE.test(image)) {
+    return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
+  }
   try {
     const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });

@@ -33,10 +33,10 @@
 | Foros estilo Reddit: subforos comunitarios, hilos a 3 niveles, órdenes Relevante/Nuevo/Top | ✅ Funcionando |
 | Seguir subforos + notificaciones in-app (campana con contador) | ✅ Funcionando |
 | Editar/eliminar contenido propio (feed y foro, con borrado suave en hilos) | ✅ Funcionando |
+| Endurecimiento de seguridad (helmet, rate limit, CORS estricto, validación, sin PII pública) | ✅ Funcionando |
 | Chat 1 a 1 en tiempo real (Socket.IO) | 🚧 Modelado en BD, endpoints stub — **siguiente** |
-| Endurecimiento de seguridad (helmet, rate limit, CORS estricto) | 📋 Planificado |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
-| Panel administrativo / moderación | 📋 Planificado |
+| Panel administrativo / moderación (rol + reportes, integrado al frontend en `/admin`) | 📋 Planificado — antes del chat/mercado |
 | App móvil (Expo) | 🚧 Demo mínima, no conectada al flujo actual |
 
 ---
@@ -92,6 +92,16 @@ Puntos clave del diseño:
 - **Multi-instancia**: la app se registra dinámicamente en cada instancia de Mastodon la primera vez que un usuario de esa instancia inicia sesión (tabla `MastodonApp`).
 - **Seudonimato por diseño**: el modelo `User` no guarda password y el email es opcional (Mastodon no lo expone); la identidad única es `(mastodonInstance, mastodonId)`.
 - **Sesión**: JWT propio firmado con `JWT_SECRET`, enviado en el header `Authorization: Bearer`. El `state` de OAuth también va firmado (anti-CSRF, expira en 10 minutos).
+
+### Endurecimiento del backend
+
+- **helmet**: headers de seguridad (CORP en `cross-origin` para servir `/uploads` al frontend); `x-powered-by` deshabilitado.
+- **CORS estricto**: solo se acepta el origen de `FRONTEND_URL`.
+- **Rate limiting**: 300 peticiones/15 min por IP en toda la API; 20/15 min en el flujo OAuth (`/api/auth/mastodon/*`). Respeta proxies (`trust proxy`).
+- **Límites de payload**: body JSON ≤ 100 kB; imágenes ≤ 5 MB por multipart (multer, solo JPG/PNG/WebP, nombre aleatorio).
+- **Límites de contenido**: post del feed ≤ 2000 caracteres, comentario ≤ 1000; post de foro ≤ 10000, comentario de foro ≤ 2000; máximo 10 hashtags de ≤ 30 caracteres; bio ≤ 500. El campo `image` debe ser URL http(s).
+- **Privacidad**: el perfil público (`GET /api/profile/:id`) no expone email, teléfono, nombre real, edad, fecha de nacimiento ni género — esos datos solo los ve su dueño en `/api/profile/me`.
+- **Errores sanitizados**: el detalle (stack, Prisma) solo se registra en el servidor; el cliente recibe mensajes genéricos salvo en errores de validación.
 
 ---
 
@@ -204,9 +214,9 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 **Fase 1 — Robustecer la red social** *(actual)*
 1. ~~Reacciones cannábicas y comentarios en posteos~~ ✅ (HU-RC-001)
 2. ~~Foros estilo Reddit: subforos, puntaje por reacciones, hilos, follows y notificaciones~~ ✅
-3. Chat 1 a 1 en tiempo real (Socket.IO en el backend).
-4. Endurecimiento: helmet, rate limiting en auth, CORS restringido, límites de payload, PII fuera de los perfiles públicos, rotación de secretos.
-5. Herramientas de moderación básicas (reportes, bloqueo).
+3. ~~Endurecimiento: helmet, rate limiting, CORS restringido, límites de payload y de contenido, PII fuera de los perfiles públicos, errores sanitizados~~ ✅
+4. Herramientas de moderación básicas (rol de usuario, reportes, ocultar/suspender) con panel en `/admin` del mismo frontend.
+5. Chat 1 a 1 en tiempo real (Socket.IO en el backend).
 
 **Fase 2 — Mercado comunitario**
 - Catálogo de tangibles e intangibles lícitos (merch, arte, glass, talleres, cursos, servicios), perfiles de vendedor, búsqueda por categoría. El modelo `MarketItem` existente evolucionará hacia este diseño.

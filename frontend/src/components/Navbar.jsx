@@ -1,12 +1,12 @@
 import React from 'react';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, Typography, Button, IconButton, Avatar, Box, Tooltip, Container
+  AppBar, Toolbar, Button, IconButton, Avatar, Box, Tooltip, Container
 } from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LogoutIcon from '@mui/icons-material/Logout';
-import SpaIcon from '@mui/icons-material/Spa';
+import { BrandMark, BrandWordmark } from './BrandLogo';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
 import NotificationBell from './NotificationBell';
@@ -32,15 +32,15 @@ const Navbar = () => {
     <AppBar position="sticky" color="inherit" elevation={1} component="nav" aria-label="Navegación principal">
       <Container maxWidth="md" disableGutters>
         <Toolbar sx={{ gap: 1 }}>
-          <SpaIcon color="primary" aria-hidden="true" />
-          <Typography
-            variant="h6"
+          <Box
             component={RouterLink}
             to="/feed"
-            sx={{ color: 'text.primary', textDecoration: 'none', mr: 2 }}
+            aria-label="WeedTown — ir al feed"
+            sx={{ display: 'flex', alignItems: 'center', gap: 1, textDecoration: 'none', mr: 2 }}
           >
-            WeedTown
-          </Typography>
+            <BrandMark size={38} />
+            <BrandWordmark variant="h6" />
+          </Box>
 
           {navLinks.map(({ to, label }) => (
             <Button

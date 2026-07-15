@@ -9,35 +9,48 @@ export function useColorMode() {
   return useContext(colorModeContext);
 }
 
-// Paleta Material: claro = blanco + verde con acentos gris; oscuro adaptado a esa paleta
+// Paleta tomada del logo: hojas lima→verde profundo, edificios carbón/plata,
+// swoosh degradado. Claro = blanco con tinte hoja; oscuro = carbón verdoso.
+const BRAND_GRADIENT = 'linear-gradient(90deg, #8bc34a 0%, #388e3c 55%, #455a64 100%)';
+
 function getTheme(mode) {
   return createTheme({
     palette: {
       mode,
       ...(mode === 'light'
         ? {
-            primary: { main: '#2e7d32' },      // verde 800 — AA sobre blanco
-            secondary: { main: '#616161' },    // gris 700
-            background: { default: '#fafafa', paper: '#ffffff' },
-            text: { primary: '#212121', secondary: '#616161' }
+            primary: { main: '#33691e', light: '#7cb342', dark: '#1b5e20' }, // verde hoja 900 — AA sobre blanco
+            secondary: { main: '#455a64' },    // carbón azulado de los edificios
+            background: { default: '#f5f8f2', paper: '#ffffff' },
+            text: { primary: '#1e271e', secondary: '#546e7a' }
           }
         : {
-            primary: { main: '#81c784' },      // verde 300 — AA sobre superficies oscuras
-            secondary: { main: '#bdbdbd' },    // gris 400
-            background: { default: '#121212', paper: '#1e1e1e' },
-            text: { primary: '#eeeeee', secondary: '#bdbdbd' }
+            primary: { main: '#9ccc65', light: '#cfff95', dark: '#7cb342' }, // lima 400 — AA sobre superficies oscuras
+            secondary: { main: '#b0bec5' },    // plata/carbón claro
+            background: { default: '#0f130f', paper: '#171d17' },
+            text: { primary: '#e8f0e3', secondary: '#a5b8a5' }
           })
     },
-    shape: { borderRadius: 10 },
+    shape: { borderRadius: 12 },
     typography: {
       fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-      h5: { fontWeight: 600 },
-      h6: { fontWeight: 600 },
-      button: { textTransform: 'none', fontWeight: 600 }
+      h4: { fontFamily: '"Nunito", "Roboto", sans-serif', fontWeight: 800 },
+      h5: { fontFamily: '"Nunito", "Roboto", sans-serif', fontWeight: 800 },
+      h6: { fontFamily: '"Nunito", "Roboto", sans-serif', fontWeight: 700 },
+      button: { fontFamily: '"Nunito", "Roboto", sans-serif', textTransform: 'none', fontWeight: 700 }
     },
     components: {
       MuiCard: { defaultProps: { elevation: 1 } },
-      MuiButton: { defaultProps: { disableElevation: true } }
+      MuiButton: { defaultProps: { disableElevation: true } },
+      // El swoosh del logo como acento inferior de la barra de navegación
+      MuiAppBar: {
+        styleOverrides: {
+          root: {
+            borderBottom: '3px solid transparent',
+            borderImage: `${BRAND_GRADIENT} 1`
+          }
+        }
+      }
     }
   });
 }

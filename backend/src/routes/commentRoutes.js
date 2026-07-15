@@ -46,6 +46,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   const content = (req.body.content || '').trim();
   if (!id) return res.status(400).json({ error: 'ID de comentario inválido' });
   if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+  if (content.length > 1000) return res.status(400).json({ error: 'El comentario no puede superar 1000 caracteres' });
   try {
     const comment = await prisma.comment.findUnique({ where: { id }, select: { authorId: true } });
     if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });

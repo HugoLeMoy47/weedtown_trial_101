@@ -2,15 +2,51 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
 const { errorHandler } = require('./src/middlewares/errorHandler');
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
 const app = express();
-app.use(cors());
-app.use(express.json());
+// Necesario para que el rate limit identifique la IP real detrás de un proxy (deploy)
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
+// Headers de seguridad. CORP en cross-origin: las imágenes de /uploads
+// se consumen desde el frontend, que vive en otro origen.
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
+// CORS restringido al frontend (curl y apps nativas no mandan Origin, por eso se permite sin él)
+app.use(cors({ origin: FRONTEND_URL }));
+
+// El contenido viaja como JSON chico; las imágenes van por multipart (multer, 5 MB)
+app.use(express.json({ limit: '100kb' }));
 app.use(morgan('dev'));
+
+// Rate limit general de la API
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
+});
+// Rate limit estricto para el flujo de autenticación (anti abuso del OAuth)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.' }
+});
+app.use('/api', apiLimiter);
+app.use('/api/auth/mastodon', authLimiter);
 
 
 // Health check: proceso vivo + conexión a la base de datos

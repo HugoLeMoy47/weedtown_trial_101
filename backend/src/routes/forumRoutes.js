@@ -8,6 +8,11 @@ const { REACTION_TYPES, summarizeReactions, toggleReaction, removeReaction, reac
 
 const MAX_SUBFORUMS_PER_USER = 3;
 const PAGE_SIZE = 20;
+// Topes de contenido: defensa contra payloads abusivos
+const MAX_DESCRIPTION_LENGTH = 300;
+const MAX_POST_LENGTH = 10000;
+const MAX_COMMENT_LENGTH = 2000;
+const IMAGE_URL_RE = /^https?:\/\/\S{1,500}$/;
 
 function slugify(name) {
   return name
@@ -68,6 +73,9 @@ router.post('/subforums', requireAuth, async (req, res) => {
   const description = (req.body.description || '').trim() || null;
   if (name.length < 3 || name.length > 40) {
     return res.status(400).json({ error: 'El nombre debe tener entre 3 y 40 caracteres' });
+  }
+  if (description && description.length > MAX_DESCRIPTION_LENGTH) {
+    return res.status(400).json({ error: `La descripción no puede superar ${MAX_DESCRIPTION_LENGTH} caracteres` });
   }
   const slug = slugify(name);
   if (!slug) return res.status(400).json({ error: 'El nombre debe incluir letras o números' });
@@ -210,6 +218,12 @@ router.post('/subforums/:slug/posts', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'El título debe tener entre 3 y 200 caracteres' });
   }
   if (!content) return res.status(400).json({ error: 'El contenido no puede estar vacío' });
+  if (content.length > MAX_POST_LENGTH) {
+    return res.status(400).json({ error: `El contenido no puede superar ${MAX_POST_LENGTH} caracteres` });
+  }
+  if (image && !IMAGE_URL_RE.test(image)) {
+    return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
+  }
   try {
     const subforum = await prisma.subForum.findUnique({ where: { slug: req.params.slug }, select: { id: true } });
     if (!subforum) return res.status(404).json({ error: 'Subforo no encontrado' });
@@ -338,6 +352,12 @@ router.post('/posts/:id/comments', requireAuth, async (req, res) => {
   const parentId = req.body.parentId ? Number(req.body.parentId) : null;
   if (!postId) return res.status(400).json({ error: 'ID inválido' });
   if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+  if (content.length > MAX_COMMENT_LENGTH) {
+    return res.status(400).json({ error: `El comentario no puede superar ${MAX_COMMENT_LENGTH} caracteres` });
+  }
+  if (image && !IMAGE_URL_RE.test(image)) {
+    return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
+  }
   try {
     const post = await prisma.forumPost.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
@@ -415,6 +435,9 @@ router.put('/posts/:id', requireAuth, async (req, res) => {
   if (content !== undefined && !content) {
     return res.status(400).json({ error: 'El contenido no puede estar vacío' });
   }
+  if (content !== undefined && content.length > MAX_POST_LENGTH) {
+    return res.status(400).json({ error: `El contenido no puede superar ${MAX_POST_LENGTH} caracteres` });
+  }
   try {
     const post = await prisma.forumPost.findUnique({ where: { id }, select: { authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
@@ -458,6 +481,9 @@ router.put('/comments/:id', requireAuth, async (req, res) => {
   const content = (req.body.content || '').trim();
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+  if (content.length > MAX_COMMENT_LENGTH) {
+    return res.status(400).json({ error: `El comentario no puede superar ${MAX_COMMENT_LENGTH} caracteres` });
+  }
   try {
     const comment = await prisma.forumComment.findUnique({ where: { id }, select: { authorId: true, deletedAt: true } });
     if (!comment || comment.deletedAt) return res.status(404).json({ error: 'Comentario no encontrado' });
