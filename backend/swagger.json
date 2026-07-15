@@ -140,6 +140,8 @@
     { "name": "Reacciones", "description": "Reacciones cannábicas: Me gusta, Me rola, Me interesa, Me molesta — una por usuario por objeto" },
     { "name": "Comentarios" },
     { "name": "Media", "description": "Subida de imágenes anonimizadas" },
+    { "name": "Foros", "description": "Foros estilo Reddit: subforos, puntaje por reacciones, hilos a 3 niveles" },
+    { "name": "Notificaciones", "description": "Centro de notificaciones in-app" },
     { "name": "Perfil" },
     { "name": "Pendientes", "description": "Stubs sin lógica real todavía (foro, chat, market, admin)" }
   ],
@@ -482,11 +484,172 @@
         }
       }
     },
-    "/api/forum/categories": {
+    "/api/forum/subforums": {
       "get": {
-        "tags": ["Pendientes"],
-        "summary": "Categorías del foro (stub)",
-        "responses": { "200": { "description": "Stub: responde mensaje fijo" } }
+        "tags": ["Foros"],
+        "summary": "Directorio de subforos con conteos y bandera following",
+        "responses": { "200": { "description": "Lista de subforos" } }
+      },
+      "post": {
+        "tags": ["Foros"],
+        "summary": "Crear subforo (máx. 3 por usuario; nombre único, slug autogenerado)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "description": { "type": "string" } }, "required": ["name"] } } }
+        },
+        "responses": {
+          "200": { "description": "Subforo creado (el creador lo sigue automáticamente)" },
+          "400": { "description": "Nombre inválido o límite alcanzado" },
+          "409": { "description": "Nombre duplicado" }
+        }
+      }
+    },
+    "/api/forum/subforums/{slug}/follow": {
+      "post": {
+        "tags": ["Foros"],
+        "summary": "Seguir un subforo (idempotente)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "{ following: true, followers }" } }
+      },
+      "delete": {
+        "tags": ["Foros"],
+        "summary": "Dejar de seguir un subforo (idempotente)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "{ following: false, followers }" } }
+      }
+    },
+    "/api/forum/subforums/{slug}/posts": {
+      "get": {
+        "tags": ["Foros"],
+        "summary": "Posts del subforo con orden estilo Reddit",
+        "parameters": [
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["hot", "new", "top"], "default": "hot" }, "description": "hot = puntaje con decaimiento temporal" },
+          { "name": "period", "in": "query", "schema": { "type": "string", "enum": ["day", "week", "month", "all"], "default": "all" }, "description": "Solo aplica a top" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } }
+        ],
+        "responses": { "200": { "description": "Posts con score, reacciones, myReaction y commentCount" } }
+      },
+      "post": {
+        "tags": ["Foros"],
+        "summary": "Publicar en el subforo (imagen opcional vía /api/media/upload)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string" }, "content": { "type": "string" }, "image": { "type": "string" } }, "required": ["title", "content"] } } }
+        },
+        "responses": { "200": { "description": "Post creado; notifica a seguidores del subforo" } }
+      }
+    },
+    "/api/forum/posts/{id}": {
+      "get": {
+        "tags": ["Foros"],
+        "summary": "Detalle de un post del foro",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Post con score y reacciones" }, "404": { "description": "No encontrado" } }
+      },
+      "put": {
+        "tags": ["Foros"],
+        "summary": "Editar post propio (403 si es ajeno)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Post actualizado" }, "403": { "description": "No es tu contenido" } }
+      },
+      "delete": {
+        "tags": ["Foros"],
+        "summary": "Eliminar post propio con todo su hilo (403 si es ajeno)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Eliminado" }, "403": { "description": "No es tu contenido" } }
+      }
+    },
+    "/api/forum/posts/{id}/comments": {
+      "get": {
+        "tags": ["Foros"],
+        "summary": "Hilo completo del post (el árbol se arma en el cliente)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Comentarios con depth (0-2), parent.author, reacciones y deleted" } }
+      },
+      "post": {
+        "tags": ["Foros"],
+        "summary": "Comentar o responder (parentId opcional; >3 niveles se aplana)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "content": { "type": "string" }, "image": { "type": "string" }, "parentId": { "type": "integer" } }, "required": ["content"] } } }
+        },
+        "responses": { "200": { "description": "Comentario creado; notifica al autor del post o del padre" } }
+      }
+    },
+    "/api/forum/posts/{id}/reaction": {
+      "post": {
+        "tags": ["Foros"],
+        "summary": "Reaccionar al post: puntúa (+1 LIKE/ROLA/INTERESA, -1 MOLESTA); misma = quitar",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "{ myReaction, reactions, score }" } }
+      },
+      "delete": {
+        "tags": ["Foros"],
+        "summary": "Quitar la reacción propia (ajusta el score)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "{ myReaction: null, reactions, score }" } }
+      }
+    },
+    "/api/forum/comments/{id}": {
+      "put": {
+        "tags": ["Foros"],
+        "summary": "Editar comentario propio",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Comentario actualizado" }, "403": { "description": "No es tu contenido" } }
+      },
+      "delete": {
+        "tags": ["Foros"],
+        "summary": "Eliminar comentario propio (suave si tiene respuestas, real si no)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "{ deleted, soft }" } }
+      }
+    },
+    "/api/forum/comments/{id}/reaction": {
+      "post": {
+        "tags": ["Foros"],
+        "summary": "Reaccionar a un comentario del foro (puntúa)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "{ myReaction, reactions, score }" } }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "tags": ["Notificaciones"],
+        "summary": "Últimas notificaciones del usuario (REPLY_POST, REPLY_COMMENT, NEW_SUBFORUM_POST)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } }],
+        "responses": { "200": { "description": "{ notifications[], unread }" } }
+      }
+    },
+    "/api/notifications/unread-count": {
+      "get": {
+        "tags": ["Notificaciones"],
+        "summary": "Contador de no leídas (para el badge de la campana)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "{ count }" } }
+      }
+    },
+    "/api/notifications/read-all": {
+      "post": {
+        "tags": ["Notificaciones"],
+        "summary": "Marcar todas como leídas",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "{ ok: true }" } }
       }
     },
     "/api/chat/contacts": {

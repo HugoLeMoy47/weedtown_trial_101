@@ -9,6 +9,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import SpaIcon from '@mui/icons-material/Spa';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
+import NotificationBell from './NotificationBell';
 
 const navLinks = [
   { to: '/feed', label: 'Feed' },
@@ -63,6 +64,7 @@ const Navbar = () => {
 
           {user && (
             <>
+              <NotificationBell />
               <Tooltip title="Mi perfil">
                 <IconButton component={RouterLink} to="/profile" aria-label="Ir a mi perfil" sx={{ p: 0.5 }}>
                   <Avatar

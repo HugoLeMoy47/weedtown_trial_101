@@ -113,6 +113,38 @@ router.get('/subforums/:slug', optionalAuth, async (req, res) => {
   }
 });
 
+// POST /api/forum/subforums/:slug/follow — seguir (idempotente)
+router.post('/subforums/:slug/follow', requireAuth, async (req, res) => {
+  try {
+    const subforum = await prisma.subForum.findUnique({ where: { slug: req.params.slug }, select: { id: true } });
+    if (!subforum) return res.status(404).json({ error: 'Subforo no encontrado' });
+    await prisma.subForumFollow.upsert({
+      where: { userId_subforumId: { userId: req.user.id, subforumId: subforum.id } },
+      update: {},
+      create: { userId: req.user.id, subforumId: subforum.id }
+    });
+    const followers = await prisma.subForumFollow.count({ where: { subforumId: subforum.id } });
+    res.json({ following: true, followers });
+  } catch (e) {
+    console.error('Error al seguir subforo:', e);
+    res.status(500).json({ error: 'Error al seguir el subforo' });
+  }
+});
+
+// DELETE /api/forum/subforums/:slug/follow — dejar de seguir (idempotente)
+router.delete('/subforums/:slug/follow', requireAuth, async (req, res) => {
+  try {
+    const subforum = await prisma.subForum.findUnique({ where: { slug: req.params.slug }, select: { id: true } });
+    if (!subforum) return res.status(404).json({ error: 'Subforo no encontrado' });
+    await prisma.subForumFollow.deleteMany({ where: { userId: req.user.id, subforumId: subforum.id } });
+    const followers = await prisma.subForumFollow.count({ where: { subforumId: subforum.id } });
+    res.json({ following: false, followers });
+  } catch (e) {
+    console.error('Error al dejar de seguir subforo:', e);
+    res.status(500).json({ error: 'Error al dejar de seguir el subforo' });
+  }
+});
+
 // ---------- Posts del foro ----------
 
 const PERIOD_HOURS = { day: 24, week: 24 * 7, month: 24 * 30 };
@@ -185,6 +217,21 @@ router.post('/subforums/:slug/posts', requireAuth, async (req, res) => {
       data: { title, content, image, authorId: req.user.id, subforumId: subforum.id },
       include: forumPostInclude
     });
+
+    // Notificar a quienes siguen el subforo (excepto el autor); no bloquea la respuesta
+    prisma.subForumFollow.findMany({
+      where: { subforumId: subforum.id, userId: { not: req.user.id } },
+      select: { userId: true }
+    }).then(followers => followers.length && prisma.notification.createMany({
+      data: followers.map(f => ({
+        type: 'NEW_SUBFORUM_POST',
+        recipientId: f.userId,
+        actorId: req.user.id,
+        subforumId: subforum.id,
+        forumPostId: post.id
+      }))
+    })).catch(err => console.error('Error notificando nuevo post:', err));
+
     res.json(serializeForumPost(post, req.user.id));
   } catch (e) {
     console.error('Error al crear post del foro:', e);
@@ -296,6 +343,7 @@ router.post('/posts/:id/comments', requireAuth, async (req, res) => {
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
 
     let depth = 0;
+    let parentAuthorId = null;
     if (parentId) {
       const parent = await prisma.forumComment.findUnique({
         where: { id: parentId },
@@ -306,12 +354,23 @@ router.post('/posts/:id/comments', requireAuth, async (req, res) => {
       }
       // Más allá del nivel máximo se aplana: sigue colgando del padre pero sin más sangría
       depth = Math.min(parent.depth + 1, MAX_DEPTH);
+      parentAuthorId = parent.deletedAt ? null : parent.authorId;
     }
 
     const comment = await prisma.forumComment.create({
       data: { content, image, postId, parentId, depth, authorId: req.user.id },
       include: forumCommentInclude
     });
+
+    // Notificar: respuesta a comentario → autor del padre; comentario raíz → autor del post
+    const recipientId = parentId ? parentAuthorId : post.authorId;
+    const type = parentId ? 'REPLY_COMMENT' : 'REPLY_POST';
+    if (recipientId && recipientId !== req.user.id) {
+      prisma.notification.create({
+        data: { type, recipientId, actorId: req.user.id, forumPostId: postId, forumCommentId: comment.id }
+      }).catch(err => console.error('Error notificando respuesta:', err));
+    }
+
     res.json(serializeForumComment(comment, req.user.id));
   } catch (e) {
     console.error('Error al comentar en el foro:', e);

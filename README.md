@@ -30,7 +30,9 @@
 | Reacciones cannábicas en posts y comentarios (👍 Me gusta, 🌿 Me rola, 👀 Me interesa, 😒 Me molesta) | ✅ Funcionando |
 | Comentarios en posteos | ✅ Funcionando |
 | Imagen opcional en posts y comentarios (≤5 MB, anonimizada sin EXIF/GPS en el cliente) | ✅ Funcionando |
-| Foros con categorías | 🚧 Modelado en BD, endpoints stub — **siguiente** |
+| Foros estilo Reddit: subforos comunitarios, hilos a 3 niveles, órdenes Relevante/Nuevo/Top | ✅ Funcionando |
+| Seguir subforos + notificaciones in-app (campana con contador) | ✅ Funcionando |
+| Editar/eliminar contenido propio (feed y foro, con borrado suave en hilos) | ✅ Funcionando |
 | Chat 1 a 1 en tiempo real (Socket.IO) | 🚧 Modelado en BD, endpoints stub — **siguiente** |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto) | 📋 Planificado |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
@@ -178,11 +180,22 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/posts/:id/comments` | — | Comentarios con conteos de reacciones |
 | POST/DELETE | `/api/comments/:id/reaction` | 🔒 | Reaccionar / quitar reacción en un comentario |
 | POST | `/api/media/upload` | 🔒 | Subir imagen (multipart, ≤5 MB, JPG/PNG/WebP) → devuelve URL |
+| GET/POST | `/api/forum/subforums` | —/🔒 | Directorio de subforos / crear (máx. 3 por usuario) |
+| POST/DELETE | `/api/forum/subforums/:slug/follow` | 🔒 | Seguir / dejar de seguir un subforo |
+| GET/POST | `/api/forum/subforums/:slug/posts` | —/🔒 | Posts del subforo (`?sort=hot\|new\|top&period=`) / publicar |
+| GET/PUT/DELETE | `/api/forum/posts/:id` | —/🔒 | Detalle / editar / eliminar post propio |
+| GET/POST | `/api/forum/posts/:id/comments` | —/🔒 | Hilo de comentarios / comentar o responder (`parentId?`) |
+| POST/DELETE | `/api/forum/posts/:id/reaction` | 🔒 | Reaccionar al post del foro (puntúa ±1) |
+| PUT/DELETE | `/api/forum/comments/:id` | 🔒 | Editar / eliminar comentario propio (suave si tiene respuestas) |
+| POST | `/api/forum/comments/:id/reaction` | 🔒 | Reaccionar a comentario del foro (puntúa ±1) |
+| GET | `/api/notifications` (+`/unread-count`, `POST /read-all`) | 🔒 | Centro de notificaciones in-app |
 | GET | `/api/profile/me` | 🔒 | Perfil propio |
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
 | GET | `/api/profile/:id` | — | Perfil público por id |
 
-🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de foro, chat, mercado y admin existen como stubs y responden mensajes fijos hasta su implementación.
+🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de chat, mercado y admin existen como stubs y responden mensajes fijos hasta su implementación.
+
+**Mecánica del foro (modelo Reddit)**: las reacciones son el voto — 👍🌿👀 suman +1, 😒 resta −1. El orden *Relevante* usa `score/(horas+2)^1.5` (decaimiento temporal), *Top* filtra por periodo. Hilos anidados hasta 3 niveles (más profundo se aplana con "en respuesta a @usuario"). Notificaciones: respuesta a tu post, respuesta a tu comentario y post nuevo en subforos que sigues.
 
 ---
 
@@ -190,7 +203,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 
 **Fase 1 — Robustecer la red social** *(actual)*
 1. ~~Reacciones cannábicas y comentarios en posteos~~ ✅ (HU-RC-001)
-2. Foros reales: categorías y publicaciones por categoría.
+2. ~~Foros estilo Reddit: subforos, puntaje por reacciones, hilos, follows y notificaciones~~ ✅
 3. Chat 1 a 1 en tiempo real (Socket.IO en el backend).
 4. Endurecimiento: helmet, rate limiting en auth, CORS restringido, límites de payload, PII fuera de los perfiles públicos, rotación de secretos.
 5. Herramientas de moderación básicas (reportes, bloqueo).

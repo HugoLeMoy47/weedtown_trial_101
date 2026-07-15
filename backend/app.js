@@ -29,6 +29,7 @@ app.use('/api/auth', require('./src/routes/authRoutes'));
 app.use('/api/posts', require('./src/routes/postRoutes'));
 app.use('/api/comments', require('./src/routes/commentRoutes'));
 app.use('/api/media', require('./src/routes/mediaRoutes'));
+app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 
 // Imágenes subidas (posts y comentarios)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {

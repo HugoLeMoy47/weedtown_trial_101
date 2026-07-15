@@ -126,7 +126,27 @@ const Subforum = () => {
 
         {subforum && (
           <Box sx={{ mb: 2 }}>
-            <Typography variant="h5" component="h1">{subforum.name}</Typography>
+            <Stack direction="row" alignItems="center" spacing={2} sx={{ flexWrap: 'wrap' }}>
+              <Typography variant="h5" component="h1">{subforum.name}</Typography>
+              <Button
+                size="small"
+                variant={subforum.following ? 'outlined' : 'contained'}
+                onClick={async () => {
+                  const method = subforum.following ? 'delete' : 'post';
+                  try {
+                    const res = await api[method](`/forum/subforums/${slug}/follow`);
+                    setSubforum(prev => ({
+                      ...prev,
+                      following: res.data.following,
+                      _count: { ...prev._count, followers: res.data.followers }
+                    }));
+                  } catch { /* sin cambios si falla */ }
+                }}
+                aria-pressed={subforum.following}
+              >
+                {subforum.following ? 'Siguiendo ✓' : 'Seguir'}
+              </Button>
+            </Stack>
             {subforum.description && (
               <Typography variant="body2" color="text.secondary">{subforum.description}</Typography>
             )}
