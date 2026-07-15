@@ -7,6 +7,7 @@ import Forum from './pages/Forum';
 import Subforum from './pages/Subforum';
 import ForumPostDetail from './pages/ForumPostDetail';
 import Chat from './pages/Chat';
+import Nearby from './pages/Nearby';
 import Profile from './pages/Profile';
 import AuthCallback from './pages/AuthCallback';
 import RequireAuth from './components/RequireAuth';
@@ -29,6 +30,7 @@ function App() {
             <Route path="/forum/:slug" element={<RequireAuth><Subforum /></RequireAuth>} />
             <Route path="/forum/:slug/post/:id" element={<RequireAuth><ForumPostDetail /></RequireAuth>} />
             <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
+            <Route path="/cerca" element={<RequireAuth><Nearby /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/feed" replace />} />
           </Routes>

@@ -14,7 +14,8 @@ import NotificationBell from './NotificationBell';
 const navLinks = [
   { to: '/feed', label: 'Feed' },
   { to: '/forum', label: 'Foros' },
-  { to: '/chat', label: 'Chat' }
+  { to: '/chat', label: 'Chat' },
+  { to: '/cerca', label: 'Cerca' }
 ];
 
 const Navbar = () => {

@@ -24,6 +24,10 @@ model User {
   age              Int?
   birthdate        DateTime?
   gender           String?
+  // Función "Cerca": celda geohash ~5 km ofuscada EN el cliente (nunca llegan
+  // coordenadas reales al servidor). null = no comparte. Caduca a los 7 días.
+  nearbyCell       String?
+  nearbyUpdatedAt  DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   posts            Post[]

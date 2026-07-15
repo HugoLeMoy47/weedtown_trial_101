@@ -34,7 +34,8 @@
 | Seguir subforos + notificaciones in-app (campana con contador) | ✅ Funcionando |
 | Editar/eliminar contenido propio (feed y foro, con borrado suave en hilos) | ✅ Funcionando |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto, validación, sin PII pública) | ✅ Funcionando |
-| Chat 1 a 1 en tiempo real (Socket.IO) | 🚧 Modelado en BD, endpoints stub — **siguiente** |
+| Chat 1 a 1 en tiempo real (Socket.IO + REST, búsqueda de personas, historial paginado) | ✅ Funcionando |
+| "Cerca": mapa de comunidad por zonas de ~5 km (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | Panel administrativo / moderación (rol + reportes, integrado al frontend en `/admin`) | 📋 Planificado — antes del chat/mercado |
 | App móvil (Expo) | 🚧 Demo mínima, no conectada al flujo actual |
@@ -53,7 +54,7 @@ Monorepo con cuatro módulos:
 │   └── src/
 │       ├── lib/        Cliente Prisma (singleton)
 │       ├── middlewares/  errorHandler, requireAuth (JWT)
-│       └── routes/     auth, posts, profile, forum*, chat*, market*, admin*  (* = stub)
+│       └── routes/     auth, posts, comments, media, forum, chat, notifications, market*, admin*  (* = stub)
 ├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
 │   └── src/
 │       ├── components/ Navbar, PostCard, PostModal, RequireAuth, ...
@@ -115,7 +116,7 @@ Puntos clave del diseño:
 | Web | React 18, **MUI v5** (Material Design, claro/oscuro), React Router 6, Axios |
 | Móvil | Expo / React Native |
 | Docs API | Swagger UI en `/api-docs` |
-| Tiempo real | Socket.IO *(pendiente de implementar en backend)* |
+| Tiempo real | Socket.IO 4 (handshake autenticado con el JWT de sesión; entrega de mensajes en vivo) |
 
 Notas:
 - En producción la base de datos puede apuntar a cualquier PostgreSQL: solo cambian `DATABASE_URL` y `DIRECT_URL`.
@@ -203,7 +204,28 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
 | GET | `/api/profile/:id` | — | Perfil público por id |
 
-🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de chat, mercado y admin existen como stubs y responden mensajes fijos hasta su implementación.
+| GET | `/api/chat/users?q=` | 🔒 | Buscar personas para chatear (datos públicos) |
+| GET | `/api/chat/conversations` | 🔒 | Mis conversaciones (con último mensaje) |
+| POST | `/api/chat/conversations` | 🔒 | Abrir/recuperar conversación 1 a 1 (`userId`) |
+| GET | `/api/chat/conversations/:id/messages?before=` | 🔒 | Hilo de mensajes (50 por página, `before` para historial) |
+| POST | `/api/chat/conversations/:id/messages` | 🔒 | Enviar mensaje (≤1000 caracteres; entrega en vivo por socket) |
+
+🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de mercado y admin existen como stubs y responden mensajes fijos hasta su implementación.
+
+### "Cerca": descubrimiento por zonas con privacidad
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/nearby/location` | 🔒 | Mi estado (¿comparto zona? cuál) |
+| PUT | `/api/nearby/location` | 🔒 | Activar/actualizar mi zona (`cell`: geohash-5; rechaza coordenadas) |
+| DELETE | `/api/nearby/location` | 🔒 | Dejar de compartir (borra la celda) |
+| GET | `/api/nearby` | 🔒 | Personas y zonas cercanas (requiere compartir: recíproco) |
+
+Diseño de privacidad: el navegador convierte el GPS a una **celda geohash de ~5 km antes de enviar nada** (el servidor nunca ve coordenadas; el endpoint las rechaza explícitamente). La cuadrícula es fija — todos los de una celda son indistinguibles, no hay nada que triangular. Solo ves a otros si compartes tu zona, la celda **caduca a los 7 días** y puede borrarse en un clic. El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, nunca pins individuales. La consulta busca en una cuadrícula 5×5 de celdas (~12 km de radio efectivo) y tiene rate limit propio anti-scraping.
+
+### Chat en tiempo real
+
+El envío de mensajes entra **por REST** (hereda auth, rate limit y validación) y la entrega en vivo sale **por Socket.IO**: cada usuario autentica el handshake con su JWT (`auth.token`) y se une a su sala personal `user:{id}`, donde recibe el evento `chat:message` de todas sus conversaciones, en todas sus sesiones abiertas.
 
 **Mecánica del foro (modelo Reddit)**: las reacciones son el voto — 👍🌿👀 suman +1, 😒 resta −1. El orden *Relevante* usa `score/(horas+2)^1.5` (decaimiento temporal), *Top* filtra por periodo. Hilos anidados hasta 3 niveles (más profundo se aplana con "en respuesta a @usuario"). Notificaciones: respuesta a tu post, respuesta a tu comentario y post nuevo en subforos que sigues.
 
@@ -215,8 +237,8 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 1. ~~Reacciones cannábicas y comentarios en posteos~~ ✅ (HU-RC-001)
 2. ~~Foros estilo Reddit: subforos, puntaje por reacciones, hilos, follows y notificaciones~~ ✅
 3. ~~Endurecimiento: helmet, rate limiting, CORS restringido, límites de payload y de contenido, PII fuera de los perfiles públicos, errores sanitizados~~ ✅
-4. Herramientas de moderación básicas (rol de usuario, reportes, ocultar/suspender) con panel en `/admin` del mismo frontend.
-5. Chat 1 a 1 en tiempo real (Socket.IO en el backend).
+4. ~~Chat 1 a 1 en tiempo real (Socket.IO + REST)~~ ✅
+5. Herramientas de moderación básicas (rol de usuario, reportes, ocultar/suspender) con panel en `/admin` del mismo frontend — **siguiente**.
 
 **Fase 2 — Mercado comunitario**
 - Catálogo de tangibles e intangibles lícitos (merch, arte, glass, talleres, cursos, servicios), perfiles de vendedor, búsqueda por categoría. El modelo `MarketItem` existente evolucionará hacia este diseño.

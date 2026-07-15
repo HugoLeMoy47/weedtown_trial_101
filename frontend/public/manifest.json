@@ -2,8 +2,7 @@
   "short_name": "WeedTown",
   "name": "WeedTown — red de la comunidad cannábica de México",
   "icons": [
-    { "src": "logo192.png", "type": "image/png", "sizes": "192x192" },
-    { "src": "logo512.png", "type": "image/png", "sizes": "512x512" }
+    { "src": "logo.svg", "type": "image/svg+xml", "sizes": "any" }
   ],
   "start_url": ".",
   "display": "standalone",

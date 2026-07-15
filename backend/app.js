@@ -66,6 +66,7 @@ app.use('/api/posts', require('./src/routes/postRoutes'));
 app.use('/api/comments', require('./src/routes/commentRoutes'));
 app.use('/api/media', require('./src/routes/mediaRoutes'));
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
+app.use('/api/nearby', require('./src/routes/nearbyRoutes'));
 
 // Imágenes subidas (posts y comentarios)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
@@ -83,7 +84,11 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use(errorHandler);
 
+// Servidor HTTP compartido entre Express y Socket.IO (chat en tiempo real)
+const server = require('http').createServer(app);
+require('./src/lib/chatSocket').initChatSocket(server);
+
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`WeedTown backend corriendo en puerto ${PORT}`);
 });

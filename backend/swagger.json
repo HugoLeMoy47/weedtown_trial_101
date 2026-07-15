@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeedTown API",
-    "version": "2.1.0",
-    "description": "API de WeedTown, red social de la comunidad cannábica de México. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Seguridad: headers via helmet, CORS restringido al frontend, rate limiting (300 peticiones/15 min general; 20/15 min en el flujo OAuth), payload JSON limitado a 100 kB e imágenes a 5 MB. El perfil público (GET /api/profile/{id}) no expone PII (email, teléfono, nombre real, edad, nacimiento ni género). Las rutas de chat y mercado son stubs pendientes de implementación."
+    "version": "2.3.0",
+    "description": "API de WeedTown, red social de la comunidad cannábica de México. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Seguridad: headers via helmet, CORS restringido al frontend, rate limiting (300 peticiones/15 min general; 20/15 min en el flujo OAuth), payload JSON limitado a 100 kB e imágenes a 5 MB. El perfil público (GET /api/profile/{id}) no expone PII (email, teléfono, nombre real, edad, nacimiento ni género). Las rutas de mercado y admin son stubs pendientes de implementación."
   },
   "servers": [
     {
@@ -1675,6 +1675,283 @@
         "responses": {
           "200": {
             "description": "Stub: responde mensaje fijo"
+          }
+        }
+      }
+    },
+    "/api/chat/users": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Buscar personas para chatear (datos públicos, sin PII)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2
+            },
+            "description": "Nombre, display name o acct (mínimo 2 caracteres)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hasta 10 coincidencias"
+          }
+        }
+      }
+    },
+    "/api/chat/conversations": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Mis conversaciones, la de actividad más reciente primero",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista con el otro participante y el último mensaje"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Abrir (o recuperar) la conversación 1 a 1 con un usuario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversación"
+          },
+          "400": {
+            "description": "userId inválido o chat contigo mismo"
+          },
+          "404": {
+            "description": "Usuario no encontrado"
+          }
+        }
+      }
+    },
+    "/api/chat/conversations/{id}/messages": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Mensajes de la conversación (50 por página, cronológicos)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "ID de mensaje: trae los anteriores a él (historial)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "messages[] y hasMore"
+          },
+          "404": {
+            "description": "Conversación no encontrada o ajena"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Enviar mensaje (entrega en vivo por Socket.IO, evento chat:message)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mensaje creado"
+          },
+          "400": {
+            "description": "Vacío o demasiado largo"
+          },
+          "404": {
+            "description": "Conversación no encontrada o ajena"
+          }
+        }
+      }
+    },
+    "/api/nearby/location": {
+      "get": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Mi estado de compartir zona",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "sharing, cell (geohash-5) y updatedAt"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Activar/actualizar mi zona (celda geohash-5 ofuscada en el cliente)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Solo acepta la celda; cualquier payload con lat/lng/coords se rechaza con 400. La celda caduca a los 7 días.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "cell"
+                ],
+                "properties": {
+                  "cell": {
+                    "type": "string",
+                    "pattern": "^[0-9b-hjkmnp-z]{5}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Zona actualizada"
+          },
+          "400": {
+            "description": "Celda inválida o intento de enviar coordenadas"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Dejar de compartir (borra la celda)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "sharing=false"
+          }
+        }
+      }
+    },
+    "/api/nearby": {
+      "get": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Personas y zonas cercanas (recíproco: exige compartir zona vigente)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Busca en una cuadrícula 5×5 de celdas (~12 km de radio). Devuelve perfiles públicos sin PII con banda de distancia redondeada, y zonas agregadas con conteo para el mapa. Rate limit propio.",
+        "responses": {
+          "200": {
+            "description": "myZone, people[] y zones[]"
+          },
+          "403": {
+            "description": "No compartes tu zona (o caducó)"
+          },
+          "429": {
+            "description": "Rate limit"
           }
         }
       }

@@ -2,26 +2,29 @@ import React, { useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import SpaIcon from '@mui/icons-material/Spa';
 
-// Logo oficial servido desde public/logo.png; si el archivo no existe aún,
-// cae al ícono de hoja para no romper la UI.
-const LOGO_SRC = `${process.env.PUBLIC_URL || ''}/logo.png`;
+// Marca en orden de preferencia: el PNG oficial (si existe en public/) y,
+// si no, la versión vectorial SVG del logo. El ícono de hoja es el último recurso.
+const LOGO_SOURCES = [
+  `${process.env.PUBLIC_URL || ''}/logo.png`,
+  `${process.env.PUBLIC_URL || ''}/logo.svg`
+];
 
-// Isotipo: el logo va recortado en círculo sobre fondo blanco (el PNG tiene
-// fondo blanco), así se ve intencional también en modo oscuro.
+// Isotipo: el logo va recortado en círculo sobre fondo blanco,
+// así se ve intencional también en modo oscuro.
 export function BrandMark({ size = 36, sx = {} }) {
-  const [failed, setFailed] = useState(false);
+  const [srcIndex, setSrcIndex] = useState(0);
 
-  if (failed) {
+  if (srcIndex >= LOGO_SOURCES.length) {
     return <SpaIcon color="primary" sx={{ fontSize: size, ...sx }} aria-hidden="true" />;
   }
 
   return (
     <Box
       component="img"
-      src={LOGO_SRC}
+      src={LOGO_SOURCES[srcIndex]}
       alt=""
       aria-hidden="true"
-      onError={() => setFailed(true)}
+      onError={() => setSrcIndex(i => i + 1)}
       sx={{
         width: size,
         height: size,
