@@ -8,10 +8,10 @@ import SendIcon from '@mui/icons-material/Send';
 import SearchIcon from '@mui/icons-material/Search';
 import { io } from 'socket.io-client';
 import Navbar from '../components/Navbar';
-import api from '../services/api';
+import api, { API_ORIGIN } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
-const SOCKET_URL = (process.env.REACT_APP_API_URL || 'http://localhost:4000/api').replace(/\/api$/, '');
+const SOCKET_URL = API_ORIGIN;
 
 const Chat = () => {
   const { user } = useAuth();

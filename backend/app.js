@@ -9,7 +9,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
 const { errorHandler } = require('./src/middlewares/errorHandler');
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const { allowedOrigins } = require('./src/lib/allowedOrigins');
 
 const app = express();
 // Necesario para que el rate limit identifique la IP real detrás de un proxy (deploy)
@@ -22,8 +22,9 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
-// CORS restringido al frontend (curl y apps nativas no mandan Origin, por eso se permite sin él)
-app.use(cors({ origin: FRONTEND_URL }));
+// CORS restringido a los orígenes del frontend — localhost y/o IP LAN
+// (curl y apps nativas no mandan Origin, por eso se permite sin él)
+app.use(cors({ origin: allowedOrigins }));
 
 // El contenido viaja como JSON chico; las imágenes van por multipart (multer, 5 MB)
 app.use(express.json({ limit: '100kb' }));

@@ -5,12 +5,13 @@
 // conversaciones.
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { allowedOrigins } = require('./allowedOrigins');
 
 let io = null;
 
 function initChatSocket(server) {
   io = new Server(server, {
-    cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000' }
+    cors: { origin: allowedOrigins }
   });
 
   // Autenticación del handshake: mismo JWT de sesión que la API

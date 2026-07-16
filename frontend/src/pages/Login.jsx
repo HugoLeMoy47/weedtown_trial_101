@@ -8,8 +8,9 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
+import { API_ORIGIN } from '../services/api';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api';
+const API_URL = `${API_ORIGIN}/api`;
 
 const ERROR_MESSAGES = {
   instance: 'No se pudo conectar con esa instancia de Mastodon. Verifica el dominio.',
