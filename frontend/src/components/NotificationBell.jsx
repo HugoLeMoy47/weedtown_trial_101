@@ -15,11 +15,13 @@ function describe(n) {
     case 'REPLY_POST': return `${actor} respondió a tu post ${title}`;
     case 'REPLY_COMMENT': return `${actor} respondió a tu comentario en ${title}`;
     case 'NEW_SUBFORUM_POST': return `Nuevo post en ${n.subforum?.name || 'un subforo que sigues'}: ${title}`;
+    case 'POKE': return `${actor} te mandó un toque 👋 desde Cerca`;
     default: return `${actor} interactuó contigo`;
   }
 }
 
 function targetPath(n) {
+  if (n.type === 'POKE') return '/cerca';
   const slug = n.forumPost?.subforum?.slug || n.subforum?.slug;
   if (n.forumPost && slug) return `/forum/${slug}/post/${n.forumPost.id}`;
   if (slug) return `/forum/${slug}`;
@@ -80,7 +82,7 @@ const NotificationBell = () => {
         anchorEl={anchor}
         open={Boolean(anchor)}
         onClose={() => setAnchor(null)}
-        PaperProps={{ sx: { width: 360, maxHeight: 420 } }}
+        PaperProps={{ sx: { width: 'min(360px, calc(100vw - 32px))', maxHeight: 420 } }}
       >
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>

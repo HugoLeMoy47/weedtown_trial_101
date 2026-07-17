@@ -1,5 +1,5 @@
 // Función "Cerca": descubrir comunidad en tu zona con ubicación ofuscada.
-// Principios: (1) el servidor solo recibe la CELDA geohash de ~5 km calculada
+// Principios: (1) el servidor solo recibe la CELDA de ~2 km calculada
 // en el navegador — nunca coordenadas; (2) recíproco: solo ves si compartes;
 // (3) la celda caduca a los 7 días; (4) cuadrícula fija anti-triangulación.
 const express = require('express');
@@ -8,10 +8,11 @@ const router = express.Router();
 
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middlewares/requireAuth');
-const { CELL_RE, centroid, neighborsGrid, cellDistanceKm } = require('../lib/geohash');
+const { isValidCell, centroid, neighborsGrid, cellDistanceKm } = require('../lib/geogrid');
 
 const CELL_TTL_DAYS = 7;
-const GRID_RINGS = 2; // 5×5 celdas ≈ radio efectivo ~12 km
+const GRID_RINGS = 5; // 11×11 celdas de ~2 km ≈ radio efectivo ~11 km
+const POKE_COOLDOWN_HOURS = 12;
 
 const participantSelect = { id: true, name: true, displayName: true, avatar: true, acct: true };
 
@@ -30,8 +31,14 @@ const nearbyLimiter = rateLimit({
 
 function bandLabel(km, sameCell) {
   if (sameCell) return 'En tu zona';
-  const rounded = Math.max(5, Math.round(km / 5) * 5);
+  const rounded = Math.max(2, Math.round(km / 2) * 2);
   return `A ~${rounded} km`;
+}
+
+// Una celda vigente = existe, es del formato actual (las del geohash viejo se
+// descartan) y no ha caducado
+function hasActiveCell(user) {
+  return Boolean(user?.nearbyCell && isValidCell(user.nearbyCell) && user.nearbyUpdatedAt >= cutoffDate());
 }
 
 // GET /api/nearby/location — mi estado de compartir (celda propia o null)
@@ -41,7 +48,7 @@ router.get('/location', requireAuth, async (req, res) => {
       where: { id: req.user.id },
       select: { nearbyCell: true, nearbyUpdatedAt: true }
     });
-    const active = Boolean(me?.nearbyCell && me.nearbyUpdatedAt >= cutoffDate());
+    const active = hasActiveCell(me);
     res.json({ sharing: active, cell: active ? me.nearbyCell : null, updatedAt: active ? me.nearbyUpdatedAt : null });
   } catch (e) {
     console.error('Error al consultar estado de Cerca:', e);
@@ -56,8 +63,8 @@ router.put('/location', requireAuth, async (req, res) => {
   if (forbidden.some(k => k in (req.body || {}))) {
     return res.status(400).json({ error: 'Este endpoint solo acepta la celda ofuscada, nunca coordenadas' });
   }
-  const cell = typeof req.body.cell === 'string' ? req.body.cell.trim().toLowerCase() : '';
-  if (!CELL_RE.test(cell)) {
+  const cell = typeof req.body.cell === 'string' ? req.body.cell.trim() : '';
+  if (!isValidCell(cell)) {
     return res.status(400).json({ error: 'Celda inválida' });
   }
   try {
@@ -93,7 +100,7 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
       where: { id: req.user.id },
       select: { nearbyCell: true, nearbyUpdatedAt: true }
     });
-    if (!me?.nearbyCell || me.nearbyUpdatedAt < cutoffDate()) {
+    if (!hasActiveCell(me)) {
       return res.status(403).json({ error: 'Comparte tu zona para ver quién anda cerca (es recíproco)' });
     }
 
@@ -134,6 +141,35 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
   } catch (e) {
     console.error('Error al consultar Cerca:', e);
     res.status(500).json({ error: 'Error al consultar la zona' });
+  }
+});
+
+// POST /api/nearby/poke { userId } — mandar un toque 👋 (llega como notificación)
+router.post('/poke', requireAuth, async (req, res) => {
+  const targetId = Number(req.body.userId);
+  if (!targetId) return res.status(400).json({ error: 'userId requerido' });
+  if (targetId === req.user.id) return res.status(400).json({ error: 'No puedes mandarte un toque a ti' });
+  try {
+    const target = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true } });
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    // Anti-spam: un toque por persona cada POKE_COOLDOWN_HOURS
+    const since = new Date(Date.now() - POKE_COOLDOWN_HOURS * 60 * 60 * 1000);
+    const recent = await prisma.notification.findFirst({
+      where: { type: 'POKE', actorId: req.user.id, recipientId: targetId, createdAt: { gte: since } },
+      select: { id: true }
+    });
+    if (recent) {
+      return res.status(429).json({ error: 'Ya le mandaste un toque hace poco — dale chance de responder 🌿' });
+    }
+
+    await prisma.notification.create({
+      data: { type: 'POKE', recipientId: targetId, actorId: req.user.id }
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error al mandar toque:', e);
+    res.status(500).json({ error: 'No se pudo mandar el toque' });
   }
 });
 

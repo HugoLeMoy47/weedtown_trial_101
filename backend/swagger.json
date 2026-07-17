@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeedTown API",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "description": "API de WeedTown, red social de la comunidad cannábica de México. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Seguridad: headers via helmet, CORS restringido al frontend, rate limiting (300 peticiones/15 min general; 20/15 min en el flujo OAuth), payload JSON limitado a 100 kB e imágenes a 5 MB. El perfil público (GET /api/profile/{id}) no expone PII (email, teléfono, nombre real, edad, nacimiento ni género). Las rutas de mercado y admin son stubs pendientes de implementación."
   },
   "servers": [
@@ -1879,13 +1879,13 @@
         "tags": [
           "Cerca"
         ],
-        "summary": "Activar/actualizar mi zona (celda geohash-5 ofuscada en el cliente)",
+        "summary": "Activar/actualizar mi zona (celda de cuadrícula ~2 km ofuscada en el cliente)",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "description": "Solo acepta la celda; cualquier payload con lat/lng/coords se rechaza con 400. La celda caduca a los 7 días.",
+        "description": "Solo acepta la celda ({latIdx}_{lonIdx}, cuadrícula fija de 0.02° ≈ 2 km); cualquier payload con lat/lng/coords se rechaza con 400. La celda caduca a los 7 días.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1898,7 +1898,7 @@
                 "properties": {
                   "cell": {
                     "type": "string",
-                    "pattern": "^[0-9b-hjkmnp-z]{5}$"
+                    "pattern": "^d{1,4}_d{1,5}$"
                   }
                 }
               }
@@ -1942,7 +1942,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Busca en una cuadrícula 5×5 de celdas (~12 km de radio). Devuelve perfiles públicos sin PII con banda de distancia redondeada, y zonas agregadas con conteo para el mapa. Rate limit propio.",
+        "description": "Busca en una cuadrícula 11×11 de celdas de ~2 km (~11 km de radio). Devuelve perfiles públicos sin PII con banda de distancia redondeada a 2 km, y zonas agregadas con conteo para el mapa. Rate limit propio.",
         "responses": {
           "200": {
             "description": "myZone, people[] y zones[]"
@@ -1952,6 +1952,52 @@
           },
           "429": {
             "description": "Rate limit"
+          }
+        }
+      }
+    },
+    "/api/nearby/poke": {
+      "post": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Mandar un toque 👋 (llega como notificación in-app)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Invitación ligera a interactuar. Anti-spam: máximo un toque por persona destinataria cada 12 horas.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Toque enviado"
+          },
+          "400": {
+            "description": "userId inválido o toque a ti mismo"
+          },
+          "404": {
+            "description": "Usuario no encontrado"
+          },
+          "429": {
+            "description": "Cooldown de 12 h activo"
           }
         }
       }

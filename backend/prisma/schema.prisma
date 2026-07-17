@@ -214,6 +214,7 @@ enum NotificationType {
   REPLY_POST
   REPLY_COMMENT
   NEW_SUBFORUM_POST
+  POKE
 }
 
 model Notification {

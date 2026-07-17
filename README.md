@@ -35,7 +35,8 @@
 | Editar/eliminar contenido propio (feed y foro, con borrado suave en hilos) | ✅ Funcionando |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto, validación, sin PII pública) | ✅ Funcionando |
 | Chat 1 a 1 en tiempo real (Socket.IO + REST, búsqueda de personas, historial paginado) | ✅ Funcionando |
-| "Cerca": mapa de comunidad por zonas de ~5 km (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
+| "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
+| Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | Panel administrativo / moderación (rol + reportes, integrado al frontend en `/admin`) | 📋 Planificado — antes del chat/mercado |
 | App móvil (Expo) | 🚧 Demo mínima, no conectada al flujo actual |
@@ -227,11 +228,12 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/api/nearby/location` | 🔒 | Mi estado (¿comparto zona? cuál) |
-| PUT | `/api/nearby/location` | 🔒 | Activar/actualizar mi zona (`cell`: geohash-5; rechaza coordenadas) |
+| PUT | `/api/nearby/location` | 🔒 | Activar/actualizar mi zona (`cell`: celda de cuadrícula ~2 km; rechaza coordenadas) |
+| POST | `/api/nearby/poke` | 🔒 | Mandar un toque 👋 (`userId`); llega como notificación, 1 por persona cada 12 h |
 | DELETE | `/api/nearby/location` | 🔒 | Dejar de compartir (borra la celda) |
 | GET | `/api/nearby` | 🔒 | Personas y zonas cercanas (requiere compartir: recíproco) |
 
-Diseño de privacidad: el navegador convierte el GPS a una **celda geohash de ~5 km antes de enviar nada** (el servidor nunca ve coordenadas; el endpoint las rechaza explícitamente). La cuadrícula es fija — todos los de una celda son indistinguibles, no hay nada que triangular. Solo ves a otros si compartes tu zona, la celda **caduca a los 7 días** y puede borrarse en un clic. El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, nunca pins individuales. La consulta busca en una cuadrícula 5×5 de celdas (~12 km de radio efectivo) y tiene rate limit propio anti-scraping.
+Diseño de privacidad: el navegador convierte el GPS a una **celda de cuadrícula fija de ~2 km (0.02°) antes de enviar nada** (el servidor nunca ve coordenadas; el endpoint las rechaza explícitamente). La cuadrícula es fija — todos los de una celda son indistinguibles, no hay nada que triangular. Solo ves a otros si compartes tu zona, la celda **caduca a los 7 días** y puede borrarse en un clic. El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, nunca pins individuales. La consulta busca en una cuadrícula 11×11 de celdas (~11 km de radio efectivo) y tiene rate limit propio anti-scraping. El **toque 👋** invita a interactuar sin abrir chat: llega como notificación in-app, con cooldown de 12 h por persona contra spam.
 
 ### Chat en tiempo real
 

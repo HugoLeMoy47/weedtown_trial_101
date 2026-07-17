@@ -2,20 +2,22 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container, Box, Paper, Typography, Button, Alert, Stack, List, ListItem,
-  ListItemAvatar, ListItemText, Avatar, Chip, CircularProgress, Divider
+  ListItemAvatar, ListItemText, Avatar, Chip, CircularProgress, Divider,
+  IconButton, Tooltip
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import LocationOffIcon from '@mui/icons-material/LocationOff';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import WavingHandIcon from '@mui/icons-material/WavingHand';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
-import { MapContainer, TileLayer, Circle, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, Tooltip as LeafletTooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
 import { getMyCell } from '../lib/geo';
 
-// Radio visual de una celda geohash-5 (~4.9 km de lado) en metros
-const ZONE_RADIUS_M = 2600;
+// Radio visual de una celda de la cuadrícula (~2.2 km de lado) en metros
+const ZONE_RADIUS_M = 1100;
 
 const Nearby = () => {
   const navigate = useNavigate();
@@ -23,6 +25,7 @@ const Nearby = () => {
   const [data, setData] = useState(null);       // { myZone, people, zones }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [pokes, setPokes] = useState({}); // id -> 'sent' | 'cooldown'
 
   const loadNearby = useCallback(async () => {
     try {
@@ -73,6 +76,19 @@ const Nearby = () => {
     }
   };
 
+  const sendPoke = async (person) => {
+    try {
+      await api.post('/nearby/poke', { userId: person.id });
+      setPokes(prev => ({ ...prev, [person.id]: 'sent' }));
+    } catch (e) {
+      if (e.response?.status === 429) {
+        setPokes(prev => ({ ...prev, [person.id]: 'cooldown' }));
+      } else {
+        setError(e.response?.data?.error || 'No se pudo mandar el toque.');
+      }
+    }
+  };
+
   const openChat = (person) => {
     navigate('/chat', { state: { withUser: { id: person.id, name: person.name, displayName: person.displayName, avatar: person.avatar, acct: person.acct } } });
   };
@@ -83,10 +99,16 @@ const Nearby = () => {
     <>
       <Navbar />
       <Container maxWidth="md" component="main" sx={{ py: 3 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          justifyContent="space-between"
+          spacing={1}
+          sx={{ mb: 2 }}
+        >
           <Typography variant="h5" component="h1">Cerca</Typography>
           {sharing && (
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Button size="small" startIcon={<MyLocationIcon />} onClick={shareZone} disabled={busy}>
                 Actualizar mi zona
               </Button>
@@ -112,7 +134,7 @@ const Nearby = () => {
               </Typography>
               <Stack spacing={1} sx={{ textAlign: 'left' }} component="ul">
                 <Typography component="li" variant="body2">
-                  🔒 Tu posición exacta <strong>nunca sale de tu navegador</strong>: antes de enviarse se convierte a una zona de ~5 km. El servidor solo conoce la zona.
+                  🔒 Tu posición exacta <strong>nunca sale de tu navegador</strong>: antes de enviarse se convierte a una zona de ~2 km. El servidor solo conoce la zona, nunca el punto.
                 </Typography>
                 <Typography component="li" variant="body2">
                   🤝 Es <strong>recíproco</strong>: solo ves a quienes comparten su zona, y solo te ven si tú compartes la tuya.
@@ -134,7 +156,7 @@ const Nearby = () => {
               <MapContainer
                 center={[data.myZone.lat, data.myZone.lon]}
                 zoom={11}
-                style={{ height: 380, width: '100%' }}
+                style={{ height: 'clamp(260px, 45vh, 420px)', width: '100%' }}
                 scrollWheelZoom
               >
                 <TileLayer
@@ -147,7 +169,7 @@ const Nearby = () => {
                   radius={ZONE_RADIUS_M}
                   pathOptions={{ color: '#33691e', fillColor: '#8bc34a', fillOpacity: 0.25 }}
                 >
-                  <Tooltip permanent direction="center">Tu zona</Tooltip>
+                  <LeafletTooltip permanent direction="center">Tu zona</LeafletTooltip>
                 </Circle>
                 {/* Zonas con gente (agregadas por celda, sin pins individuales) */}
                 {data.zones.filter(z => z.cell !== data.myZone.cell).map(z => (
@@ -157,7 +179,7 @@ const Nearby = () => {
                     radius={ZONE_RADIUS_M}
                     pathOptions={{ color: '#455a64', fillColor: '#546e7a', fillOpacity: 0.3 }}
                   >
-                    <Tooltip direction="center">🌿 {z.count} {z.count === 1 ? 'persona' : 'personas'}</Tooltip>
+                    <LeafletTooltip direction="center">🌿 {z.count} {z.count === 1 ? 'persona' : 'personas'}</LeafletTooltip>
                   </Circle>
                 ))}
               </MapContainer>
@@ -180,9 +202,24 @@ const Nearby = () => {
                       {i > 0 && <Divider component="li" />}
                       <ListItem
                         secondaryAction={
-                          <Button size="small" startIcon={<ChatBubbleOutlineIcon />} onClick={() => openChat(p)}>
-                            Mensaje
-                          </Button>
+                          <Stack direction="row" spacing={0.5}>
+                            <Tooltip title={pokes[p.id] === 'sent' ? 'Toque enviado' : pokes[p.id] === 'cooldown' ? 'Ya le mandaste un toque hace poco' : 'Mandar un toque 👋'}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color={pokes[p.id] === 'sent' ? 'primary' : 'default'}
+                                  onClick={() => sendPoke(p)}
+                                  disabled={Boolean(pokes[p.id])}
+                                  aria-label={`Mandar un toque a ${displayName(p)}`}
+                                >
+                                  <WavingHandIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Button size="small" startIcon={<ChatBubbleOutlineIcon />} onClick={() => openChat(p)}>
+                              Mensaje
+                            </Button>
+                          </Stack>
                         }
                       >
                         <ListItemAvatar>

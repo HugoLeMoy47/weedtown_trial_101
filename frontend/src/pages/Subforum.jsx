@@ -156,11 +156,13 @@ const Subforum = () => {
           </Box>
         )}
 
-        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2, flexWrap: 'wrap' }} useFlexGap>
           <Tabs
             value={sort}
             onChange={(_, v) => { setSort(v); setPage(1); }}
             aria-label="Orden de los posts"
+            variant="scrollable"
+            allowScrollButtonsMobile
           >
             {SORT_OPTIONS.map(o => <Tab key={o.value} value={o.value} label={o.label} />)}
           </Tabs>

@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SearchIcon from '@mui/icons-material/Search';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { io } from 'socket.io-client';
 import Navbar from '../components/Navbar';
 import api, { API_ORIGIN } from '../services/api';
@@ -145,9 +146,19 @@ const Chat = () => {
         <Typography variant="h5" component="h1" gutterBottom>Chat</Typography>
         {error && <Alert severity="error" role="alert" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-        <Paper sx={{ display: 'flex', height: '70vh', overflow: 'hidden' }}>
-          {/* Columna izquierda: buscador + conversaciones */}
-          <Box sx={{ width: 264, borderRight: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column' }} component="aside" aria-label="Conversaciones">
+        <Paper sx={{ display: 'flex', height: { xs: 'calc(100dvh - 170px)', sm: '70vh' }, overflow: 'hidden' }}>
+          {/* Columna izquierda: buscador + conversaciones (en móvil, solo cuando no hay hilo abierto) */}
+          <Box
+            sx={{
+              width: { xs: '100%', sm: 264 },
+              borderRight: { sm: 1 },
+              borderColor: { sm: 'divider' },
+              display: { xs: selected ? 'none' : 'flex', sm: 'flex' },
+              flexDirection: 'column'
+            }}
+            component="aside"
+            aria-label="Conversaciones"
+          >
             <Box sx={{ p: 1.5, pb: 1 }}>
               <TextField
                 fullWidth
@@ -207,11 +218,18 @@ const Chat = () => {
             </Box>
           </Box>
 
-          {/* Columna derecha: hilo */}
-          <Stack sx={{ flex: 1 }}>
+          {/* Columna derecha: hilo (en móvil, solo cuando hay conversación abierta) */}
+          <Stack sx={{ flex: 1, display: { xs: selected ? 'flex' : 'none', sm: 'flex' } }}>
             {selected ? (
               <>
-                <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+                <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <IconButton
+                    onClick={() => setSelected(null)}
+                    aria-label="Volver a la lista de conversaciones"
+                    sx={{ display: { xs: 'inline-flex', sm: 'none' }, ml: -1 }}
+                  >
+                    <ArrowBackIcon />
+                  </IconButton>
                   <Typography variant="subtitle1" fontWeight={700}>{title(selected)}</Typography>
                 </Box>
                 <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }} aria-live="polite">
