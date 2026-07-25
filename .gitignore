@@ -26,3 +26,6 @@ yarn-error.log*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Instrucciones personales de Claude (no versionar)
+CLAUDE.md
