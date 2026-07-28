@@ -10,6 +10,7 @@ import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import ImagePicker from './ImagePicker';
 import OwnerActions from './OwnerActions';
+import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 
 const MAX_DEPTH = 2;
@@ -62,7 +63,7 @@ const Composer = ({ onSubmit, placeholder, autoFocus = false, onCancel }) => {
   );
 };
 
-const CommentNode = ({ comment, childrenNodes, onReply, onEdited, onDeleted, renderChildren }) => {
+const CommentNode = ({ comment, childrenNodes, onReply, onEdited, onDeleted, onBlocked, renderChildren }) => {
   const { user } = useAuth();
   const [reactions, setReactions] = useState(comment.reactions || EMPTY_COUNTS);
   const [myReaction, setMyReaction] = useState(comment.myReaction || null);
@@ -129,6 +130,9 @@ const CommentNode = ({ comment, childrenNodes, onReply, onEdited, onDeleted, ren
                   onDeleted(comment.id, res.data.soft);
                 }}
               />
+            )}
+            {!isMine && !comment.deleted && user && comment.author?.id && (
+              <ContentActions user={comment.author} report={{ targetType: 'FORUM_COMMENT', targetId: comment.id }} onBlocked={onBlocked} />
             )}
           </Stack>
 
@@ -242,6 +246,7 @@ const ForumComments = ({ postId, onCountChange }) => {
       onReply={(parentId, content, img) => submit(parentId, content, img)}
       onEdited={handleEdited}
       onDeleted={handleDeleted}
+      onBlocked={load}
       renderChildren={renderLevel}
     />
   ));

@@ -13,6 +13,7 @@ import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import { MapContainer, TileLayer, Circle, Tooltip as LeafletTooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
+import ContentActions from '../components/ContentActions';
 import api from '../services/api';
 import { getMyCell } from '../lib/geo';
 
@@ -219,6 +220,7 @@ const Nearby = () => {
                             <Button size="small" startIcon={<ChatBubbleOutlineIcon />} onClick={() => openChat(p)}>
                               Mensaje
                             </Button>
+                            <ContentActions user={p} report={{ targetType: 'USER', targetId: p.id }} onBlocked={loadNearby} />
                           </Stack>
                         }
                       >

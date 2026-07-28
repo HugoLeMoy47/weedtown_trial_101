@@ -68,14 +68,23 @@ app.use('/api/comments', require('./src/routes/commentRoutes'));
 app.use('/api/media', require('./src/routes/mediaRoutes'));
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 app.use('/api/nearby', require('./src/routes/nearbyRoutes'));
+app.use('/api/blocks', require('./src/routes/blockRoutes'));
+app.use('/api/reports', require('./src/routes/reportRoutes'));
 
-// Imágenes subidas (posts y comentarios)
-app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
-  immutable: true,
-  maxAge: '30d'
-}));
+// Imágenes subidas (posts y comentarios). Solo con el driver de disco local:
+// con un almacenamiento externo las sirve ese servicio, no este proceso.
+const storage = require('./src/lib/storage');
+if (storage.esLocal) {
+  app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
+    immutable: true,
+    maxAge: '30d'
+  }));
+}
 app.use('/api/forum', require('./src/routes/forumRoutes'));
 app.use('/api/chat', require('./src/routes/chatRoutes'));
+// market y admin traen su propio portón dentro del router (requireAuth y
+// requireAuth + requireRole respectivamente): la protección no depende de este
+// punto de montaje.
 app.use('/api/market', require('./src/routes/marketRoutes'));
 
 app.use('/api/admin', require('./src/routes/adminRoutes'));

@@ -190,7 +190,8 @@ const Subforum = () => {
           </Typography>
         ) : (
           <Stack spacing={2}>
-            {posts.map(post => <ForumPostCard key={post.id} post={post} />)}
+            {/* Bloquear oculta todos los posts de esa persona: se recarga la lista */}
+            {posts.map(post => <ForumPostCard key={post.id} post={post} onBlocked={loadPosts} />)}
             {totalPages > 1 && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
                 <Pagination

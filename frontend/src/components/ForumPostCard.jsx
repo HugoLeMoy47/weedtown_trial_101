@@ -9,10 +9,11 @@ import WhatshotIcon from '@mui/icons-material/Whatshot';
 import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import OwnerActions from './OwnerActions';
+import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 import { REACTION_SCORE } from '../lib/forum';
 
-const ForumPostCard = ({ post, showSubforum = false, detail = false, onUpdated, onDeleted }) => {
+const ForumPostCard = ({ post, showSubforum = false, detail = false, onUpdated, onDeleted, onBlocked }) => {
   const { user } = useAuth();
   const isMine = user && post.author?.id === user.id;
   const [editing, setEditing] = useState(false);
@@ -104,6 +105,11 @@ const ForumPostCard = ({ post, showSubforum = false, detail = false, onUpdated, 
                   onDeleted?.();
                 }}
               />
+            </Box>
+          )}
+          {!isMine && user && post.author?.id && (
+            <Box sx={{ ml: 'auto' }}>
+              <ContentActions user={post.author} report={{ targetType: 'FORUM_POST', targetId: post.id }} onBlocked={onBlocked} />
             </Box>
           )}
         </Stack>

@@ -8,9 +8,10 @@ import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import CommentSection from './CommentSection';
 import OwnerActions from './OwnerActions';
+import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 
-const PostCard = ({ post, onUpdated, onDeleted }) => {
+const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
   const { user } = useAuth();
   const author = typeof post.author === 'string' ? { name: post.author } : (post.author || {});
   const isMine = user && author.id === user.id;
@@ -85,7 +86,9 @@ const PostCard = ({ post, onUpdated, onDeleted }) => {
               onDeleted?.(post.id);
             }}
           />
-        ) : undefined}
+        ) : (user && author.id ? (
+          <ContentActions user={author} report={{ targetType: 'POST', targetId: post.id }} onBlocked={onBlocked} />
+        ) : undefined)}
       />
       {post.image && (
         <CardMedia component="img" image={post.image} alt="" sx={{ maxHeight: 420, objectFit: 'cover' }} />

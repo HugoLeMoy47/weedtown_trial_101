@@ -5,8 +5,9 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth } = require('../middlewares/requireAuth');
+const { requireAuth, requireNotSuspended } = require('../middlewares/requireAuth');
 const { emitToUser } = require('../lib/chatSocket');
+const { blockedWith, isBlockedBetween } = require('../lib/blocks');
 
 const MAX_MESSAGE_LENGTH = 1000;
 const MESSAGES_PAGE_SIZE = 50;
@@ -27,11 +28,21 @@ function serializeChat(chat, currentUserId) {
   };
 }
 
-// Verifica que la conversación exista y que el usuario sea participante
+// Verifica que la conversación exista, que el usuario sea participante y que no
+// haya un bloqueo de por medio. Un chat con alguien bloqueado se comporta como
+// inexistente (404) para leer y para escribir — es el único punto por el que
+// pasan ambas operaciones, así que el filtro vive aquí.
 async function findChatForUser(chatId, userId) {
   if (!chatId) return null;
+  const hidden = await blockedWith(userId);
   return prisma.chat.findFirst({
-    where: { id: chatId, users: { some: { id: userId } } },
+    where: {
+      id: chatId,
+      AND: [
+        { users: { some: { id: userId } } },
+        ...(hidden.length ? [{ users: { none: { id: { in: hidden } } } }] : [])
+      ]
+    },
     include: { users: { select: participantSelect } }
   });
 }
@@ -41,9 +52,10 @@ router.get('/users', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
   try {
+    const hidden = await blockedWith(req.user.id);
     const users = await prisma.user.findMany({
       where: {
-        id: { not: req.user.id },
+        id: { notIn: [req.user.id, ...hidden] },
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { displayName: { contains: q, mode: 'insensitive' } },
@@ -63,8 +75,14 @@ router.get('/users', requireAuth, async (req, res) => {
 // GET /api/chat/conversations — mis conversaciones, la de actividad más reciente primero
 router.get('/conversations', requireAuth, async (req, res) => {
   try {
+    const hidden = await blockedWith(req.user.id);
     const chats = await prisma.chat.findMany({
-      where: { users: { some: { id: req.user.id } } },
+      where: {
+        AND: [
+          { users: { some: { id: req.user.id } } },
+          ...(hidden.length ? [{ users: { none: { id: { in: hidden } } } }] : [])
+        ]
+      },
       include: {
         users: { select: participantSelect },
         messages: { orderBy: { createdAt: 'desc' }, take: 1 }
@@ -85,13 +103,18 @@ router.get('/conversations', requireAuth, async (req, res) => {
 });
 
 // POST /api/chat/conversations { userId } — abrir (o recuperar) la conversación 1 a 1 con alguien
-router.post('/conversations', requireAuth, async (req, res) => {
+router.post('/conversations', requireAuth, requireNotSuspended, async (req, res) => {
   const otherId = Number(req.body.userId);
   if (!otherId) return res.status(400).json({ error: 'userId requerido' });
   if (otherId === req.user.id) return res.status(400).json({ error: 'No puedes abrir un chat contigo' });
   try {
     const other = await prisma.user.findUnique({ where: { id: otherId }, select: { id: true } });
     if (!other) return res.status(404).json({ error: 'Usuario no encontrado' });
+    // Con un bloqueo de por medio la persona no existe para efectos del chat:
+    // misma respuesta que un id inexistente, para no delatar el bloqueo.
+    if (await isBlockedBetween(req.user.id, otherId)) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
 
     let chat = await prisma.chat.findFirst({
       where: {
@@ -144,7 +167,7 @@ router.get('/conversations/:id/messages', requireAuth, async (req, res) => {
 });
 
 // POST /api/chat/conversations/:id/messages { content } — enviar; entrega en vivo por socket
-router.post('/conversations/:id/messages', requireAuth, async (req, res) => {
+router.post('/conversations/:id/messages', requireAuth, requireNotSuspended, async (req, res) => {
   const chatId = Number(req.params.id);
   const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
   if (!content) return res.status(400).json({ error: 'El mensaje no puede estar vacío' });

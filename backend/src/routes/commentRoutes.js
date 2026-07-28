@@ -3,8 +3,10 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth } = require('../middlewares/requireAuth');
+const { requireAuth, requireNotSuspended } = require('../middlewares/requireAuth');
 const { REACTION_TYPES, toggleReaction, reactionCounts } = require('../lib/reactions');
+const { isBlockedBetween } = require('../lib/blocks');
+const storage = require('../lib/storage');
 
 // Reaccionar a un comentario: misma reacción = quitar, distinta = reemplazar
 router.post('/:id/reaction', requireAuth, async (req, res) => {
@@ -15,8 +17,11 @@ router.post('/:id/reaction', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const comment = await prisma.comment.findUnique({ where: { id: commentId }, select: { id: true } });
+    const comment = await prisma.comment.findUnique({ where: { id: commentId }, select: { id: true, authorId: true } });
     if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+    if (await isBlockedBetween(req.user.id, comment.authorId)) {
+      return res.status(404).json({ error: 'Comentario no encontrado' });
+    }
     const { myReaction } = await toggleReaction(req.user.id, { commentId }, type);
     const reactions = await reactionCounts({ commentId });
     res.json({ commentId, myReaction, reactions });
@@ -41,7 +46,7 @@ router.delete('/:id/reaction', requireAuth, async (req, res) => {
 });
 
 // Editar comentario propio
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', requireAuth, requireNotSuspended, async (req, res) => {
   const id = Number(req.params.id);
   const content = (req.body.content || '').trim();
   if (!id) return res.status(400).json({ error: 'ID de comentario inválido' });
@@ -78,13 +83,15 @@ router.delete('/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID de comentario inválido' });
   try {
-    const comment = await prisma.comment.findUnique({ where: { id }, select: { authorId: true } });
+    const comment = await prisma.comment.findUnique({ where: { id }, select: { authorId: true, image: true } });
     if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
     if (comment.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
     await prisma.$transaction([
       prisma.reaction.deleteMany({ where: { commentId: id } }),
+      ...(comment.image ? [prisma.media.deleteMany({ where: { url: comment.image } })] : []),
       prisma.comment.delete({ where: { id } })
     ]);
+    await storage.removeByUrl(comment.image);
     res.json({ deleted: true, id });
   } catch (e) {
     console.error('Error al eliminar comentario:', e);

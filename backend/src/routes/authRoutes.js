@@ -149,11 +149,20 @@ router.get('/me', requireAuth, async (req, res) => {
       select: {
         id: true, mastodonInstance: true, acct: true, displayName: true, email: true,
         name: true, avatar: true, phone: true, fullName: true, bio: true, age: true,
-        birthdate: true, gender: true, createdAt: true, updatedAt: true
+        birthdate: true, gender: true, createdAt: true, updatedAt: true,
+        // El rol viaja en la sesión para que el frontend sepa si pintar /admin.
+        // No es la autorización: esa se verifica en el servidor en cada petición.
+        role: true, suspendedUntil: true, suspendedReason: true
       }
     });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(user);
+    // La suspensión caduca sola: no se expone si ya venció
+    const vigente = user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
+    res.json({
+      ...user,
+      suspendedUntil: vigente ? user.suspendedUntil : null,
+      suspendedReason: vigente ? user.suspendedReason : null
+    });
   } catch (e) {
     console.error('Error en /auth/me:', e);
     res.status(500).json({ error: 'Error al obtener la sesión' });

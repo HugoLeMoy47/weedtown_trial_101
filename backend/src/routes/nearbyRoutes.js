@@ -7,8 +7,9 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth } = require('../middlewares/requireAuth');
+const { requireAuth, requireNotSuspended } = require('../middlewares/requireAuth');
 const { isValidCell, centroid, neighborsGrid, cellDistanceKm } = require('../lib/geogrid');
+const { blockedWith, isBlockedBetween } = require('../lib/blocks');
 
 const CELL_TTL_DAYS = 7;
 const GRID_RINGS = 5; // 11×11 celdas de ~2 km ≈ radio efectivo ~11 km
@@ -105,9 +106,11 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
     }
 
     const cells = neighborsGrid(me.nearbyCell, GRID_RINGS);
+    // Quien está bloqueado (en cualquier dirección) desaparece del mapa para ambos
+    const hidden = await blockedWith(req.user.id);
     const users = await prisma.user.findMany({
       where: {
-        id: { not: req.user.id },
+        id: { notIn: [req.user.id, ...hidden] },
         nearbyCell: { in: cells },
         nearbyUpdatedAt: { gte: cutoffDate() }
       },
@@ -145,15 +148,43 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
 });
 
 // POST /api/nearby/poke { userId } — mandar un toque 👋 (llega como notificación)
-router.post('/poke', requireAuth, async (req, res) => {
+//
+// El toque es parte de "Cerca" y hereda sus dos reglas (HU-SEG-004): solo lo manda
+// quien comparte zona, y solo llega a quien está dentro de su cuadrícula. Sin estas
+// comprobaciones el endpoint era un "ping a cualquier userId": como los ids son
+// enteros consecutivos, bastaba recorrerlos para notificar a toda la base.
+router.post('/poke', requireAuth, requireNotSuspended, nearbyLimiter, async (req, res) => {
   const targetId = Number(req.body.userId);
   if (!targetId) return res.status(400).json({ error: 'userId requerido' });
   if (targetId === req.user.id) return res.status(400).json({ error: 'No puedes mandarte un toque a ti' });
   try {
-    const target = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true } });
-    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+    // 1. Reciprocidad: sin zona activa propia no se manda nada
+    const me = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { nearbyCell: true, nearbyUpdatedAt: true }
+    });
+    if (!hasActiveCell(me)) {
+      return res.status(403).json({ error: 'Comparte tu zona para mandar un toque (es recíproco)' });
+    }
 
-    // Anti-spam: un toque por persona cada POKE_COOLDOWN_HOURS
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, nearbyCell: true, nearbyUpdatedAt: true }
+    });
+    // 2. Cercanía: el destino debe estar compartiendo y caer dentro de mi cuadrícula.
+    // Un destino inexistente, lejano o que no comparte responden igual (404): el
+    // resultado no debe servir para deducir dónde está ni si existe.
+    const reachable = target
+      && hasActiveCell(target)
+      && neighborsGrid(me.nearbyCell, GRID_RINGS).includes(target.nearbyCell);
+    if (!reachable) return res.status(404).json({ error: 'Esa persona no está cerca' });
+
+    // 3. Bloqueo en cualquier dirección: mismo 404, sin revelar el motivo
+    if (await isBlockedBetween(req.user.id, targetId)) {
+      return res.status(404).json({ error: 'Esa persona no está cerca' });
+    }
+
+    // 4. Anti-spam: un toque por persona cada POKE_COOLDOWN_HOURS
     const since = new Date(Date.now() - POKE_COOLDOWN_HOURS * 60 * 60 * 1000);
     const recent = await prisma.notification.findFirst({
       where: { type: 'POKE', actorId: req.user.id, recipientId: targetId, createdAt: { gte: since } },

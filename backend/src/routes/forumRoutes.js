@@ -1,10 +1,14 @@
 // Foros estilo Reddit: subforos, posts con puntaje y órdenes hot/new/top
 const express = require('express');
+const { Prisma } = require('@prisma/client');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
+const { requireAuth, optionalAuth, requireNotSuspended } = require('../middlewares/requireAuth');
 const { REACTION_TYPES, summarizeReactions, toggleReaction, removeReaction, reactionCounts } = require('../lib/reactions');
+const { blockedWith, isBlockedBetween, excludeBlocked } = require('../lib/blocks');
+const storage = require('../lib/storage');
+const { soloVisible } = require('../lib/moderation');
 
 const MAX_SUBFORUMS_PER_USER = 3;
 const PAGE_SIZE = 20;
@@ -49,6 +53,9 @@ function serializeForumPost(post, currentUserId) {
 router.get('/subforums', optionalAuth, async (req, res) => {
   try {
     const subforums = await prisma.subForum.findMany({
+      // Los archivados salen del directorio, pero su contenido sigue siendo
+      // consultable por enlace directo: archivar no borra la conversación.
+      where: { archivedAt: null },
       orderBy: [{ posts: { _count: 'desc' } }, { createdAt: 'asc' }],
       select: {
         ...subforumSelect,
@@ -68,7 +75,7 @@ router.get('/subforums', optionalAuth, async (req, res) => {
 });
 
 // POST /api/forum/subforums — crear (límite por usuario mientras no hay moderación)
-router.post('/subforums', requireAuth, async (req, res) => {
+router.post('/subforums', requireAuth, requireNotSuspended, async (req, res) => {
   const name = (req.body.name || '').trim();
   const description = (req.body.description || '').trim() || null;
   if (name.length < 3 || name.length > 40) {
@@ -109,6 +116,7 @@ router.get('/subforums/:slug', optionalAuth, async (req, res) => {
       where: { slug: req.params.slug },
       select: {
         ...subforumSelect,
+        archivedAt: true,
         followers: req.user ? { where: { userId: req.user.id }, select: { userId: true } } : false
       }
     });
@@ -167,13 +175,19 @@ router.get('/subforums/:slug/posts', optionalAuth, async (req, res) => {
     const subforum = await prisma.subForum.findUnique({ where: { slug: req.params.slug }, select: { id: true } });
     if (!subforum) return res.status(404).json({ error: 'Subforo no encontrado' });
 
-    let where = { subforumId: subforum.id };
+    const hidden = await blockedWith(req.user?.id);
+    let where = { subforumId: subforum.id, ...soloVisible, ...excludeBlocked(hidden) };
     let posts;
     if (sort === 'hot') {
-      // Relevante: puntaje con decaimiento temporal (gravedad estilo Reddit/HN)
+      // Relevante: puntaje con decaimiento temporal (gravedad estilo Reddit/HN).
+      // El filtro de bloqueados se interpola con Prisma.sql (parametrizado, no
+      // concatenación de strings) y se omite entero si no hay ninguno.
+      const notBlocked = hidden.length
+        ? Prisma.sql`AND "authorId" NOT IN (${Prisma.join(hidden)})`
+        : Prisma.empty;
       const ids = await prisma.$queryRaw`
         SELECT id FROM "ForumPost"
-        WHERE "subforumId" = ${subforum.id}
+        WHERE "subforumId" = ${subforum.id} AND "hiddenAt" IS NULL ${notBlocked}
         ORDER BY score::float / POWER(EXTRACT(EPOCH FROM (NOW() - "createdAt")) / 3600 + 2, 1.5) DESC, "createdAt" DESC
         LIMIT ${PAGE_SIZE} OFFSET ${skip}`;
       const found = await prisma.forumPost.findMany({
@@ -210,7 +224,7 @@ router.get('/subforums/:slug/posts', optionalAuth, async (req, res) => {
 });
 
 // POST /api/forum/subforums/:slug/posts — crear post (imagen opcional vía /api/media/upload)
-router.post('/subforums/:slug/posts', requireAuth, async (req, res) => {
+router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (req, res) => {
   const title = (req.body.title || '').trim();
   const content = (req.body.content || '').trim();
   const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
@@ -225,16 +239,24 @@ router.post('/subforums/:slug/posts', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
   }
   try {
-    const subforum = await prisma.subForum.findUnique({ where: { slug: req.params.slug }, select: { id: true } });
+    const subforum = await prisma.subForum.findUnique({
+      where: { slug: req.params.slug },
+      select: { id: true, archivedAt: true }
+    });
     if (!subforum) return res.status(404).json({ error: 'Subforo no encontrado' });
+    if (subforum.archivedAt) {
+      return res.status(403).json({ error: 'Este subforo está archivado: puedes leerlo, pero ya no admite publicaciones nuevas' });
+    }
     const post = await prisma.forumPost.create({
       data: { title, content, image, authorId: req.user.id, subforumId: subforum.id },
       include: forumPostInclude
     });
 
-    // Notificar a quienes siguen el subforo (excepto el autor); no bloquea la respuesta
+    // Notificar a quienes siguen el subforo (excepto el autor y quienes tienen un
+    // bloqueo con él); no bloquea la respuesta
+    const hidden = await blockedWith(req.user.id);
     prisma.subForumFollow.findMany({
-      where: { subforumId: subforum.id, userId: { not: req.user.id } },
+      where: { subforumId: subforum.id, userId: { notIn: [req.user.id, ...hidden] } },
       select: { userId: true }
     }).then(followers => followers.length && prisma.notification.createMany({
       data: followers.map(f => ({
@@ -259,7 +281,10 @@ router.get('/posts/:id', optionalAuth, async (req, res) => {
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   try {
     const post = await prisma.forumPost.findUnique({ where: { id }, include: forumPostInclude });
-    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    if (!post || post.hiddenAt) return res.status(404).json({ error: 'Post no encontrado' });
+    if (await isBlockedBetween(req.user?.id, post.authorId)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
     res.json(serializeForumPost(post, req.user?.id));
   } catch (e) {
     console.error('Error al obtener post del foro:', e);
@@ -276,8 +301,12 @@ router.post('/posts/:id/reaction', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const post = await prisma.forumPost.findUnique({ where: { id: forumPostId }, select: { id: true } });
+    const post = await prisma.forumPost.findUnique({ where: { id: forumPostId }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    // La reacción puntúa (±1): quien está bloqueado no vota el contenido del otro
+    if (await isBlockedBetween(req.user.id, post.authorId)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
     const { myReaction } = await toggleReaction(req.user.id, { forumPostId }, type);
     const [reactions, fresh] = await Promise.all([
       reactionCounts({ forumPostId }),
@@ -333,7 +362,7 @@ router.get('/posts/:id/comments', optionalAuth, async (req, res) => {
   if (!postId) return res.status(400).json({ error: 'ID inválido' });
   try {
     const comments = await prisma.forumComment.findMany({
-      where: { postId },
+      where: { postId, ...soloVisible, ...excludeBlocked(await blockedWith(req.user?.id)) },
       orderBy: { createdAt: 'asc' },
       include: forumCommentInclude
     });
@@ -345,7 +374,7 @@ router.get('/posts/:id/comments', optionalAuth, async (req, res) => {
 });
 
 // POST /api/forum/posts/:id/comments — comentar o responder (parentId opcional)
-router.post('/posts/:id/comments', requireAuth, async (req, res) => {
+router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req, res) => {
   const postId = Number(req.params.id);
   const content = (req.body.content || '').trim();
   const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
@@ -361,6 +390,10 @@ router.post('/posts/:id/comments', requireAuth, async (req, res) => {
   try {
     const post = await prisma.forumPost.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    // Comentar es contactar: con un bloqueo de por medio el post no existe
+    if (await isBlockedBetween(req.user.id, post.authorId)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
 
     let depth = 0;
     let parentAuthorId = null;
@@ -370,6 +403,10 @@ router.post('/posts/:id/comments', requireAuth, async (req, res) => {
         select: { id: true, postId: true, depth: true, authorId: true, deletedAt: true }
       });
       if (!parent || parent.postId !== postId) {
+        return res.status(400).json({ error: 'Comentario padre inválido' });
+      }
+      // Responder a alguien bloqueado tampoco: el comentario padre no existe
+      if (await isBlockedBetween(req.user.id, parent.authorId)) {
         return res.status(400).json({ error: 'Comentario padre inválido' });
       }
       // Más allá del nivel máximo se aplana: sigue colgando del padre pero sin más sangría
@@ -407,8 +444,11 @@ router.post('/comments/:id/reaction', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const comment = await prisma.forumComment.findUnique({ where: { id: forumCommentId }, select: { id: true, deletedAt: true } });
+    const comment = await prisma.forumComment.findUnique({ where: { id: forumCommentId }, select: { id: true, deletedAt: true, authorId: true } });
     if (!comment || comment.deletedAt) return res.status(404).json({ error: 'Comentario no encontrado' });
+    if (await isBlockedBetween(req.user.id, comment.authorId)) {
+      return res.status(404).json({ error: 'Comentario no encontrado' });
+    }
     const { myReaction } = await toggleReaction(req.user.id, { forumCommentId }, type);
     const [reactions, fresh] = await Promise.all([
       reactionCounts({ forumCommentId }),
@@ -424,7 +464,7 @@ router.post('/comments/:id/reaction', requireAuth, async (req, res) => {
 // ---------- Editar / eliminar contenido propio ----------
 
 // PUT /api/forum/posts/:id — editar post propio
-router.put('/posts/:id', requireAuth, async (req, res) => {
+router.put('/posts/:id', requireAuth, requireNotSuspended, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   const title = req.body.title !== undefined ? (req.body.title || '').trim() : undefined;
@@ -459,15 +499,26 @@ router.delete('/posts/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   try {
-    const post = await prisma.forumPost.findUnique({ where: { id }, select: { authorId: true } });
+    const post = await prisma.forumPost.findUnique({ where: { id }, select: { authorId: true, image: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     if (post.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
+
+    // Juntar las imágenes del post y de todo su hilo antes de borrar las filas
+    const comentarios = await prisma.forumComment.findMany({
+      where: { postId: id },
+      select: { image: true }
+    });
+    const imagenes = [post.image, ...comentarios.map(c => c.image)].filter(Boolean);
+
     await prisma.$transaction([
       prisma.reaction.deleteMany({ where: { OR: [{ forumPostId: id }, { forumComment: { postId: id } }] } }),
       prisma.notification.deleteMany({ where: { OR: [{ forumPostId: id }, { forumComment: { postId: id } }] } }),
       prisma.forumComment.deleteMany({ where: { postId: id } }),
+      prisma.media.deleteMany({ where: { url: { in: imagenes } } }),
       prisma.forumPost.delete({ where: { id } })
     ]);
+
+    await storage.removeMany(imagenes);
     res.json({ deleted: true, id });
   } catch (e) {
     console.error('Error al eliminar post del foro:', e);
@@ -476,7 +527,7 @@ router.delete('/posts/:id', requireAuth, async (req, res) => {
 });
 
 // PUT /api/forum/comments/:id — editar comentario propio
-router.put('/comments/:id', requireAuth, async (req, res) => {
+router.put('/comments/:id', requireAuth, requireNotSuspended, async (req, res) => {
   const id = Number(req.params.id);
   const content = (req.body.content || '').trim();
   if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -504,23 +555,33 @@ router.delete('/comments/:id', requireAuth, async (req, res) => {
   try {
     const comment = await prisma.forumComment.findUnique({
       where: { id },
-      select: { authorId: true, deletedAt: true, _count: { select: { replies: true } } }
+      select: { authorId: true, deletedAt: true, image: true, _count: { select: { replies: true } } }
     });
     if (!comment || comment.deletedAt) return res.status(404).json({ error: 'Comentario no encontrado' });
     if (comment.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
 
+    const borrarImagen = comment.image
+      ? [prisma.media.deleteMany({ where: { url: comment.image } })]
+      : [];
+
     if (comment._count.replies > 0) {
+      // Borrado suave: la fila sobrevive para no romper el hilo, pero el archivo
+      // no — el comentario ya no lo muestra, así que dejarlo sería un huérfano.
       await prisma.$transaction([
         prisma.reaction.deleteMany({ where: { forumCommentId: id } }),
+        ...borrarImagen,
         prisma.forumComment.update({ where: { id }, data: { deletedAt: new Date(), content: '', image: null, score: 0 } })
       ]);
+      await storage.removeByUrl(comment.image);
       res.json({ deleted: true, soft: true, id });
     } else {
       await prisma.$transaction([
         prisma.reaction.deleteMany({ where: { forumCommentId: id } }),
         prisma.notification.deleteMany({ where: { forumCommentId: id } }),
+        ...borrarImagen,
         prisma.forumComment.delete({ where: { id } })
       ]);
+      await storage.removeByUrl(comment.image);
       res.json({ deleted: true, soft: false, id });
     }
   } catch (e) {

@@ -6,7 +6,7 @@
 
 ## 🌱 Visión y principios
 
-- **Seguridad primero**: la privacidad no es una feature, es la base. La identidad es **federada vía Mastodon**: WeedTown no crea contraseñas, no exige email y permite participar con el seudónimo del fediverso. Los datos personales del perfil son opcionales.
+- **Seguridad primero**: la privacidad no es una feature, es la base. La identidad es **federada vía Mastodon**: WeedTown no crea contraseñas, no exige email y permite participar con el seudónimo del fediverso. Los datos personales del perfil son opcionales. Y la protección no es solo frente al servidor: cualquiera puede **bloquear** a quien le incomode, con efecto inmediato en todas las superficies de contacto.
 - **Respeto y comunidad**: espacio libre de estigma, con moderación orientada a proteger a las personas usuarias. La cultura cannábica mexicana es el centro: educación, reducción de riesgos, arte y cultura.
 - **Legalidad**: el contenido y el futuro mercado operan dentro del marco legal mexicano. El mercado está pensado para productos y servicios lícitos de la cultura cannábica (parafernalia, merch, arte, cursos, asesorías) — **no** para la compraventa de sustancias.
 - **Minimalismo funcional**: interfaz Material Design (claro/oscuro), accesible y sin fricción.
@@ -36,35 +36,42 @@
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto, validación, sin PII pública) | ✅ Funcionando |
 | Chat 1 a 1 en tiempo real (Socket.IO + REST, búsqueda de personas, historial paginado) | ✅ Funcionando |
 | "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
+| Bloquear personas (efecto mutuo en feed, foros, chat y Cerca; silencioso y reversible) | ✅ Funcionando |
+| Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
+| Almacenamiento de imágenes intercambiable (disco local en dev, Supabase Storage en prod) con borrado real al eliminar contenido | ✅ Funcionando |
 | Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
+| Reportar contenido, cuentas y subforos (motivos tipificados, sin revelar quién reporta) | ✅ Funcionando |
+| Panel de moderación en `/admin`: cola de revisión, ocultar contenido, suspender cuentas, gestionar subforos y bitácora | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
-| Panel administrativo / moderación (rol + reportes, integrado al frontend en `/admin`) | 📋 Planificado — antes del chat/mercado |
-| App móvil (Expo) | 🚧 Demo mínima, no conectada al flujo actual |
+| App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
 ---
 
 ## 🧭 Arquitectura
 
-Monorepo con cuatro módulos:
+Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: vive en `/admin` del propio frontend, para que la comunidad y quien modera usen la misma URL y la misma sesión.
 
 ```
 /weedtown
+├── .github/workflows/  CI: pruebas del backend (Postgres efímero) y build del frontend
 ├── backend/            API REST (Express + Prisma)
 │   ├── app.js          Entrada: middlewares, rutas, Swagger UI, /health
 │   ├── prisma/         schema.prisma + migraciones
-│   └── src/
-│       ├── lib/        Cliente Prisma (singleton)
-│       ├── middlewares/  errorHandler, requireAuth (JWT)
-│       └── routes/     auth, posts, comments, media, forum, chat, notifications, market*, admin*  (* = stub)
+│   ├── scripts/        rol.js — asigna el primer MOD/ADMIN (`npm run rol`)
+│   ├── src/
+│   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, moderación, socket, storage
+│   │   ├── middlewares/  errorHandler, requireAuth (JWT), requireRole, requireNotSuspended
+│   │   └── routes/       auth, posts, comments, media, forum, chat, notifications,
+│   │                     nearby, blocks, reports, admin (moderación), market* (* = stub)
+│   └── tests/          Pruebas de integración (`npm test`) contra una base aparte
 ├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
 │   └── src/
-│       ├── components/ Navbar, PostCard, PostModal, RequireAuth, ...
+│       ├── components/ Navbar, PostCard, ContentActions, RequireAuth, RequireRole, ...
 │       ├── hooks/      useAuth (AuthProvider + sesión en localStorage)
-│       ├── pages/      Login, AuthCallback, Feed, Forum, Chat, Profile
+│       ├── pages/      Login, AuthCallback, Feed, Forum, Chat, Nearby, Profile, Admin
 │       ├── services/   api.js (axios con Authorization automático)
 │       └── theme.js    Tema Material claro/oscuro (sistema + toggle persistido)
-├── mobile/             App móvil (Expo / React Native) — demo
-└── admin-panel/        Panel de moderación — pendiente
+└── mobile/             App móvil (Expo) — CONGELADA, ver mobile/README.md
 ```
 
 ### Autenticación federada (Mastodon OAuth 2.0)
@@ -104,6 +111,52 @@ Puntos clave del diseño:
 - **Límites de contenido**: post del feed ≤ 2000 caracteres, comentario ≤ 1000; post de foro ≤ 10000, comentario de foro ≤ 2000; máximo 10 hashtags de ≤ 30 caracteres; bio ≤ 500. El campo `image` debe ser URL http(s).
 - **Privacidad**: el perfil público (`GET /api/profile/:id`) no expone email, teléfono, nombre real, edad, fecha de nacimiento ni género — esos datos solo los ve su dueño en `/api/profile/me`.
 - **Errores sanitizados**: el detalle (stack, Prisma) solo se registra en el servidor; el cliente recibe mensajes genéricos salvo en errores de validación.
+- **Rol de cuenta**: `User.role` (`USER` por defecto, `MOD`, `ADMIN`). El middleware `requireRole` lee el rol **de la base en cada petición**, no del JWT, para que revocarlo surta efecto de inmediato en vez de esperar a que caduque el token (7 días). Todo `/api/admin` exige sesión + `MOD`/`ADMIN`; `/api/market` exige sesión mientras sea stub. El portón vive **dentro de cada router**, no en el punto de montaje, para que la protección viaje con el código.
+
+### Bloquear personas
+
+La privacidad frente al servidor (celdas de 2 km, PII fuera de los perfiles públicos, EXIF removido en el cliente) no sirve de nada si no hay defensa frente a **otra persona usuaria**. El bloqueo es esa defensa.
+
+- **Lo crea y lo deshace solo quien bloquea**, pero su **efecto es mutuo**: mientras exista, ninguna de las dos partes ve ni puede contactar a la otra. Si el efecto fuera de un solo lado, quien hostiga seguiría leyendo y respondiendo a quien lo bloqueó.
+- **Es silencioso**: a la persona bloqueada nunca se le informa. Las rutas responden **404** ("no encontrado") en lugar de 403, para no confirmar ni el bloqueo ni la existencia de la cuenta.
+- **Cobertura**: feed y búsqueda, comentarios, posts y comentarios de foro (incluido el orden *Relevante*), reacciones —que en el foro puntúan ±1—, chat (búsqueda, apertura, listado, lectura y envío), Cerca (lista, zonas del mapa y toque), notificaciones y perfil público. Al bloquear se borran además las notificaciones ya intercambiadas entre ambas partes, en las dos direcciones — apuntan a contenido que ninguna de las dos podrá volver a abrir.
+- **Es reversible** desde *Perfil → Cuentas bloqueadas*.
+
+### Moderación
+
+Bloquear resuelve el **acceso** — quién puede llegarte. Reportar resuelve la **respuesta** — que el equipo se entere y pueda actuar. Son las dos mitades y el producto necesita ambas: sin reportes, el contenido abusivo solo se resuelve si cada persona lo bloquea por su cuenta, y nadie más se entera.
+
+El panel vive en **`/admin` del mismo frontend**, no en un despliegue aparte. La entrada al menú solo aparece con rol `MOD` o `ADMIN`, pero eso es comodidad: la autorización real la hace el servidor en cada petición.
+
+**Qué puede hacer la moderación**
+
+| Acción | Efecto |
+|---|---|
+| **Ocultar contenido** | Deja de verse para toda la comunidad, incluido su autor. La fila se conserva con quién y cuándo. **Reversible** |
+| **Suspender cuenta** | No puede publicar, comentar, chatear, mandar toques ni subir imágenes. **Sí puede leer**: es una pausa, no una expulsión. Caduca sola |
+| **Archivar subforo** | Sale del directorio y no admite posts nuevos, pero su contenido sigue siendo consultable por enlace directo |
+| **Renombrar subforo** | Cambia nombre y descripción. **El slug no cambia**: los enlaces que la comunidad ya compartió siguen sirviendo |
+| **Descartar reporte** | Sale de la cola sin tocar nada, pero queda en el historial de esa cuenta para dar contexto si reaparece |
+
+**Las cuatro decisiones que definen el diseño**
+
+- **No existe borrado definitivo por moderación.** Perder el contenido es perder la evidencia del reporte, y hace imposible auditar o revertir una decisión equivocada. Todo se oculta, nada se borra.
+- **Al autor se le avisa con el motivo**, tipificado y siempre igual ante la misma conducta. Moderar sin explicar se siente arbitrario, y en una comunidad estigmatizada eso erosiona la confianza. **Nunca se revela quién reportó ni qué moderador actuó** — la notificación se lee como «Moderación de WeedTown».
+- **El chat privado no es moderable.** Moderarlo obligaría a que alguien lea mensajes 1 a 1, y eso rompe la promesa de privacidad. No aparece entre los tipos reportables.
+- **Todo queda en bitácora** (`ModerationAction`), aunque después se revierta. Ahí sí se identifica al moderador: es de consumo interno del equipo.
+
+**Qué se puede reportar**: posts y comentarios del feed y del foro, cuentas (perfil, bio, avatar — cubre también el acoso por toques) y subforos completos. Un reporte por persona y objeto: reportar dos veces no duplica la cola. Límite de 20 reportes por hora, porque inundar la cola es en sí una forma de acoso.
+
+**El primer moderador** se nombra con un script que requiere acceso al servidor, no con un endpoint:
+
+```bash
+cd backend
+npm run rol -- --buscar=hugo                       # encontrar la cuenta
+npm run rol -- --acct=hugo@mastodon.social --rol=ADMIN
+npm run rol -- --listar                            # ver quién tiene rol
+```
+
+De ahí en adelante, un `ADMIN` reparte roles desde el panel. Un `MOD` puede moderar contenido y suspender cuentas normales, pero no tocar a otro `MOD` ni repartir roles: eso queda reservado a `ADMIN`.
 
 ---
 
@@ -157,6 +210,51 @@ npm start               # http://localhost:3000
 
 En `/login` escribe tu instancia de Mastodon (ej. `mastodon.social`), autoriza la app y caerás en el feed con tu sesión activa (sobrevive al refresh).
 
+### 4. Pruebas
+
+```bash
+cd backend
+cp .env.test.example .env.test   # completar con la base de PRUEBAS
+npm test
+```
+
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 152 y cubren cinco áreas:
+
+| Suite | Qué cubre |
+|---|---|
+| **Seguridad** | Rutas de admin por rol, reciprocidad y cercanía del toque, y el bloqueo en feed, búsqueda, chat, Cerca, notificaciones y perfil |
+| **Moderación** | Reportes idempotentes, que el chat no sea reportable, que ocultar sea reversible y no borre, el aviso con motivo sin revelar al moderador, y que suspender frene escribir pero no leer |
+| **Foros** | El bloqueo en los tres órdenes, incluido *Relevante* con su SQL cruda, más comentarios y votos |
+| **Almacenamiento** | Subida por la API, y que borrar contenido borre de verdad el archivo del disco — incluido el borrado suave del foro |
+| **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
+
+> ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
+
+Sin Docker ni Postgres local, la forma más simple de tener una base separada es **el mismo proyecto de Supabase con un esquema aparte**: se copian las cadenas de `.env` y se les agrega `?schema=weedtown_test`. Prisma crea ahí su propio juego de tablas; la app de desarrollo usa `public` y no las ve. Si prefieres aislamiento estricto, apunta `.env.test` a un segundo proyecto de Supabase o a un Postgres local — no cambia nada más.
+
+### Despliegue
+
+Dos cosas que hay que decidir explícitamente al desplegar, porque los defaults están pensados para desarrollo:
+
+**1. Almacenamiento de imágenes.** El default `STORAGE_DRIVER=local` guarda en el disco del proceso. En cualquier PaaS con sistema de archivos efímero (Render, Railway, Fly) eso significa que **las imágenes desaparecen en el primer redespliegue** y las URLs quedan cacheadas 30 días apuntando a nada. En producción hay que poner `STORAGE_DRIVER=supabase` y crear un bucket público de lectura.
+
+El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin dependencias nuevas y sobre la infraestructura que el proyecto ya tiene. Agregar S3, R2 o MinIO es escribir un objeto más en `src/lib/storage.js` con el mismo contrato (`save`, `remove`, `keyFromUrl`).
+
+**2. URL del backend.** El frontend resuelve el origen de la API en este orden: `REACT_APP_API_URL` si existe; si no y estás en desarrollo, el mismo host con puerto 4000 (así funciona igual en `localhost` y desde otra máquina de la red); si no y estás en producción, **el mismo origen que la web**, que es lo que da un reverse proxy sirviendo el frontend y `/api` juntos. Si tu backend vive en otro dominio o puerto, define `REACT_APP_API_URL` al compilar — la app avisa por consola cuando cae en el default de producción.
+
+### Integración continua
+
+`.github/workflows/ci.yml` corre en cada push a `main`, en cada pull request y a mano (*Run workflow*). Son dos trabajos en paralelo:
+
+| Trabajo | Qué hace |
+|---|---|
+| **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` |
+| **Frontend** | `npm run build` con `CI=true`, que convierte los warnings de ESLint en error |
+
+El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se pisarían. El Postgres del runner nace y muere con el trabajo, así que tampoco hay secretos que guardar — el `JWT_SECRET` se genera con `openssl rand` al vuelo. No hace falta configurar nada en el repositorio para que funcione.
+
+El runner de pruebas detecta dónde está corriendo: en local lee `.env.test`, y en CI toma las variables ya inyectadas en el entorno. Los tres guardias se aplican igual en ambos casos.
+
 ### Acceso desde otras máquinas de la red local
 
 El frontend deduce la URL del backend del hostname con el que abriste la página (localhost o IP LAN, puerto 4000), así que basta con:
@@ -177,6 +275,8 @@ Después, desde cualquier equipo de la red: `http://<IP-LAN>:3000`.
 | `BACKEND_URL` | URL pública del backend; forma el `redirect_uri` de OAuth (`{BACKEND_URL}/api/auth/mastodon/callback`) |
 | `FRONTEND_URL` | URL del frontend; destino de los redirects post-login |
 | `PORT` | Puerto del backend (default 4000) |
+| `STORAGE_DRIVER` | `local` (default, disco del proceso) o `supabase` (Supabase Storage). **En producción tiene que ser `supabase`** |
+| `SUPABASE_URL` · `SUPABASE_SERVICE_KEY` · `SUPABASE_BUCKET` | Solo con el driver `supabase`. La service key es secreta y nunca debe llegar al frontend |
 
 > ⚠️ `.env` está en `.gitignore` y nunca debe commitearse. Si el `redirect_uri` cambia (p. ej. al desplegar), borra las filas de `MastodonApp` para que las apps se re-registren con la nueva URL.
 
@@ -213,7 +313,28 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/notifications` (+`/unread-count`, `POST /read-all`) | 🔒 | Centro de notificaciones in-app |
 | GET | `/api/profile/me` | 🔒 | Perfil propio |
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
-| GET | `/api/profile/:id` | — | Perfil público por id |
+| GET | `/api/profile/:id` | — | Perfil público por id (404 si hay bloqueo de por medio) |
+| GET | `/api/blocks` | 🔒 | Cuentas que bloqueé |
+| POST | `/api/blocks` | 🔒 | Bloquear (`userId`); idempotente |
+| DELETE | `/api/blocks/:userId` | 🔒 | Desbloquear; idempotente |
+| POST | `/api/reports` | 🔒 | Reportar (`targetType`, `targetId`, `reason`, `detail?`); idempotente |
+| GET | `/api/reports/mine` (+`/motivos`) | 🔒 | Mis reportes y su estado / catálogo de motivos |
+
+**Panel de moderación** — todo exige rol `MOD` o `ADMIN`:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/admin/reports?status=&reason=&page=` | Cola de revisión con el contenido en contexto y el historial de la cuenta |
+| POST | `/api/admin/reports/:id/descartar` | El reporte no procede |
+| POST | `/api/admin/content/:type/:id/ocultar` | Ocultar (`reason`, `note?`); resuelve los reportes del objeto y avisa al autor |
+| POST | `/api/admin/content/:type/:id/mostrar` | Restaurar contenido oculto |
+| POST | `/api/admin/users/:id/suspender` | Suspender (`days` 1–365, `reason`, `note?`) |
+| POST | `/api/admin/users/:id/levantar` | Levantar la suspensión antes de tiempo |
+| POST | `/api/admin/subforums/:id/archivar` · `/restaurar` | Archivar o restaurar un subforo |
+| PUT | `/api/admin/subforums/:id` | Renombrar (el slug no cambia) |
+| GET | `/api/admin/users?q=` | Buscar cuentas; sin `q`, las suspendidas ahora mismo |
+| PUT | `/api/admin/users/:id/rol` | Cambiar rol — **solo `ADMIN`** |
+| GET | `/api/admin/stats` · `/api/admin/log` | Panorama y bitácora de acciones |
 
 | GET | `/api/chat/users?q=` | 🔒 | Buscar personas para chatear (datos públicos) |
 | GET | `/api/chat/conversations` | 🔒 | Mis conversaciones (con último mensaje) |
@@ -229,11 +350,13 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 |---|---|---|---|
 | GET | `/api/nearby/location` | 🔒 | Mi estado (¿comparto zona? cuál) |
 | PUT | `/api/nearby/location` | 🔒 | Activar/actualizar mi zona (`cell`: celda de cuadrícula ~2 km; rechaza coordenadas) |
-| POST | `/api/nearby/poke` | 🔒 | Mandar un toque 👋 (`userId`); llega como notificación, 1 por persona cada 12 h |
+| POST | `/api/nearby/poke` | 🔒 | Mandar un toque 👋 (`userId`); exige compartir zona y que la persona esté en tu cuadrícula; 1 por persona cada 12 h |
 | DELETE | `/api/nearby/location` | 🔒 | Dejar de compartir (borra la celda) |
 | GET | `/api/nearby` | 🔒 | Personas y zonas cercanas (requiere compartir: recíproco) |
 
-Diseño de privacidad: el navegador convierte el GPS a una **celda de cuadrícula fija de ~2 km (0.02°) antes de enviar nada** (el servidor nunca ve coordenadas; el endpoint las rechaza explícitamente). La cuadrícula es fija — todos los de una celda son indistinguibles, no hay nada que triangular. Solo ves a otros si compartes tu zona, la celda **caduca a los 7 días** y puede borrarse en un clic. El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, nunca pins individuales. La consulta busca en una cuadrícula 11×11 de celdas (~11 km de radio efectivo) y tiene rate limit propio anti-scraping. El **toque 👋** invita a interactuar sin abrir chat: llega como notificación in-app, con cooldown de 12 h por persona contra spam.
+Diseño de privacidad: el navegador convierte el GPS a una **celda de cuadrícula fija de ~2 km (0.02°) antes de enviar nada** (el servidor nunca ve coordenadas; el endpoint las rechaza explícitamente). La cuadrícula es fija — todos los de una celda son indistinguibles, no hay nada que triangular. Solo ves a otros si compartes tu zona, la celda **caduca a los 7 días** y puede borrarse en un clic. El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, nunca pins individuales. La consulta busca en una cuadrícula 11×11 de celdas (~11 km de radio efectivo) y tiene rate limit propio anti-scraping.
+
+El **toque 👋** invita a interactuar sin abrir chat: llega como notificación in-app. Hereda las dos reglas de Cerca — solo lo manda quien comparte zona, y solo llega a quien cae dentro de esa cuadrícula — más el rate limit del mapa y un cooldown de 12 h por persona. Un destino inexistente, lejano, que no comparte zona o bloqueado devuelven **la misma respuesta (404)**: el resultado no debe permitir deducir dónde está alguien ni si su cuenta existe. Sin esas comprobaciones el endpoint era un "ping a cualquier `userId`" y, como los ids son enteros consecutivos, bastaba recorrerlos para notificar a toda la base.
 
 ### Chat en tiempo real
 
@@ -250,13 +373,17 @@ El envío de mensajes entra **por REST** (hereda auth, rate limit y validación)
 2. ~~Foros estilo Reddit: subforos, puntaje por reacciones, hilos, follows y notificaciones~~ ✅
 3. ~~Endurecimiento: helmet, rate limiting, CORS restringido, límites de payload y de contenido, PII fuera de los perfiles públicos, errores sanitizados~~ ✅
 4. ~~Chat 1 a 1 en tiempo real (Socket.IO + REST)~~ ✅
-5. Herramientas de moderación básicas (rol de usuario, reportes, ocultar/suspender) con panel en `/admin` del mismo frontend — **siguiente**.
+5. ~~Kit de seguridad de la persona usuaria: bloqueo mutuo y silencioso, rol de cuenta, cierre de `/api/admin`, y toque de Cerca con reciprocidad y cercanía verificadas~~ ✅
+6. ~~Reportes de contenido, cuentas y subforos + panel de moderación en `/admin` (ocultar reversible, suspender, archivar y renombrar subforos, bitácora)~~ ✅
+
+**Fase 1 completa.** La red social tiene ya las dos mitades de la protección: el acceso (bloquear) y la respuesta (reportar y moderar).
 
 **Fase 2 — Mercado comunitario**
 - Catálogo de tangibles e intangibles lícitos (merch, arte, glass, talleres, cursos, servicios), perfiles de vendedor, búsqueda por categoría. El modelo `MarketItem` existente evolucionará hacia este diseño.
 
 **Fase 3 — Alcance**
-- App móvil (Expo) conectada al flujo real, panel de moderación/administración, almacenamiento de imágenes (Cloudinary/S3), Docker y CI con tests.
+- Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 152 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 

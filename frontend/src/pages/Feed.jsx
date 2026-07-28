@@ -20,6 +20,7 @@ function Feed() {
   const [showModal, setShowModal] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -30,7 +31,7 @@ function Feed() {
       })
       .catch(() => setError('No se pudo cargar el feed.'))
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [page, reload]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -67,6 +68,14 @@ function Feed() {
     const apply = list => list.filter(p => p.id !== id);
     setPosts(apply);
     setSearchResults(prev => (prev === null ? prev : apply(prev)));
+  };
+
+  // Bloquear oculta TODO el contenido de esa persona, no solo el post desde el
+  // que se bloqueó: se recarga el feed en vez de quitar una sola tarjeta.
+  const handleBlocked = () => {
+    setSearchResults(null);
+    setSearch('');
+    setReload(n => n + 1);
   };
 
   const showing = searchResults !== null ? searchResults : posts;
@@ -120,7 +129,15 @@ function Feed() {
                 {searchResults !== null ? 'Sin resultados.' : 'No hay posteos aún. ¡Sé quien inicie la conversación!'}
               </Typography>
             ) : (
-              showing.map(post => <PostCard key={post.id} post={post} onUpdated={handleUpdated} onDeleted={handleDeleted} />)
+              showing.map(post => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onUpdated={handleUpdated}
+                  onDeleted={handleDeleted}
+                  onBlocked={handleBlocked}
+                />
+              ))
             )}
             {searchResults === null && totalPages > 1 && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

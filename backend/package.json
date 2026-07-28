@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "nodemon app.js",
     "start": "node app.js",
+    "test": "node tests/run.js",
+    "rol": "node scripts/rol.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate"
   },

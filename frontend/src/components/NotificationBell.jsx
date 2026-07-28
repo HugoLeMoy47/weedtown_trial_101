@@ -16,12 +16,19 @@ function describe(n) {
     case 'REPLY_COMMENT': return `${actor} respondió a tu comentario en ${title}`;
     case 'NEW_SUBFORUM_POST': return `Nuevo post en ${n.subforum?.name || 'un subforo que sigues'}: ${title}`;
     case 'POKE': return `${actor} te mandó un toque 👋 desde Cerca`;
+    // Moderación: el actor viene vacío a propósito — se dice qué pasó y por qué,
+    // no quién lo decidió.
+    case 'CONTENIDO_OCULTO':
+      return `Moderación retiró contenido tuyo — ${n.reasonText || 'incumple las normas de la comunidad'}`;
+    case 'CUENTA_SUSPENDIDA':
+      return `Tu cuenta fue suspendida temporalmente — ${n.reasonText || 'incumple las normas de la comunidad'}`;
     default: return `${actor} interactuó contigo`;
   }
 }
 
 function targetPath(n) {
   if (n.type === 'POKE') return '/cerca';
+  if (n.type === 'CONTENIDO_OCULTO' || n.type === 'CUENTA_SUSPENDIDA') return '/profile';
   const slug = n.forumPost?.subforum?.slug || n.subforum?.slug;
   if (n.forumPost && slug) return `/forum/${slug}/post/${n.forumPost.id}`;
   if (slug) return `/forum/${slug}`;

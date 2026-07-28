@@ -47,7 +47,8 @@ const ForumPostDetail = () => {
           </Box>
         ) : post && (
           <>
-            <ForumPostCard post={post} detail onUpdated={setPost} onDeleted={handleDeleted} />
+            {/* Al bloquear al autor el post deja de ser visible: se regresa al subforo */}
+            <ForumPostCard post={post} detail onUpdated={setPost} onDeleted={handleDeleted} onBlocked={handleDeleted} />
             <ForumComments postId={post.id} onCountChange={handleCountChange} />
           </>
         )}

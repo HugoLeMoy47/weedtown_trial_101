@@ -3,8 +3,11 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
+const { requireAuth, optionalAuth, requireNotSuspended } = require('../middlewares/requireAuth');
 const { REACTION_TYPES, summarizeReactions, toggleReaction, reactionCounts } = require('../lib/reactions');
+const { blockedWith, isBlockedBetween, excludeBlocked } = require('../lib/blocks');
+const storage = require('../lib/storage');
+const { soloVisible } = require('../lib/moderation');
 
 // Topes de contenido: defensa contra payloads abusivos
 const MAX_POST_LENGTH = 2000;
@@ -51,14 +54,18 @@ router.get('/', optionalAuth, async (req, res) => {
   const pageSize = 20;
   const skip = (page - 1) * pageSize;
   try {
+    // El contenido de las personas bloqueadas no aparece en el feed, y el total
+    // se cuenta con el mismo filtro para que la paginación siga cuadrando.
+    const where = { ...soloVisible, ...excludeBlocked(await blockedWith(req.user?.id)) };
     const [posts, total] = await Promise.all([
       prisma.post.findMany({
+        where,
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
         include: postInclude
       }),
-      prisma.post.count()
+      prisma.post.count({ where })
     ]);
     res.json({
       posts: posts.map(p => serializePost(p, req.user?.id)),
@@ -73,7 +80,7 @@ router.get('/', optionalAuth, async (req, res) => {
 });
 
 // Crear posteo con hashtags (el autor sale del token)
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
   const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
   const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
   if (!content) return res.status(400).json({ error: 'Faltan campos requeridos' });
@@ -112,6 +119,8 @@ router.get('/search', optionalAuth, async (req, res) => {
   try {
     const results = await prisma.post.findMany({
       where: {
+        ...soloVisible,
+        ...excludeBlocked(await blockedWith(req.user?.id)),
         OR: [
           { content: { contains: q, mode: 'insensitive' } },
           { author: { name: { contains: q, mode: 'insensitive' } } }
@@ -128,7 +137,7 @@ router.get('/search', optionalAuth, async (req, res) => {
 });
 
 // Editar post propio (contenido y hashtags)
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', requireAuth, requireNotSuspended, async (req, res) => {
   const id = Number(req.params.id);
   const content = (req.body.content || '').trim();
   if (!id) return res.status(400).json({ error: 'ID de post inválido' });
@@ -169,16 +178,29 @@ router.delete('/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID de post inválido' });
   try {
-    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true } });
+    const post = await prisma.post.findUnique({ where: { id }, select: { authorId: true, image: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     if (post.authorId !== req.user.id) return res.status(403).json({ error: 'Solo puedes eliminar tu propio contenido' });
+
+    // Las imágenes se juntan ANTES de borrar las filas: después ya no hay de
+    // dónde sacarlas. Ojo: la imagen vive en el campo `image` del post y de sus
+    // comentarios — la tabla Media solo lleva el registro de la subida y nunca
+    // se enlazó a un post, así que se limpia por URL.
+    const comentarios = await prisma.comment.findMany({
+      where: { postId: id },
+      select: { image: true }
+    });
+    const imagenes = [post.image, ...comentarios.map(c => c.image)].filter(Boolean);
+
     await prisma.$transaction([
       prisma.reaction.deleteMany({ where: { OR: [{ postId: id }, { comment: { postId: id } }] } }),
       prisma.comment.deleteMany({ where: { postId: id } }),
       prisma.hashtagOnPost.deleteMany({ where: { postId: id } }),
-      prisma.media.deleteMany({ where: { postId: id } }),
+      prisma.media.deleteMany({ where: { url: { in: imagenes } } }),
       prisma.post.delete({ where: { id } })
     ]);
+
+    await storage.removeMany(imagenes);
     res.json({ deleted: true, id });
   } catch (e) {
     console.error('Error al eliminar posteo:', e);
@@ -225,7 +247,7 @@ router.delete('/:id/reaction', requireAuth, async (req, res) => {
 });
 
 // Comentar un post (imagen opcional, ya subida vía /api/media/upload)
-router.post('/:id/comment', requireAuth, async (req, res) => {
+router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) => {
   const postId = Number(req.params.id);
   const content = (req.body.content || '').trim();
   const image = typeof req.body.image === 'string' && req.body.image ? req.body.image : null;
@@ -238,8 +260,12 @@ router.post('/:id/comment', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
   }
   try {
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    // Comentar es contactar: con un bloqueo de por medio el post no existe
+    if (await isBlockedBetween(req.user.id, post.authorId)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
     const comment = await prisma.comment.create({
       data: { content, image, postId, authorId: req.user.id },
       include: commentInclude
@@ -257,7 +283,7 @@ router.get('/:id/comments', optionalAuth, async (req, res) => {
   if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
   try {
     const comments = await prisma.comment.findMany({
-      where: { postId },
+      where: { postId, ...soloVisible, ...excludeBlocked(await blockedWith(req.user?.id)) },
       orderBy: { createdAt: 'asc' },
       include: commentInclude
     });

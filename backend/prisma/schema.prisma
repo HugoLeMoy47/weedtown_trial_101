@@ -8,6 +8,13 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// Rol de la cuenta. Gobierna el acceso a /api/admin: solo MOD y ADMIN.
+enum UserRole {
+  USER
+  MOD
+  ADMIN
+}
+
 model User {
   id               Int          @id @default(autoincrement())
   // Identidad federada Mastodon: (instancia, id de cuenta) identifica al usuario
@@ -24,8 +31,15 @@ model User {
   age              Int?
   birthdate        DateTime?
   gender           String?
-  // Función "Cerca": celda geohash ~5 km ofuscada EN el cliente (nunca llegan
-  // coordenadas reales al servidor). null = no comparte. Caduca a los 7 días.
+  role             UserRole     @default(USER)
+  // Suspensión temporal (HU-SEG-005): la cuenta existe y se puede leer, pero no
+  // puede publicar, comentar, chatear ni mandar toques hasta la fecha.
+  suspendedUntil   DateTime?
+  suspendedBy      User?        @relation("Suspensiones", fields: [suspendedById], references: [id])
+  suspendedById    Int?
+  suspendedReason  ReportReason?
+  // Función "Cerca": celda de cuadrícula ~2 km (0.02°) calculada EN el cliente
+  // (nunca llegan coordenadas reales al servidor). null = no comparte. Caduca a los 7 días.
   nearbyCell       String?
   nearbyUpdatedAt  DateTime?
   createdAt        DateTime     @default(now())
@@ -33,6 +47,18 @@ model User {
   posts            Post[]
   comments         Comment[]
   reactions        Reaction[]
+  blocksMade       Block[]      @relation("BlocksMade")
+  blocksReceived   Block[]      @relation("BlocksReceived")
+  reportsMade      Report[]     @relation("ReportsMade")
+  reportsReceived  Report[]     @relation("ReportsAboutUser")
+  reportsResolved  Report[]     @relation("ReportsResolved")
+  suspensionsGiven User[]       @relation("Suspensiones")
+  moderationLog    ModerationAction[] @relation("ModeratorActions")
+  hiddenPosts         Post[]         @relation("PostsHidden")
+  hiddenComments      Comment[]      @relation("CommentsHidden")
+  hiddenForumPosts    ForumPost[]    @relation("ForumPostsHidden")
+  hiddenForumComments ForumComment[] @relation("ForumCommentsHidden")
+  archivedSubforums   SubForum[]     @relation("SubforumsArchived")
   chats            Chat[]           @relation("UserChats")
   messages         Message[]        @relation("UserMessages")
   forumPosts       ForumPost[]
@@ -45,6 +71,22 @@ model User {
   media            Media[]
 
   @@unique([mastodonInstance, mastodonId])
+}
+
+// Bloqueo entre personas (HU-SEG-001).
+// Se crea y se deshace solo del lado de quien bloquea, pero su EFECTO es mutuo:
+// mientras exista la fila, ninguna de las dos partes ve ni puede contactar a la
+// otra. Al bloqueado nunca se le informa: la API responde como si el contenido
+// o la persona no existieran.
+model Block {
+  blocker   User     @relation("BlocksMade", fields: [blockerId], references: [id])
+  blockerId Int
+  blocked   User     @relation("BlocksReceived", fields: [blockedId], references: [id])
+  blockedId Int
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
 }
 
 model MastodonApp {
@@ -67,6 +109,15 @@ model Post {
   comments  Comment[]
   reactions Reaction[]
   media     Media[]
+  reports   Report[]
+  // Moderación: ocultar es reversible y deja rastro (quién y cuándo).
+  // No hay borrado definitivo por moderación: se conserva la evidencia.
+  hiddenAt     DateTime?
+  hiddenBy     User?         @relation("PostsHidden", fields: [hiddenById], references: [id])
+  hiddenById   Int?
+  hiddenReason ReportReason?
+
+  @@index([hiddenAt, createdAt])
 }
 
 model Hashtag {
@@ -92,7 +143,12 @@ model Comment {
   author    User       @relation(fields: [authorId], references: [id])
   authorId  Int
   reactions Reaction[]
+  reports   Report[]
   createdAt DateTime   @default(now())
+  hiddenAt     DateTime?
+  hiddenBy     User?         @relation("CommentsHidden", fields: [hiddenById], references: [id])
+  hiddenById   Int?
+  hiddenReason ReportReason?
 }
 
 // Reacciones cannábicas: una por usuario por post o comentario (HU-RC-001)
@@ -154,7 +210,13 @@ model SubForum {
   posts       ForumPost[]
   followers   SubForumFollow[]
   notifications Notification[]
+  reports     Report[]
   createdAt   DateTime         @default(now())
+  // Archivar un subforo lo deja en solo lectura: no admite posts nuevos y
+  // desaparece del directorio, pero su contenido sigue siendo consultable.
+  archivedAt   DateTime?
+  archivedBy   User?     @relation("SubforumsArchived", fields: [archivedById], references: [id])
+  archivedById Int?
 }
 
 model SubForumFollow {
@@ -180,11 +242,17 @@ model ForumPost {
   comments      ForumComment[]
   reactions     Reaction[]
   notifications Notification[]
+  reports       Report[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  hiddenAt     DateTime?
+  hiddenBy     User?         @relation("ForumPostsHidden", fields: [hiddenById], references: [id])
+  hiddenById   Int?
+  hiddenReason ReportReason?
 
   @@index([subforumId, createdAt])
   @@index([subforumId, score])
+  @@index([hiddenAt])
 }
 
 model ForumComment {
@@ -203,10 +271,118 @@ model ForumComment {
   replies       ForumComment[] @relation("CommentReplies")
   reactions     Reaction[]
   notifications Notification[]
+  reports       Report[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  hiddenAt     DateTime?
+  hiddenBy     User?         @relation("ForumCommentsHidden", fields: [hiddenById], references: [id])
+  hiddenById   Int?
+  hiddenReason ReportReason?
 
   @@index([postId, parentId])
+}
+
+// ---------- Moderación (HU-SEG-002 y HU-SEG-005) ----------
+
+// Motivos tipificados: la lista es cerrada para que la cola sea filtrable y las
+// notificaciones al autor digan siempre lo mismo ante el mismo motivo.
+enum ReportReason {
+  SPAM
+  ACOSO
+  ODIO
+  ILEGAL
+  DESINFORMACION
+  SEXUAL
+  SUPLANTACION
+  OTRO
+}
+
+enum ReportStatus {
+  PENDIENTE
+  ACCIONADO
+  DESCARTADO
+}
+
+enum ReportTargetType {
+  POST
+  COMMENT
+  FORUM_POST
+  FORUM_COMMENT
+  USER
+  SUBFORUM
+}
+
+// Un reporte apunta a UNA cosa. Se usan claves foráneas tipadas en vez de un id
+// polimórfico suelto: así la base garantiza que el objeto existe y se puede
+// traer el contenido en contexto con un include, sin consultas condicionales.
+//
+// El chat privado NO es reportable por decisión de producto: moderarlo obligaría
+// a que alguien lea mensajes 1 a 1, y eso rompe la promesa de privacidad.
+model Report {
+  id             Int              @id @default(autoincrement())
+  reporter       User             @relation("ReportsMade", fields: [reporterId], references: [id])
+  reporterId     Int
+  targetType     ReportTargetType
+  reason         ReportReason
+  detail         String?
+
+  post           Post?            @relation(fields: [postId], references: [id])
+  postId         Int?
+  comment        Comment?         @relation(fields: [commentId], references: [id])
+  commentId      Int?
+  forumPost      ForumPost?       @relation(fields: [forumPostId], references: [id])
+  forumPostId    Int?
+  forumComment   ForumComment?    @relation(fields: [forumCommentId], references: [id])
+  forumCommentId Int?
+  targetUser     User?            @relation("ReportsAboutUser", fields: [targetUserId], references: [id])
+  targetUserId   Int?
+  subforum       SubForum?        @relation(fields: [subforumId], references: [id])
+  subforumId     Int?
+
+  status       ReportStatus @default(PENDIENTE)
+  resolvedBy   User?        @relation("ReportsResolved", fields: [resolvedById], references: [id])
+  resolvedById Int?
+  resolvedAt   DateTime?
+  resolution   String?
+  createdAt    DateTime     @default(now())
+
+  // Un reporte por persona y objeto. Postgres trata los NULL como distintos,
+  // así que cada restricción solo aplica a los reportes de ese tipo.
+  @@unique([reporterId, postId])
+  @@unique([reporterId, commentId])
+  @@unique([reporterId, forumPostId])
+  @@unique([reporterId, forumCommentId])
+  @@unique([reporterId, targetUserId])
+  @@unique([reporterId, subforumId])
+  @@index([status, createdAt])
+}
+
+enum ModerationActionType {
+  OCULTAR
+  MOSTRAR
+  SUSPENDER
+  LEVANTAR_SUSPENSION
+  ARCHIVAR_SUBFORO
+  RESTAURAR_SUBFORO
+  RENOMBRAR_SUBFORO
+  DESCARTAR_REPORTE
+}
+
+// Bitácora de lo que hace la moderación. Es lo que hace auditable al panel:
+// toda acción queda registrada aunque después se revierta.
+model ModerationAction {
+  id          Int                  @id @default(autoincrement())
+  moderator   User                 @relation("ModeratorActions", fields: [moderatorId], references: [id])
+  moderatorId Int
+  type        ModerationActionType
+  targetType  ReportTargetType
+  targetId    Int
+  reason      ReportReason?
+  note        String?
+  createdAt   DateTime             @default(now())
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
 }
 
 // Centro de notificaciones in-app
@@ -215,6 +391,8 @@ enum NotificationType {
   REPLY_COMMENT
   NEW_SUBFORUM_POST
   POKE
+  CONTENIDO_OCULTO
+  CUENTA_SUSPENDIDA
 }
 
 model Notification {
@@ -230,6 +408,9 @@ model Notification {
   forumPostId    Int?
   forumComment   ForumComment?    @relation(fields: [forumCommentId], references: [id])
   forumCommentId Int?
+  // Motivo, solo en las notificaciones de moderación: se avisa QUÉ se retiró y
+  // POR QUÉ, nunca quién reportó ni qué moderador actuó.
+  reason         ReportReason?
   readAt         DateTime?
   createdAt      DateTime         @default(now())
 

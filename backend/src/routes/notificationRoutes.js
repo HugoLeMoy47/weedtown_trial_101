@@ -4,16 +4,33 @@ const router = express.Router();
 
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middlewares/requireAuth');
+const { blockedWith, excludeBlocked } = require('../lib/blocks');
+const { MOTIVO_TEXTO } = require('../lib/moderation');
 
 const PAGE_SIZE = 20;
+
+const TIPOS_MODERACION = ['CONTENIDO_OCULTO', 'CUENTA_SUSPENDIDA'];
+
+// Las notificaciones de moderación llevan el motivo pero NO al moderador: en la
+// base se guarda para la auditoría, y aquí se omite. Que la comunidad sepa qué
+// se retiró y por qué construye confianza; señalar a una persona concreta del
+// equipo solo invita a represalias.
+function serializar(n) {
+  if (!TIPOS_MODERACION.includes(n.type)) return n;
+  const { actor, ...resto } = n;
+  return { ...resto, actor: null, reasonText: MOTIVO_TEXTO[n.reason] || null };
+}
 
 // GET /api/notifications?page=1 — últimas notificaciones del usuario
 router.get('/', requireAuth, async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   try {
+    // Bloquear ya borra las notificaciones existentes de esa persona; este filtro
+    // cubre además las que pudieran quedar de una carrera entre ambas operaciones.
+    const where = { recipientId: req.user.id, ...excludeBlocked(await blockedWith(req.user.id), 'actorId') };
     const [notifications, unread] = await Promise.all([
       prisma.notification.findMany({
-        where: { recipientId: req.user.id },
+        where,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE,
@@ -23,9 +40,9 @@ router.get('/', requireAuth, async (req, res) => {
           forumPost: { select: { id: true, title: true, subforum: { select: { slug: true } } } }
         }
       }),
-      prisma.notification.count({ where: { recipientId: req.user.id, readAt: null } })
+      prisma.notification.count({ where: { ...where, readAt: null } })
     ]);
-    res.json({ notifications, unread });
+    res.json({ notifications: notifications.map(serializar), unread });
   } catch (e) {
     console.error('Error al listar notificaciones:', e);
     res.status(500).json({ error: 'Error al obtener notificaciones' });
@@ -35,7 +52,13 @@ router.get('/', requireAuth, async (req, res) => {
 // GET /api/notifications/unread-count — para el badge de la campana (polling)
 router.get('/unread-count', requireAuth, async (req, res) => {
   try {
-    const count = await prisma.notification.count({ where: { recipientId: req.user.id, readAt: null } });
+    const count = await prisma.notification.count({
+      where: {
+        recipientId: req.user.id,
+        readAt: null,
+        ...excludeBlocked(await blockedWith(req.user.id), 'actorId')
+      }
+    });
     res.json({ count });
   } catch (e) {
     console.error('Error al contar notificaciones:', e);

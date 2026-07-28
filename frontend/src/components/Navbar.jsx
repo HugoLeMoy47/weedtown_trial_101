@@ -12,17 +12,23 @@ import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import ForumIcon from '@mui/icons-material/Forum';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import GavelIcon from '@mui/icons-material/Gavel';
 import { BrandMark, BrandWordmark } from './BrandLogo';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
 import NotificationBell from './NotificationBell';
+import SuspensionBanner from './SuspensionBanner';
 
-const navLinks = [
+const baseLinks = [
   { to: '/feed', label: 'Feed', icon: <DynamicFeedIcon /> },
   { to: '/forum', label: 'Foros', icon: <ForumIcon /> },
   { to: '/chat', label: 'Chat', icon: <ChatBubbleOutlineIcon /> },
   { to: '/cerca', label: 'Cerca', icon: <MyLocationIcon /> }
 ];
+
+// La entrada al panel solo aparece con rol de moderación. Ocultarla es
+// comodidad, no seguridad: quien fuerce la URL igual recibe 403 del servidor.
+const linkModeracion = { to: '/admin', label: 'Moderación', icon: <GavelIcon /> };
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -31,6 +37,10 @@ const Navbar = () => {
   const { pathname } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  const navLinks = ['MOD', 'ADMIN'].includes(user?.role)
+    ? [...baseLinks, linkModeracion]
+    : baseLinks;
+
   const handleLogout = () => {
     setDrawerOpen(false);
     logout();
@@ -38,6 +48,7 @@ const Navbar = () => {
   };
 
   return (
+    <>
     <AppBar position="sticky" color="inherit" elevation={1} component="nav" aria-label="Navegación principal">
       <Container maxWidth="md" disableGutters>
         <Toolbar sx={{ gap: 1 }}>
@@ -157,6 +168,8 @@ const Navbar = () => {
         </Box>
       </Drawer>
     </AppBar>
+    <SuspensionBanner />
+    </>
   );
 };
 

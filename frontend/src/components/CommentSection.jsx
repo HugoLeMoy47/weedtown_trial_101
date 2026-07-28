@@ -7,9 +7,10 @@ import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import ImagePicker from './ImagePicker';
 import OwnerActions from './OwnerActions';
+import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 
-const CommentItem = ({ comment, onEdited, onDeleted }) => {
+const CommentItem = ({ comment, onEdited, onDeleted, onBlocked }) => {
   const { user } = useAuth();
   const [reactions, setReactions] = useState(comment.reactions || EMPTY_COUNTS);
   const [myReaction, setMyReaction] = useState(comment.myReaction || null);
@@ -52,7 +53,7 @@ const CommentItem = ({ comment, onEdited, onDeleted }) => {
               </time>
             </Typography>
           )}
-          {isMine && (
+          {isMine ? (
             <OwnerActions
               deleteLabel="este comentario"
               onEdit={() => { setEditText(comment.content); setEditing(true); }}
@@ -61,7 +62,9 @@ const CommentItem = ({ comment, onEdited, onDeleted }) => {
                 onDeleted(comment.id);
               }}
             />
-          )}
+          ) : (user && comment.author?.id && (
+            <ContentActions user={comment.author} report={{ targetType: 'COMMENT', targetId: comment.id }} onBlocked={onBlocked} />
+          ))}
         </Stack>
         {editing ? (
           <Box sx={{ mb: 0.5 }}>
@@ -164,6 +167,7 @@ const CommentSection = ({ postId, onCountChange }) => {
                 onCountChange?.(next.length);
                 return next;
               })}
+              onBlocked={load}
             />
           ))}
         </Stack>

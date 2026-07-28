@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import api from '../services/api';
 import Navbar from '../components/Navbar';
+import BlockedAccounts from '../components/BlockedAccounts';
 import { useAuth } from '../hooks/useAuth';
 
 const emptyForm = { phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
@@ -138,6 +139,8 @@ const Profile = () => {
             )}
           </CardContent>
         </Card>
+
+        <BlockedAccounts />
       </Container>
     </>
   );

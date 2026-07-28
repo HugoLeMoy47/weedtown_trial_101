@@ -9,6 +9,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { io } from 'socket.io-client';
 import Navbar from '../components/Navbar';
+import ContentActions from '../components/ContentActions';
 import api, { API_ORIGIN } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
@@ -139,6 +140,15 @@ const Chat = () => {
 
   const title = (c) => c?.with?.displayName || c?.with?.name || 'Conversación';
 
+  // Al bloquear, la conversación deja de existir para ambas partes: se quita de
+  // la lista y se cierra el hilo abierto.
+  const handleBlocked = () => {
+    const chatId = selected?.id;
+    setConversations(prev => prev.filter(c => c.id !== chatId));
+    setSelected(null);
+    setMessages([]);
+  };
+
   return (
     <>
       <Navbar />
@@ -230,7 +240,8 @@ const Chat = () => {
                   >
                     <ArrowBackIcon />
                   </IconButton>
-                  <Typography variant="subtitle1" fontWeight={700}>{title(selected)}</Typography>
+                  <Typography variant="subtitle1" fontWeight={700} sx={{ flexGrow: 1 }}>{title(selected)}</Typography>
+                  {selected.with?.id && <ContentActions user={selected.with} report={{ targetType: 'USER', targetId: selected.with.id }} onBlocked={handleBlocked} />}
                 </Box>
                 <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }} aria-live="polite">
                   {loadingThread ? (

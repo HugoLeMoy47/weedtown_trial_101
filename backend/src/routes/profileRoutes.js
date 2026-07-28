@@ -3,7 +3,8 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth } = require('../middlewares/requireAuth');
+const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
+const { isBlockedBetween } = require('../lib/blocks');
 
 // Perfil propio: incluye los datos personales opcionales
 const profileSelect = {
@@ -75,13 +76,17 @@ router.put('/me', requireAuth, async (req, res) => {
   }
 });
 
-// Perfil público por id
-router.get('/:id', async (req, res) => {
+// Perfil público por id. Sigue siendo público (sin sesión se ve igual), pero si
+// quien consulta tiene un bloqueo con esa persona, para él no existe.
+router.get('/:id', optionalAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID requerido' });
   try {
     const user = await prisma.user.findUnique({ where: { id }, select: publicProfileSelect });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (await isBlockedBetween(req.user?.id, id)) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
     res.json(user);
   } catch (e) {
     console.error('Error al obtener perfil:', e);
