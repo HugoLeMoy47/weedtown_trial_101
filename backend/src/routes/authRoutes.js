@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
+const avatar = require('../lib/avatar');
 const { requireAuth } = require('../middlewares/requireAuth');
 
 const SCOPES = 'read:accounts';
@@ -114,13 +115,24 @@ router.get('/mastodon/callback', async (req, res) => {
     if (!profileRes.ok) throw new Error(`verify_credentials falló: ${profileRes.status}`);
     const account = await profileRes.json();
 
+    // El avatar por defecto es uno GENERADO, no la foto de la instancia: esa
+    // foto suele ser la cara de la persona y aparece junto a su zona en "Cerca".
+    // Usarla sigue siendo posible, pero como decisión explícita desde el perfil.
+    //
+    // La semilla se deriva de la identidad federada, así que es estable: la
+    // misma cuenta estrena siempre el mismo avatar sin tener que elegir nada.
+    const semilla = avatar.semillaDesde(`${instance}:${account.id}`);
+
     const user = await prisma.user.upsert({
       where: { mastodonInstance_mastodonId: { mastodonInstance: instance, mastodonId: String(account.id) } },
       update: {
         acct: account.acct,
         displayName: account.display_name || null,
         name: account.display_name || account.username,
-        avatar: account.avatar || null
+        // `avatar` NO se toca al volver a entrar: antes se sobrescribía en cada
+        // login, así que un avatar elegido se revertía solo. Solo se refresca la
+        // foto de la instancia, que es un dato de origen, no una elección.
+        mastodonAvatar: account.avatar || null
       },
       create: {
         mastodonInstance: instance,
@@ -128,7 +140,8 @@ router.get('/mastodon/callback', async (req, res) => {
         acct: account.acct,
         displayName: account.display_name || null,
         name: account.display_name || account.username,
-        avatar: account.avatar || null
+        avatar: avatar.urlDeAvatar(semilla),
+        mastodonAvatar: account.avatar || null
       }
     });
 
@@ -152,7 +165,9 @@ router.get('/me', requireAuth, async (req, res) => {
         birthdate: true, gender: true, createdAt: true, updatedAt: true,
         // El rol viaja en la sesión para que el frontend sepa si pintar /admin.
         // No es la autorización: esa se verifica en el servidor en cada petición.
-        role: true, suspendedUntil: true, suspendedReason: true
+        role: true, suspendedUntil: true, suspendedReason: true,
+        // Para que el perfil pueda ofrecer "usar mi foto de Mastodon"
+        mastodonAvatar: true
       }
     });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });

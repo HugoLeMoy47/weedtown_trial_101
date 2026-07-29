@@ -320,6 +320,10 @@
       "name": "Perfil"
     },
     {
+      "name": "Avatares",
+      "description": "Avatares pixel art generados por piezas. No se sube ninguna imagen: la semilla es la URL y el SVG se dibuja al vuelo."
+    },
+    {
       "name": "Seguridad",
       "description": "Bloqueo entre personas: lo crea y lo deshace quien bloquea, pero su efecto es mutuo y silencioso"
     },
@@ -453,7 +457,7 @@
             }
           }
         },
-        "description": "Incluye `role` y, si aplica, `suspendedUntil` y `suspendedReason`. El rol viaja para que el frontend sepa si pintar el panel; la autorización real se verifica en el servidor en cada petición."
+        "description": "Incluye `role` y, si aplica, `suspendedUntil` y `suspendedReason`. El rol viaja para que el frontend sepa si pintar el panel; la autorización real se verifica en el servidor en cada petición. Incluye mastodonAvatar (la foto de la instancia) para que el perfil pueda ofrecerla como alternativa al avatar generado."
       }
     },
     "/api/posts": {
@@ -676,12 +680,13 @@
             "description": "Perfil actualizado"
           },
           "400": {
-            "description": "Errores de validación"
+            "description": "Datos inválidos, incluido un avatar que no es ni generado ni la foto propia"
           },
           "401": {
             "description": "No autenticado"
           }
-        }
+        },
+        "description": "El campo avatar solo acepta dos cosas: una URL de /api/avatars/ generada por este servidor, o la propia foto de Mastodon de esa cuenta. Cualquier otra URL se rechaza — antes valía cualquier http(s), lo que permitía apuntar el avatar a un rastreador externo o colgar la foto de otra persona."
       }
     },
     "/api/profile/{id}": {
@@ -2909,6 +2914,56 @@
           },
           "403": {
             "description": "Tu cuenta no tiene rol de moderación"
+          }
+        }
+      }
+    },
+    "/api/avatars/{semilla}.svg": {
+      "get": {
+        "tags": [
+          "Avatares"
+        ],
+        "summary": "SVG del avatar de una semilla",
+        "description": "Público y sin sesión: los avatares se ven en perfiles públicos y en el feed. No guarda nada — la semilla determina el dibujo por completo y el catálogo está versionado, así que la respuesta se cachea un año como immutable. Formato de la semilla: wt1-{base}-{peinado}-{mirada}-{boca}-{accesorio}-{paleta}.",
+        "parameters": [
+          {
+            "name": "semilla",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^wt1-d{1,2}(-d{1,2}){5}$"
+            },
+            "example": "wt1-3-1-0-2-5-4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SVG de 16×16",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Semilla inválida o fuera del catálogo"
+          }
+        }
+      }
+    },
+    "/api/avatars/catalogo": {
+      "get": {
+        "tags": [
+          "Avatares"
+        ],
+        "summary": "Piezas disponibles",
+        "description": "Ranuras y nombres de cada opción, para pintar el estudio sin duplicar el catálogo en el cliente.",
+        "responses": {
+          "200": {
+            "description": "Catálogo versionado"
           }
         }
       }

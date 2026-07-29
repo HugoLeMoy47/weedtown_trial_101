@@ -6,6 +6,7 @@ import {
 import api from '../services/api';
 import Navbar from '../components/Navbar';
 import BlockedAccounts from '../components/BlockedAccounts';
+import AvatarStudio from '../components/AvatarStudio';
 import { useAuth } from '../hooks/useAuth';
 
 const emptyForm = { phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
@@ -140,6 +141,7 @@ const Profile = () => {
           </CardContent>
         </Card>
 
+        <AvatarStudio user={user} onSaved={setUser} />
         <BlockedAccounts />
       </Container>
     </>

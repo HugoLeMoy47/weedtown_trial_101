@@ -24,7 +24,13 @@ model User {
   displayName      String?
   email            String?      @unique
   name             String
+  // Avatar en uso. Por defecto es uno generado (ver src/lib/avatar.js): la foto
+  // de Mastodon puede ser la cara real de la persona, y aparece junto a su zona
+  // en "Cerca". Usarla es ahora una decisión explícita, no el default.
   avatar           String?
+  // La foto de la instancia, guardada aparte para poder ofrecerla como opción
+  // sin que sobrescriba lo que la persona haya elegido.
+  mastodonAvatar   String?
   phone            String?
   fullName         String?
   bio              String?

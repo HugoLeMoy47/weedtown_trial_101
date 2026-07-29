@@ -25,6 +25,7 @@
 | Identidad federada con Mastodon (cualquier instancia) | ✅ Funcionando |
 | Feed de posteos con texto, imagen y hashtags (paginado + búsqueda) | ✅ Funcionando |
 | Perfil de usuario (ver y editar el propio, datos opcionales) | ✅ Funcionando |
+| Avatares pixel art generados por piezas (30,720 combinaciones, sin subir imágenes) | ✅ Funcionando |
 | UI Material Design con modo claro/oscuro accesible | ✅ Funcionando |
 | Base de datos PostgreSQL en Supabase (Prisma ORM) | ✅ Funcionando |
 | Reacciones cannábicas en posts y comentarios (👍 Me gusta, 🌿 Me rola, 👀 Me interesa, 😒 Me molesta) | ✅ Funcionando |
@@ -121,6 +122,18 @@ La privacidad frente al servidor (celdas de 2 km, PII fuera de los perfiles púb
 - **Es silencioso**: a la persona bloqueada nunca se le informa. Las rutas responden **404** ("no encontrado") en lugar de 403, para no confirmar ni el bloqueo ni la existencia de la cuenta.
 - **Cobertura**: feed y búsqueda, comentarios, posts y comentarios de foro (incluido el orden *Relevante*), reacciones —que en el foro puntúan ±1—, chat (búsqueda, apertura, listado, lectura y envío), Cerca (lista, zonas del mapa y toque), notificaciones y perfil público. Al bloquear se borran además las notificaciones ya intercambiadas entre ambas partes, en las dos direcciones — apuntan a contenido que ninguna de las dos podrá volver a abrir.
 - **Es reversible** desde *Perfil → Cuentas bloqueadas*.
+
+### Avatares generados
+
+Antes, el avatar se **copiaba de Mastodon** al iniciar sesión. Para mucha gente esa foto es su cara, y aparecía junto a su zona de ~2 km en «Cerca». Un seudónimo junto a una zona es una cosa; una cara junto a esa misma zona es otra. El producto se define por el seudonimato, así que importar un retrato por defecto era una contradicción.
+
+Ahora **el default es un avatar generado**: pixel art de 16×16 compuesto con piezas que dibujó el equipo — 8 bases, 4 peinados, 4 miradas, 4 bocas, 10 accesorios y 6 paletas, o **30,720 combinaciones**. Más de la mitad de las bases no son humanas (gato, planta, calaca, ajolote, luchador, búho, alebrije): para una comunidad estigmatizada, poder no tener cara es una función de privacidad, no un capricho.
+
+- **No se sube ninguna imagen.** La semilla *es* la URL: `GET /api/avatars/wt1-3-1-0-2-5-4.svg` devuelve el SVG dibujado al vuelo. No hay archivos que guardar, borrar ni limpiar, y la respuesta se cachea un año como `immutable`.
+- **Por piezas y no editor libre**, a propósito: si cada pieza la dibujó el equipo, todo resultado posible es aceptable por construcción. Cero superficie nueva de moderación en el elemento más visible de la interfaz.
+- **La semilla lleva versión** (`wt1-`). Si algún día se amplía el catálogo se publica `wt2` y los avatares existentes siguen dibujándose igual — ampliar no le puede cambiar la cara a nadie.
+- **La foto de Mastodon sigue disponible**, pero como decisión explícita desde *Perfil → Tu avatar*. Quitar la opción sería paternalista; lo que cambia el comportamiento de la mayoría es qué pasa cuando nadie elige. A las cuentas que ya la traían **no se les cambió el avatar** —sería una sorpresa desagradable— pero ven un aviso en su perfil explicando por qué conviene cambiarlo.
+- **El campo `avatar` dejó de aceptar cualquier URL.** Solo se admite un avatar generado por este servidor o la foto de Mastodon *de esa misma cuenta*. Antes valía cualquier `http(s)`, lo que permitía apuntar el avatar a un rastreador externo —que se enteraba cada vez que alguien veía tu perfil— o colgar la foto de otra persona.
 
 ### Moderación
 
