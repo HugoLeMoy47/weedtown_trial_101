@@ -5,6 +5,7 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
 const { isBlockedBetween } = require('../lib/blocks');
+const { friendStatusBetween } = require('../lib/friends');
 const avatar = require('../lib/avatar');
 const handleLib = require('../lib/handle');
 const privacy = require('../lib/privacy');
@@ -14,7 +15,7 @@ const { log } = require('../lib/logger');
 const profileSelect = {
   id: true, handle: true, displayName: true, email: true,
   name: true, avatar: true, mastodonAvatar: true, phone: true, fullName: true,
-  bio: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true,
+  bio: true, aboutMe: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true,
   // Con qué métodos puede entrar esta persona. Solo lo ve su dueño. `id` es lo
   // que usa DELETE /api/auth/identities/:id; `originHandle` trae, según el
   // proveedor, el acct de Mastodon, el correo o el nombre que se le dio a la llave.
@@ -46,6 +47,7 @@ function validateProfile(data) {
   if (data.fullName && data.fullName.length > 120) errors.push('Nombre completo demasiado largo (máx. 120)');
   if (data.name && String(data.name).length > 80) errors.push('Nombre demasiado largo (máx. 80)');
   if (data.bio && String(data.bio).length > 500) errors.push('La bio no puede superar 500 caracteres');
+  if (data.aboutMe && String(data.aboutMe).length > 1000) errors.push('El "sobre mí" no puede superar 1000 caracteres');
   return errors;
 }
 
@@ -124,6 +126,7 @@ router.put('/me', requireAuth, async (req, res) => {
         phone: data.phone || null,
         fullName: data.fullName || null,
         bio: data.bio || null,
+        aboutMe: data.aboutMe || null,
         age: data.age ? Number(data.age) : null,
         birthdate: data.birthdate ? new Date(data.birthdate) : null,
         gender: data.gender || null
@@ -180,7 +183,19 @@ router.get('/:id', optionalAuth, async (req, res) => {
     if (await isBlockedBetween(req.user?.id, id)) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
-    res.json(user);
+
+    // aboutMe (HU-AMI-002) es lo único del perfil que no es público: solo se
+    // agrega a la respuesta para amigos, o para el propio dueño si consulta
+    // su perfil por esta ruta en vez de /me.
+    const soyYo = req.user?.id === id;
+    const { status, requestId } = soyYo ? { status: 'self' } : await friendStatusBetween(req.user?.id, id);
+    let aboutMe = null;
+    if (soyYo || status === 'friends') {
+      const extra = await prisma.user.findUnique({ where: { id }, select: { aboutMe: true } });
+      aboutMe = extra?.aboutMe ?? null;
+    }
+
+    res.json({ ...user, aboutMe, friendStatus: status, friendRequestId: requestId ?? null });
   } catch (e) {
     console.error('Error al obtener perfil:', e);
     res.status(500).json({ error: 'Error al obtener perfil' });

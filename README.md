@@ -40,7 +40,7 @@
 | Chat 1 a 1 en tiempo real (Socket.IO + REST, búsqueda de personas, historial paginado) | ✅ Funcionando |
 | "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
 | Bloquear personas (efecto mutuo en feed, foros, chat y Cerca; silencioso y reversible) | ✅ Funcionando |
-| Amistad (solicitud + aceptación mutua) y posteos "solo amigos" — bloquear deshace el vínculo | ✅ Funcionando |
+| Amistad (solicitud + aceptación mutua), posteos "solo amigos" y perfil ajeno con "sobre mí" para amigos | ✅ Funcionando |
 | Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
 | Almacenamiento de imágenes intercambiable (disco local en dev, Supabase Storage en prod) con borrado real al eliminar contenido | ✅ Funcionando |
 | Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
@@ -79,7 +79,8 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   └── src/
 │       ├── components/ Navbar, PostCard, ContentActions, RequireAuth, RequireRole, ...
 │       ├── hooks/      useAuth (AuthProvider + sesión en localStorage)
-│       ├── pages/      Login, AuthCallback, Feed, Forum, Chat, Nearby, Profile, Admin
+│       ├── pages/      Login, AuthCallback, Feed, Forum, Chat, Nearby, Profile, PublicProfile,
+│       │               Friends, Admin
 │       ├── services/   api.js (axios con Authorization automático)
 │       └── theme.js    Tema Material claro/oscuro (sistema + toggle persistido)
 └── mobile/             App móvil (Expo) — CONGELADA, ver mobile/README.md
@@ -206,7 +207,10 @@ Antes de esto, cualquier persona registrada era "lo mismo" para efectos de audie
 - **Alcance de post de dos niveles**: `PUBLIC` (default) o `FRIENDS`. Un post `FRIENDS` no aparece en el feed, la búsqueda ni el conteo de nadie que no sea el autor o su amigo — y tampoco se puede comentar desde afuera, aunque se conozca el id.
 - **Bloquear deshace cualquier amistad o solicitud pendiente** con esa persona, en cualquier dirección — mismo criterio que ya limpia notificaciones al bloquear: un bloqueo no debe dejar un vínculo corriendo por debajo.
 - **Enviar una solicitud exige cuenta establecida** (`requireEstablished`, HU-SEG-006): es contacto directo hacia una persona concreta, mismo criterio que el toque de Cerca y abrir un chat nuevo.
-- **Backend completo, frontend parcial**: el compositor de posts ya tiene el selector Público/Solo amigos; falta la página de perfil ajeno con el botón de relación, el campo `aboutMe` (ya existe en el modelo) visible solo para amigos, y la descubribilidad (búsqueda por handle + sugerencias desde Cerca) — fases siguientes.
+- **Perfil ajeno** (`/perfil/:id`, `frontend/src/pages/PublicProfile.jsx`): datos públicos siempre; el bloque "Sobre mí" (`aboutMe`, hasta 1000 caracteres, editable desde `/profile`) solo aparece si `friendStatus` es `friends` o es tu propio perfil — el backend decide qué manda, el frontend solo pinta lo que llega. El botón de relación cambia según `friendStatus` (`none` → Agregar amigo, `pending_sent`/`pending_received` → cancelar o aceptar/rechazar, `friends` → dejar de ser amigos), y trae también Reportar/Bloquear.
+- **Bandeja de amistad** (`/amigos`, `frontend/src/pages/Friends.jsx`): solicitudes recibidas, enviadas y lista de amigos. El link "Amigos" del menú lleva un badge con el conteo de solicitudes pendientes (mismo patrón de polling que la campana de notificaciones).
+- **Se llega a un perfil ajeno desde el feed**: el nombre/avatar de cada post en `PostCard` enlaza a `/perfil/:id` (o a `/profile` si el post es tuyo).
+- Pendiente para una fase siguiente: descubribilidad — búsqueda por handle y sugerencias desde Cerca, para no depender de ya haber visto un post de esa persona.
 
 ### Avatares generados
 
@@ -317,7 +321,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 324 y cubren doce áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 333 y cubren doce áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -342,7 +346,7 @@ Sin Docker ni Postgres local, la forma más simple de tener una base separada es
 
 | Script | Qué hace |
 |---|---|
-| `npm test` | Las 324 pruebas de integración |
+| `npm test` | Las 333 pruebas de integración |
 | `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
 | `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las 292 |
 | `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
@@ -452,10 +456,10 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | POST | `/api/forum/comments/:id/reaction` | 🔒 | Reaccionar a comentario del foro (puntúa ±1) |
 | GET | `/api/notifications` (+`/unread-count`, `POST /read-all`) | 🔒 | Centro de notificaciones in-app |
 | GET | `/api/profile/me` | 🔒 | Perfil propio, con sus métodos de acceso (`identities`) |
-| PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
+| PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio (incluye `aboutMe`, hasta 1000 caracteres) |
 | GET | `/api/profile/me/export` | 🔒 | Descargar mis datos (perfil, contenido propio, bloqueos, reportes, mensajes enviados…) |
 | DELETE | `/api/profile/me` | 🔒 | Eliminar (anonimizar) mi cuenta — exige `{ confirm: "mi-handle" }` |
-| GET | `/api/profile/:id` | — | Perfil público por id (404 si hay bloqueo de por medio; sin instancia de Mastodon) |
+| GET | `/api/profile/:id` | opcional | Perfil público por id + `friendStatus` (`none`\|`pending_sent`\|`pending_received`\|`friends`\|`self`); `aboutMe` solo si son amigos. 404 si hay bloqueo de por medio |
 | GET | `/api/blocks` | 🔒 | Cuentas que bloqueé |
 | POST | `/api/blocks` | 🔒 | Bloquear (`userId`); idempotente |
 | DELETE | `/api/blocks/:userId` | 🔒 | Desbloquear; idempotente |
@@ -531,7 +535,7 @@ El envío de mensajes entra **por REST** (hereda auth, rate limit y validación)
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 324 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 333 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 

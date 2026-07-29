@@ -51,6 +51,20 @@ async function findRequestBetween(a, b) {
 }
 
 /**
+ * Estado de relación entre quien mira (viewer) y un perfil (target), para que
+ * el frontend sepa qué botón mostrar. `requestId` solo viene con `pending_*`
+ * — aceptar/rechazar necesitan el id de la solicitud, no el del usuario.
+ * @returns {Promise<{status: 'none'|'pending_sent'|'pending_received'|'friends', requestId?: number}>}
+ */
+async function friendStatusBetween(viewerId, targetId) {
+  if (!viewerId || viewerId === targetId) return { status: 'none' };
+  const fila = await findRequestBetween(viewerId, targetId);
+  if (!fila || fila.status === 'REJECTED') return { status: 'none' };
+  if (fila.status === 'ACCEPTED') return { status: 'friends' };
+  return { status: fila.requesterId === viewerId ? 'pending_sent' : 'pending_received', requestId: fila.id };
+}
+
+/**
  * Deshace cualquier vínculo de amistad entre dos personas — aceptado o
  * pendiente, en cualquier dirección. Se usa al bloquear (HU-AMI-005): un
  * bloqueo no debe dejar una amistad fantasma corriendo por debajo.
@@ -61,4 +75,4 @@ async function romperVinculo(a, b) {
   });
 }
 
-module.exports = { areFriends, friendIds, findRequestBetween, romperVinculo };
+module.exports = { areFriends, friendIds, findRequestBetween, friendStatusBetween, romperVinculo };

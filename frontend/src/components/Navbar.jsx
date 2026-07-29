@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, Button, IconButton, Avatar, Box, Tooltip, Container,
+  AppBar, Toolbar, Button, IconButton, Avatar, Box, Tooltip, Container, Badge,
   Drawer, List, ListItemButton, ListItemIcon, ListItemText, Divider
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -12,18 +12,23 @@ import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import ForumIcon from '@mui/icons-material/Forum';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import GavelIcon from '@mui/icons-material/Gavel';
 import { BrandMark, BrandWordmark } from './BrandLogo';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
+import api from '../services/api';
 import NotificationBell from './NotificationBell';
 import SuspensionBanner from './SuspensionBanner';
+
+const POLL_SOLICITUDES_MS = 30000;
 
 const baseLinks = [
   { to: '/feed', label: 'Feed', icon: <DynamicFeedIcon /> },
   { to: '/forum', label: 'Foros', icon: <ForumIcon /> },
   { to: '/chat', label: 'Chat', icon: <ChatBubbleOutlineIcon /> },
-  { to: '/cerca', label: 'Cerca', icon: <MyLocationIcon /> }
+  { to: '/cerca', label: 'Cerca', icon: <MyLocationIcon /> },
+  { to: '/amigos', label: 'Amigos', icon: <PeopleAltIcon /> }
 ];
 
 // La entrada al panel solo aparece con rol de moderación. Ocultarla es
@@ -36,10 +41,26 @@ const Navbar = () => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
 
   const navLinks = ['MOD', 'ADMIN'].includes(user?.role)
     ? [...baseLinks, linkModeracion]
     : baseLinks;
+
+  // Cuántas solicitudes de amistad esperan respuesta, para el badge de
+  // "Amigos" — mismo criterio de polling que la campana de notificaciones.
+  const refreshSolicitudes = useCallback(() => {
+    api.get('/friends/requests')
+      .then(res => setSolicitudesPendientes(res.data.recibidas?.length || 0))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    refreshSolicitudes();
+    const timer = setInterval(refreshSolicitudes, POLL_SOLICITUDES_MS);
+    return () => clearInterval(timer);
+  }, [user, refreshSolicitudes]);
 
   const handleLogout = () => {
     setDrawerOpen(false);
@@ -81,7 +102,11 @@ const Navbar = () => {
                 color={pathname === to ? 'primary' : 'secondary'}
                 aria-current={pathname === to ? 'page' : undefined}
               >
-                {label}
+                {to === '/amigos' ? (
+                  <Badge badgeContent={solicitudesPendientes} color="primary" max={99}>
+                    <Box sx={{ pr: solicitudesPendientes > 0 ? 1 : 0 }}>{label}</Box>
+                  </Badge>
+                ) : label}
               </Button>
             ))}
           </Box>
@@ -147,7 +172,11 @@ const Navbar = () => {
                 onClick={() => setDrawerOpen(false)}
                 aria-current={pathname === to ? 'page' : undefined}
               >
-                <ListItemIcon>{icon}</ListItemIcon>
+                <ListItemIcon>
+                  {to === '/amigos' ? (
+                    <Badge badgeContent={solicitudesPendientes} color="primary" max={99}>{icon}</Badge>
+                  ) : icon}
+                </ListItemIcon>
                 <ListItemText primary={label} />
               </ListItemButton>
             ))}

@@ -134,6 +134,39 @@ module.exports = async function run() {
 
     r = await call('POST', '/api/posts', { tok: tEmma, body: { content: 'x', visibility: 'INVALIDO' } });
     check('un visibility inválido → 400', r.status === 400, `(fue ${r.status})`);
+
+    console.log('\n  — Perfil ajeno: friendStatus y aboutMe —');
+    const fer = await mkUser('fer');
+    const tFer = token(fer.id);
+    r = await call('PUT', '/api/profile/me', { tok: tFer, body: { aboutMe: 'solo mis amigos ven esto' } });
+    check('guardar aboutMe → 200', r.status === 200, `(fue ${r.status})`);
+    r = await call('GET', '/api/profile/me', { tok: tFer });
+    check('el dueño ve su propio aboutMe en /me', r.data.aboutMe === 'solo mis amigos ven esto');
+
+    r = await call('GET', `/api/profile/${fer.id}`);
+    check('sin sesión: friendStatus "none" y aboutMe null', r.data.friendStatus === 'none' && r.data.aboutMe === null, `(fue ${r.data.friendStatus}/${r.data.aboutMe})`);
+
+    const gus = await mkUser('gus');
+    const tGus = token(gus.id);
+    r = await call('GET', `/api/profile/${fer.id}`, { tok: tGus });
+    check('un desconocido ve friendStatus "none" y aboutMe null', r.data.friendStatus === 'none' && r.data.aboutMe === null);
+
+    r = await call('POST', `/api/friends/request/${fer.id}`, { tok: tGus });
+    const solGusFer = r.data.friendRequest.id;
+    r = await call('GET', `/api/profile/${fer.id}`, { tok: tGus });
+    check('quien mandó la solicitud ve "pending_sent" con el requestId', r.data.friendStatus === 'pending_sent' && r.data.friendRequestId === solGusFer);
+    r = await call('GET', `/api/profile/${gus.id}`, { tok: tFer });
+    check('a quien la recibió le sale "pending_received" con el mismo requestId', r.data.friendStatus === 'pending_received' && r.data.friendRequestId === solGusFer);
+
+    await call('POST', `/api/friends/accept/${solGusFer}`, { tok: tFer });
+    r = await call('GET', `/api/profile/${fer.id}`, { tok: tGus });
+    check('ya amigos: friendStatus "friends" y aboutMe visible', r.data.friendStatus === 'friends' && r.data.aboutMe === 'solo mis amigos ven esto');
+
+    r = await call('GET', `/api/profile/${fer.id}`, { tok: tFer });
+    check('el propio dueño, consultándose por :id, ve "self" y su aboutMe', r.data.friendStatus === 'self' && r.data.aboutMe === 'solo mis amigos ven esto');
+
+    r = await call('PUT', '/api/profile/me', { tok: tFer, body: { aboutMe: 'x'.repeat(1001) } });
+    check('aboutMe de más de 1000 caracteres → 400', r.status === 400, `(fue ${r.status})`);
   } finally {
     await cleanup();
   }

@@ -9,6 +9,8 @@ import ForumPostDetail from './pages/ForumPostDetail';
 import Chat from './pages/Chat';
 import Nearby from './pages/Nearby';
 import Profile from './pages/Profile';
+import PublicProfile from './pages/PublicProfile';
+import Friends from './pages/Friends';
 import Admin from './pages/Admin';
 import Terms from './pages/Terms';
 import AuthCallback from './pages/AuthCallback';
@@ -36,6 +38,8 @@ function App() {
             <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
             <Route path="/cerca" element={<RequireAuth><Nearby /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+            <Route path="/amigos" element={<RequireAuth><Friends /></RequireAuth>} />
+            <Route path="/perfil/:id" element={<RequireAuth><PublicProfile /></RequireAuth>} />
             {/* Misma URL que el resto de la app: el panel no es otro despliegue,
                 es una sección más protegida por rol */}
             <Route path="/admin" element={<RequireRole><Admin /></RequireRole>} />

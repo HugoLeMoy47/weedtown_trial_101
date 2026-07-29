@@ -61,6 +61,11 @@
             "type": "string",
             "nullable": true
           },
+          "aboutMe": {
+            "type": "string",
+            "nullable": true,
+            "description": "\"Sobre mí\" extendido (HU-AMI-002). Solo viaja en la respuesta cuando quien consulta es amigo de esa cuenta (o es la propia cuenta) — en cualquier otro caso llega null aunque exista."
+          },
           "age": {
             "type": "integer",
             "nullable": true
@@ -255,6 +260,10 @@
           },
           "bio": {
             "type": "string"
+          },
+          "aboutMe": {
+            "type": "string",
+            "description": "\"Sobre mí\" extendido, máx. 1000 caracteres. Solo lo ven tus amigos (HU-AMI-002) — bio, en cambio, es pública."
           },
           "age": {
             "type": "integer",
@@ -988,6 +997,10 @@
           "Perfil"
         ],
         "summary": "Perfil público por id",
+        "security": [
+          {},
+          { "bearerAuth": [] }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -1000,11 +1013,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Perfil del usuario",
+            "description": "Perfil del usuario, con friendStatus (HU-AMI-002) según quien consulta",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "allOf": [
+                    { "$ref": "#/components/schemas/User" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "friendStatus": {
+                          "type": "string",
+                          "enum": ["none", "pending_sent", "pending_received", "friends", "self"],
+                          "description": "\"self\" solo cuando quien consulta es el propio dueño del perfil"
+                        },
+                        "friendRequestId": {
+                          "type": "integer",
+                          "nullable": true,
+                          "description": "Solo viene con pending_sent/pending_received — es el id que usan accept/reject, no el userId"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1013,7 +1043,7 @@
             "description": "Usuario no encontrado, o hay un bloqueo entre quien consulta y esa cuenta"
           }
         },
-        "description": "Ya no expone la instancia de Mastodon: era un dato de origen que decía en qué servidor del fediverso está esa persona, y con un handle propio dejó de hacer falta."
+        "description": "Ya no expone la instancia de Mastodon: era un dato de origen que decía en qué servidor del fediverso está esa persona, y con un handle propio dejó de hacer falta. Sin sesión, friendStatus siempre es \"none\"."
       }
     },
     "/api/posts/{id}/reaction": {

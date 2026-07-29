@@ -11,7 +11,7 @@ import AccessMethods from '../components/AccessMethods';
 import AccountPrivacy from '../components/AccountPrivacy';
 import { useAuth } from '../hooks/useAuth';
 
-const emptyForm = { handle: '', phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
+const emptyForm = { handle: '', phone: '', fullName: '', bio: '', aboutMe: '', age: '', birthdate: '', gender: '' };
 
 const Profile = () => {
   const { user, setUser } = useAuth();
@@ -31,6 +31,7 @@ const Profile = () => {
         phone: u.phone || '',
         fullName: u.fullName || '',
         bio: u.bio || '',
+        aboutMe: u.aboutMe || '',
         age: u.age ?? '',
         birthdate: u.birthdate ? u.birthdate.slice(0, 10) : '',
         gender: u.gender || ''
@@ -142,7 +143,11 @@ const Profile = () => {
                     <MenuItem value="femenino">Femenino</MenuItem>
                     <MenuItem value="otro">Otro</MenuItem>
                   </TextField>
-                  <TextField name="bio" label="Biografía" value={form.bio} onChange={handleChange} multiline minRows={3} fullWidth />
+                  <TextField name="bio" label="Biografía" value={form.bio} onChange={handleChange} multiline minRows={3} fullWidth
+                    helperText="Pública: la ve cualquiera que entre a tu perfil" />
+                  <TextField name="aboutMe" label="Sobre mí" value={form.aboutMe} onChange={handleChange} multiline minRows={3} fullWidth
+                    inputProps={{ maxLength: 1000 }}
+                    helperText={`Solo tus amigos la ven — ${form.aboutMe.length}/1000`} />
 
                   {fieldErrors.length > 0 && (
                     <Alert severity="error" role="alert">

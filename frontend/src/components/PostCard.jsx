@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Card, CardHeader, CardContent, CardMedia, CardActions, Avatar, Typography, Chip, Stack, Button, Collapse,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert
@@ -20,6 +21,7 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
     .map(h => (typeof h === 'string' ? h : h.hashtag?.tag))
     .filter(Boolean);
   const date = post.createdAt ? new Date(post.createdAt) : null;
+  const perfilHref = author.id ? (isMine ? '/profile' : `/perfil/${author.id}`) : null;
 
   const [reactions, setReactions] = useState(post.reactions || EMPTY_COUNTS);
   const [myReaction, setMyReaction] = useState(post.myReaction || null);
@@ -66,12 +68,27 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
     <Card component="article">
       <CardHeader
         avatar={
-          <Avatar src={author.avatar || undefined} alt={authorName} sx={{ bgcolor: 'primary.main' }}>
+          <Avatar
+            src={author.avatar || undefined}
+            alt={authorName}
+            component={perfilHref ? RouterLink : 'div'}
+            to={perfilHref || undefined}
+            sx={{ bgcolor: 'primary.main' }}
+          >
             {authorName.charAt(0).toUpperCase()}
           </Avatar>
         }
-        title={authorName}
-        titleTypographyProps={{ fontWeight: 600 }}
+        title={perfilHref ? (
+          <Typography
+            component={RouterLink}
+            to={perfilHref}
+            variant="body1"
+            sx={{ fontWeight: 600, color: 'text.primary', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+          >
+            {authorName}
+          </Typography>
+        ) : authorName}
+        titleTypographyProps={perfilHref ? undefined : { fontWeight: 600 }}
         subheader={date ? (
           <time dateTime={date.toISOString()}>
             {date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}
