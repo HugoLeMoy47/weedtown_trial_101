@@ -178,6 +178,7 @@ app.use('/api/media', require('./src/routes/mediaRoutes'));
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 app.use('/api/nearby', require('./src/routes/nearbyRoutes'));
 app.use('/api/blocks', require('./src/routes/blockRoutes'));
+app.use('/api/friends', require('./src/routes/friendRoutes'));
 app.use('/api/reports', require('./src/routes/reportRoutes'));
 app.use('/api/avatars', require('./src/routes/avatarRoutes'));
 

@@ -36,6 +36,9 @@ model User {
   phone            String?
   fullName         String?
   bio              String?
+  // Solo para amigos (HU-AMI-002): a diferencia de `bio`, que es pública, este
+  // texto no sale en publicProfileSelect — únicamente cuando areFriends() es true.
+  aboutMe          String?
   age              Int?
   birthdate        DateTime?
   gender           String?
@@ -64,6 +67,8 @@ model User {
   reactions        Reaction[]
   blocksMade       Block[]      @relation("BlocksMade")
   blocksReceived   Block[]      @relation("BlocksReceived")
+  friendRequestsSent     FriendRequest[] @relation("FriendRequestsSent")
+  friendRequestsReceived FriendRequest[] @relation("FriendRequestsReceived")
   reportsMade      Report[]     @relation("ReportsMade")
   reportsReceived  Report[]     @relation("ReportsAboutUser")
   reportsResolved  Report[]     @relation("ReportsResolved")
@@ -182,6 +187,32 @@ model Block {
   @@index([blockedId])
 }
 
+// Amistad (HU-AMI-001). Simétrica: se guarda una sola fila por par, con
+// dirección (quién pidió), y "son amigos" se consulta en cualquiera de las
+// dos direcciones — mismo patrón que Block/isBlockedBetween.
+//
+// No hay un tercer estado "conocido" aquí: esa etiqueta no se persiste, se
+// deriva (cualquier persona visible que no es ni amigo ni bloqueado).
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model FriendRequest {
+  id          Int                 @id @default(autoincrement())
+  requester   User                @relation("FriendRequestsSent", fields: [requesterId], references: [id])
+  requesterId Int
+  addressee   User                @relation("FriendRequestsReceived", fields: [addresseeId], references: [id])
+  addresseeId Int
+  status      FriendRequestStatus @default(PENDING)
+  createdAt   DateTime            @default(now())
+  respondedAt DateTime?
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+}
+
 model MastodonApp {
   id           Int      @id @default(autoincrement())
   instance     String   @unique
@@ -190,12 +221,21 @@ model MastodonApp {
   createdAt    DateTime @default(now())
 }
 
+// Alcance de un post (HU-AMI-003). Solo dos niveles: "conocido" no es una
+// audiencia editorial propia, es la misma cosa que PUBLIC vista desde otra
+// persona que no es tu amigo.
+enum PostVisibility {
+  PUBLIC
+  FRIENDS
+}
+
 model Post {
-  id        Int             @id @default(autoincrement())
-  author    User            @relation(fields: [authorId], references: [id])
-  authorId  Int
-  content   String
-  image     String?
+  id         Int             @id @default(autoincrement())
+  author     User            @relation(fields: [authorId], references: [id])
+  authorId   Int
+  content    String
+  image      String?
+  visibility PostVisibility  @default(PUBLIC)
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
   hashtags  HashtagOnPost[]
@@ -484,6 +524,8 @@ enum NotificationType {
   REPLY_COMMENT
   NEW_SUBFORUM_POST
   POKE
+  FRIEND_REQUEST
+  FRIEND_ACCEPTED
   CONTENIDO_OCULTO
   CUENTA_SUSPENDIDA
 }

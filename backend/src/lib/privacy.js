@@ -22,6 +22,7 @@ const CAMPOS_ANONIMIZADOS = {
   phone: null,
   fullName: null,
   bio: null,
+  aboutMe: null,
   age: null,
   birthdate: null,
   gender: null,
@@ -46,7 +47,7 @@ async function exportarDatos(userId) {
       where: { id: userId },
       select: {
         id: true, handle: true, displayName: true, email: true, name: true,
-        phone: true, fullName: true, bio: true, age: true, birthdate: true, gender: true,
+        phone: true, fullName: true, bio: true, aboutMe: true, age: true, birthdate: true, gender: true,
         createdAt: true
       }
     }),
@@ -103,6 +104,7 @@ async function anonimizarCuenta(userId) {
   await prisma.$transaction([
     prisma.identity.deleteMany({ where: { userId } }), // Passkey cae en cascada con su Identity
     prisma.block.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } }),
+    prisma.friendRequest.deleteMany({ where: { OR: [{ requesterId: userId }, { addresseeId: userId }] } }),
     prisma.subForumFollow.deleteMany({ where: { userId } }),
     // Solo su bandeja de entrada: una notificación donde ES el actor le
     // pertenece en parte a quien la recibió, no se borra.

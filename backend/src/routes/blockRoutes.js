@@ -6,6 +6,7 @@ const router = express.Router();
 
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middlewares/requireAuth');
+const { romperVinculo } = require('../lib/friends');
 const { log } = require('../lib/logger');
 
 const publicSelect = { id: true, name: true, displayName: true, avatar: true, handle: true };
@@ -52,6 +53,11 @@ router.post('/', requireAuth, async (req, res) => {
         ]
       }
     });
+
+    // Un bloqueo no debe dejar una amistad (ni una solicitud a medias) corriendo
+    // por debajo: mientras dure, ninguna de las dos partes debería seguir
+    // apareciendo como amiga de la otra.
+    await romperVinculo(req.user.id, blockedId);
 
     log('bloqueo_creado', { blockerId: req.user.id, blockedId, requestId: req.id });
     res.json({ blocked: true, user: target });

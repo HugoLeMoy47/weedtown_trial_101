@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeedTown API",
-    "version": "2.4.0",
+    "version": "2.5.0",
     "description": "API de WeedTown, red social de la comunidad cannábica de México. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Seguridad: headers via helmet, CORS restringido al frontend, rate limiting (300 peticiones/15 min general; 20/15 min en el flujo OAuth), payload JSON limitado a 100 kB e imágenes a 5 MB. El perfil público (GET /api/profile/{id}) no expone PII (email, teléfono, nombre real, edad, nacimiento ni género). Las rutas de mercado y admin son stubs pendientes de implementación."
   },
   "servers": [
@@ -330,6 +330,10 @@
     {
       "name": "Seguridad",
       "description": "Bloqueo entre personas: lo crea y lo deshace quien bloquea, pero su efecto es mutuo y silencioso"
+    },
+    {
+      "name": "Amistad",
+      "description": "Solicitud + aceptación mutua y simétrica. Bloquear a alguien deshace cualquier amistad o solicitud pendiente con esa persona."
     },
     {
       "name": "Reportes",
@@ -2487,6 +2491,270 @@
           },
           "400": {
             "description": "userId inválido"
+          },
+          "401": {
+            "description": "No autenticado"
+          }
+        }
+      }
+    },
+    "/api/friends/request/{userId}": {
+      "post": {
+        "tags": [
+          "Amistad"
+        ],
+        "summary": "Enviar solicitud de amistad",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Solicitud + aceptación mutua (HU-AMI-001). Si la otra persona ya te había mandado una solicitud a ti, esta llamada la acepta directo en vez de dejar dos solicitudes cruzadas sin resolver. Requiere cuenta establecida (mismo criterio que el toque de Cerca y abrir chat — HU-SEG-006): una cuenta recién creada no puede usarlo todavía.",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "status: \"pending\" (quedó esperando) o \"accepted\" (había una cruzada y se aceptó de una vez)"
+          },
+          "400": {
+            "description": "userId inválido o intento de agregarte a ti mismo"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "403": {
+            "description": "Cuenta todavía en cuarentena de alta (HU-SEG-006)"
+          },
+          "404": {
+            "description": "Usuario no encontrado (o bloqueado, mismo criterio de discreción)"
+          },
+          "409": {
+            "description": "Ya son amigos, o ya le habías mandado una solicitud"
+          }
+        }
+      }
+    },
+    "/api/friends/accept/{requestId}": {
+      "post": {
+        "tags": [
+          "Amistad"
+        ],
+        "summary": "Aceptar una solicitud recibida",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Amistad activa"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "404": {
+            "description": "Solicitud no encontrada (o no es tuya)"
+          },
+          "409": {
+            "description": "La solicitud ya no está pendiente"
+          }
+        }
+      }
+    },
+    "/api/friends/reject/{requestId}": {
+      "post": {
+        "tags": [
+          "Amistad"
+        ],
+        "summary": "Rechazar una solicitud recibida",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Sin aviso de vuelta a quien la mandó — rechazar en silencio, mismo espíritu que el resto de las acciones de discreción de la plataforma.",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Solicitud rechazada"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "404": {
+            "description": "Solicitud no encontrada (o no es tuya)"
+          },
+          "409": {
+            "description": "La solicitud ya no está pendiente"
+          }
+        }
+      }
+    },
+    "/api/friends/{userId}": {
+      "delete": {
+        "tags": [
+          "Amistad"
+        ],
+        "summary": "Deshacer amistad o cancelar una solicitud propia (idempotente)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sin vínculo (ya sea que hubiera algo que deshacer o no)"
+          },
+          "400": {
+            "description": "userId inválido"
+          },
+          "401": {
+            "description": "No autenticado"
+          }
+        }
+      }
+    },
+    "/api/friends": {
+      "get": {
+        "tags": [
+          "Amistad"
+        ],
+        "summary": "Mis amigos",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de amistades aceptadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "friends": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "user": {
+                            "$ref": "#/components/schemas/User"
+                          },
+                          "amigosDesde": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autenticado"
+          }
+        }
+      }
+    },
+    "/api/friends/requests": {
+      "get": {
+        "tags": [
+          "Amistad"
+        ],
+        "summary": "Solicitudes pendientes (recibidas y enviadas)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dos listas separadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recibidas": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "user": {
+                            "$ref": "#/components/schemas/User"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "enviadas": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "user": {
+                            "$ref": "#/components/schemas/User"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "No autenticado"

@@ -40,6 +40,7 @@
 | Chat 1 a 1 en tiempo real (Socket.IO + REST, búsqueda de personas, historial paginado) | ✅ Funcionando |
 | "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
 | Bloquear personas (efecto mutuo en feed, foros, chat y Cerca; silencioso y reversible) | ✅ Funcionando |
+| Amistad (solicitud + aceptación mutua) y posteos "solo amigos" — bloquear deshace el vínculo | ✅ Funcionando |
 | Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
 | Almacenamiento de imágenes intercambiable (disco local en dev, Supabase Storage en prod) con borrado real al eliminar contenido | ✅ Funcionando |
 | Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
@@ -66,13 +67,13 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   ├── prisma/         schema.prisma + migraciones
 │   ├── scripts/        rol.js — asigna el primer MOD/ADMIN (`npm run rol`)
 │   ├── src/
-│   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, moderación, socket,
+│   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, amistad, moderación, socket,
 │   │   │                 storage, avatar, handle, webauthn, mailer
 │   │   ├── middlewares/  errorHandler, requireAuth (JWT), requireRole, requireNotSuspended,
 │   │   │                 requireEstablished (cuarentena de altas nuevas)
 │   │   └── routes/       auth, auth/passkey, auth/email, posts, comments, media, forum,
-│   │                     chat, notifications, nearby, blocks, reports, admin (moderación),
-│   │                     market* (* = stub)
+│   │                     chat, notifications, nearby, blocks, friends, reports,
+│   │                     admin (moderación), market* (* = stub)
 │   └── tests/          Pruebas de integración (`npm test`) contra una base aparte
 ├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
 │   └── src/
@@ -197,6 +198,16 @@ La privacidad frente al servidor (celdas de 2 km, PII fuera de los perfiles púb
 - **Cobertura**: feed y búsqueda, comentarios, posts y comentarios de foro (incluido el orden *Relevante*), reacciones —que en el foro puntúan ±1—, chat (búsqueda, apertura, listado, lectura y envío), Cerca (lista, zonas del mapa y toque), notificaciones y perfil público. Al bloquear se borran además las notificaciones ya intercambiadas entre ambas partes, en las dos direcciones — apuntan a contenido que ninguna de las dos podrá volver a abrir.
 - **Es reversible** desde *Perfil → Cuentas bloqueadas*.
 
+### Amistad y alcance de publicaciones (HU-AMI-001/002/003)
+
+Antes de esto, cualquier persona registrada era "lo mismo" para efectos de audiencia: sin bloqueo de por medio, todo el mundo veía todo. Esto agrega un nivel intermedio — **amigo** — sin inventar una tabla nueva para "conocido": esa etiqueta no se persiste, es simplemente cualquier persona visible que no es ni amiga ni bloqueada.
+
+- **Solicitud + aceptación mutua, simétrica** (`src/lib/friends.js`, `src/routes/friendRoutes.js`): A pide, B acepta, y quedan amigos por igual en las dos direcciones. Si B ya le había mandado una solicitud a A, pedirle lo mismo la acepta directo en vez de dejar dos solicitudes cruzadas sin resolver.
+- **Alcance de post de dos niveles**: `PUBLIC` (default) o `FRIENDS`. Un post `FRIENDS` no aparece en el feed, la búsqueda ni el conteo de nadie que no sea el autor o su amigo — y tampoco se puede comentar desde afuera, aunque se conozca el id.
+- **Bloquear deshace cualquier amistad o solicitud pendiente** con esa persona, en cualquier dirección — mismo criterio que ya limpia notificaciones al bloquear: un bloqueo no debe dejar un vínculo corriendo por debajo.
+- **Enviar una solicitud exige cuenta establecida** (`requireEstablished`, HU-SEG-006): es contacto directo hacia una persona concreta, mismo criterio que el toque de Cerca y abrir un chat nuevo.
+- **Backend completo, frontend parcial**: el compositor de posts ya tiene el selector Público/Solo amigos; falta la página de perfil ajeno con el botón de relación, el campo `aboutMe` (ya existe en el modelo) visible solo para amigos, y la descubribilidad (búsqueda por handle + sugerencias desde Cerca) — fases siguientes.
+
 ### Avatares generados
 
 Antes, el avatar se **copiaba de Mastodon** al iniciar sesión. Para mucha gente esa foto es su cara, y aparecía junto a su zona de ~2 km en «Cerca». Un seudónimo junto a una zona es una cosa; una cara junto a esa misma zona es otra. El producto se define por el seudonimato, así que importar un retrato por defecto era una contradicción.
@@ -306,7 +317,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 292 y cubren once áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 324 y cubren doce áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -316,11 +327,12 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Almacenamiento** | Subida por la API, y que borrar contenido borre de verdad el archivo del disco — incluido el borrado suave del foro |
 | **Identidad** | Reglas del handle, generación única, varias identidades por cuenta, y que el perfil público ya no exponga la instancia |
 | **Avatares** | Determinismo del dibujo, endpoint cacheable, el default generado y que el avatar no acepte URLs externas |
+| **Amistad** | Ciclo solicitud→aceptación, solicitudes cruzadas que se auto-aceptan, rechazar y reintentar, que bloquear deshaga el vínculo, y el alcance `FRIENDS` en feed, búsqueda y comentarios |
 | **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
 | **Acceso** | Alta y login con llave de acceso (con un autenticador de software real, no un mock — ver `tests/webauthnAuthenticator.js`), agregar/quitar métodos, enlace mágico (alta, reingreso, respaldo, un solo uso) y la cuarentena de cuentas nuevas en toque y chat |
 | **Privacidad** | Exportar datos, anonimizar cuenta (handle, PII, identidades, bloqueos), que el contenido se quede pero muestre "Cuenta eliminada", y que un JWT emitido antes de eliminar deje de servir |
 | **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
-| **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las otras 288 |
+| **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las otras 320 |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
 
@@ -330,7 +342,7 @@ Sin Docker ni Postgres local, la forma más simple de tener una base separada es
 
 | Script | Qué hace |
 |---|---|
-| `npm test` | Las 292 pruebas de integración |
+| `npm test` | Las 324 pruebas de integración |
 | `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
 | `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las 292 |
 | `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
@@ -421,7 +433,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | DELETE | `/api/auth/identities/:id` | 🔒 | Quita un método de acceso propio (rechaza el último) |
 | GET | `/api/auth/me` | 🔒 | Usuario de la sesión actual |
 | GET | `/api/posts?page=` | — | Feed paginado (20 por página) |
-| POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`) |
+| POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`, `visibility?`: PUBLIC\|FRIENDS, default PUBLIC) |
 | GET | `/api/posts/search?q=` | — | Búsqueda por contenido o autor |
 | POST | `/api/posts/:id/reaction` | 🔒 | Reaccionar (`type`: LIKE/ROLA/INTERESA/MOLESTA; misma = quitar, distinta = reemplazar) |
 | DELETE | `/api/posts/:id/reaction` | 🔒 | Quitar la reacción propia |
@@ -447,6 +459,12 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/blocks` | 🔒 | Cuentas que bloqueé |
 | POST | `/api/blocks` | 🔒 | Bloquear (`userId`); idempotente |
 | DELETE | `/api/blocks/:userId` | 🔒 | Desbloquear; idempotente |
+| POST | `/api/friends/request/:userId` | 🔒 | Enviar solicitud de amistad (acepta directo si ya había una cruzada) |
+| POST | `/api/friends/accept/:requestId` | 🔒 | Aceptar una solicitud recibida |
+| POST | `/api/friends/reject/:requestId` | 🔒 | Rechazar una solicitud recibida (sin aviso al remitente) |
+| DELETE | `/api/friends/:userId` | 🔒 | Deshacer amistad o cancelar una solicitud propia; idempotente |
+| GET | `/api/friends` | 🔒 | Mis amigos |
+| GET | `/api/friends/requests` | 🔒 | Solicitudes pendientes, recibidas y enviadas |
 | POST | `/api/reports` | 🔒 | Reportar (`targetType`, `targetId`, `reason`, `detail?`); idempotente |
 | GET | `/api/reports/mine` (+`/motivos`) | 🔒 | Mis reportes y su estado / catálogo de motivos |
 
@@ -513,7 +531,7 @@ El envío de mensajes entra **por REST** (hereda auth, rate limit y validación)
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 226 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 324 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 

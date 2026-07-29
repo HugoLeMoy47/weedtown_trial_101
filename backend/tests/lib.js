@@ -110,6 +110,7 @@ function suite(name, mark) {
     const chatIds = chats.map(c => c.id);
 
     await prisma.block.deleteMany({ where: { OR: [{ blockerId: { in: ids } }, { blockedId: { in: ids } }] } });
+    await prisma.friendRequest.deleteMany({ where: { OR: [{ requesterId: { in: ids } }, { addresseeId: { in: ids } }] } });
     await prisma.notification.deleteMany({ where: { OR: [{ recipientId: { in: ids } }, { actorId: { in: ids } }] } });
     await prisma.moderationAction.deleteMany({ where: { moderatorId: { in: ids } } });
     // Los reportes cuelgan de contenido y de cuentas: se borran antes que ambos

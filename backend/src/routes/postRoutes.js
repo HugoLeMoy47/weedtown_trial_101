@@ -6,6 +6,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth, optionalAuth, requireNotSuspended } = require('../middlewares/requireAuth');
 const { REACTION_TYPES, summarizeReactions, toggleReaction, reactionCounts } = require('../lib/reactions');
 const { blockedWith, isBlockedBetween, excludeBlocked } = require('../lib/blocks');
+const { areFriends, friendIds } = require('../lib/friends');
 const storage = require('../lib/storage');
 const { soloVisible } = require('../lib/moderation');
 const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
@@ -16,6 +17,20 @@ const MAX_COMMENT_LENGTH = 1000;
 const MAX_HASHTAGS = 10;
 const MAX_TAG_LENGTH = 30;
 const IMAGE_URL_RE = /^https?:\/\/\S{1,500}$/;
+const POST_VISIBILITY = ['PUBLIC', 'FRIENDS'];
+
+// Fragmento de `where` que decide qué posts entran en feed/búsqueda según
+// alcance (HU-AMI-003): públicos siempre, propios siempre, y los de "solo
+// amigos" únicamente si el autor está en la lista de amigos de quien mira.
+function alcanceWhere(viewerId, misAmigos) {
+  return {
+    OR: [
+      { visibility: 'PUBLIC' },
+      ...(viewerId ? [{ authorId: viewerId }] : []),
+      { visibility: 'FRIENDS', authorId: { in: misAmigos } }
+    ]
+  };
+}
 
 function parseHashtags(raw) {
   if (!Array.isArray(raw)) return null;
@@ -57,7 +72,11 @@ router.get('/', optionalAuth, async (req, res) => {
   try {
     // El contenido de las personas bloqueadas no aparece en el feed, y el total
     // se cuenta con el mismo filtro para que la paginación siga cuadrando.
-    const where = { ...soloVisible, ...excludeBlocked(await blockedWith(req.user?.id)) };
+    const where = {
+      ...soloVisible,
+      ...excludeBlocked(await blockedWith(req.user?.id)),
+      ...alcanceWhere(req.user?.id, await friendIds(req.user?.id))
+    };
     const [posts, total] = await Promise.all([
       prisma.post.findMany({
         where,
@@ -94,6 +113,10 @@ router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
   if (demasiadosEnlaces(content)) {
     return res.status(400).json({ error: `Un posteo no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
   }
+  const visibility = req.body.visibility === undefined ? 'PUBLIC' : req.body.visibility;
+  if (!POST_VISIBILITY.includes(visibility)) {
+    return res.status(400).json({ error: `Alcance inválido. Usa: ${POST_VISIBILITY.join(', ')}` });
+  }
   const tags = parseHashtags(req.body.hashtags) || [];
   try {
     if (await esContenidoRepetido('post', req.user.id, content)) {
@@ -103,6 +126,7 @@ router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
       data: {
         content,
         image: image || null,
+        visibility,
         authorId: req.user.id,
         hashtags: {
           create: tags.map(tag => ({
@@ -128,9 +152,14 @@ router.get('/search', optionalAuth, async (req, res) => {
       where: {
         ...soloVisible,
         ...excludeBlocked(await blockedWith(req.user?.id)),
-        OR: [
-          { content: { contains: q, mode: 'insensitive' } },
-          { author: { name: { contains: q, mode: 'insensitive' } } }
+        AND: [
+          alcanceWhere(req.user?.id, await friendIds(req.user?.id)),
+          {
+            OR: [
+              { content: { contains: q, mode: 'insensitive' } },
+              { author: { name: { contains: q, mode: 'insensitive' } } }
+            ]
+          }
         ]
       },
       orderBy: { createdAt: 'desc' },
@@ -270,10 +299,15 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
     return res.status(400).json({ error: `Un comentario no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
   }
   try {
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true, visibility: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     // Comentar es contactar: con un bloqueo de por medio el post no existe
     if (await isBlockedBetween(req.user.id, post.authorId)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
+    // Mismo criterio que el feed: un post "solo amigos" no se puede comentar
+    // desde afuera aunque se conozca el id.
+    if (post.visibility === 'FRIENDS' && post.authorId !== req.user.id && !(await areFriends(req.user.id, post.authorId))) {
       return res.status(404).json({ error: 'Post no encontrado' });
     }
     if (await esContenidoRepetido('comment', req.user.id, content)) {

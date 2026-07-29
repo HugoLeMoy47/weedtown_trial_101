@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import {
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert, Stack, Typography
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert, Stack, Typography,
+  ToggleButtonGroup, ToggleButton
 } from '@mui/material';
+import PublicIcon from '@mui/icons-material/Public';
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import api from '../services/api';
 import ImagePicker from './ImagePicker';
 
@@ -16,11 +19,12 @@ const PostModal = ({ open, onClose, onPost }) => {
   const [content, setContent] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [hashtags, setHashtags] = useState('');
+  const [visibility, setVisibility] = useState('PUBLIC');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const reset = () => {
-    setContent(''); setImageFile(null); setHashtags(''); setError('');
+    setContent(''); setImageFile(null); setHashtags(''); setVisibility('PUBLIC'); setError('');
   };
 
   const handleClose = () => {
@@ -35,7 +39,7 @@ const PostModal = ({ open, onClose, onPost }) => {
     try {
       const imageUrl = imageFile ? await uploadImage(imageFile) : undefined;
       const tags = hashtags.split(/[ ,]+/).filter(Boolean);
-      const res = await api.post('/posts', { content, image: imageUrl, hashtags: tags });
+      const res = await api.post('/posts', { content, image: imageUrl, hashtags: tags, visibility });
       onPost(res.data);
       reset();
     } catch (err) {
@@ -76,6 +80,20 @@ const PostModal = ({ open, onClose, onPost }) => {
                 </Typography>
               )}
             </Stack>
+            <ToggleButtonGroup
+              value={visibility}
+              exclusive
+              size="small"
+              onChange={(_, val) => val && setVisibility(val)}
+              aria-label="Quién puede ver este posteo"
+            >
+              <ToggleButton value="PUBLIC" aria-label="Público">
+                <PublicIcon fontSize="small" sx={{ mr: 0.75 }} /> Público
+              </ToggleButton>
+              <ToggleButton value="FRIENDS" aria-label="Solo amigos">
+                <PeopleAltIcon fontSize="small" sx={{ mr: 0.75 }} /> Solo amigos
+              </ToggleButton>
+            </ToggleButtonGroup>
             {error && <Alert severity="error" role="alert">{error}</Alert>}
           </Stack>
         </DialogContent>
