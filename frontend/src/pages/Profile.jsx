@@ -9,7 +9,7 @@ import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
 import { useAuth } from '../hooks/useAuth';
 
-const emptyForm = { phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
+const emptyForm = { handle: '', phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
 
 const Profile = () => {
   const { user, setUser } = useAuth();
@@ -25,6 +25,7 @@ const Profile = () => {
       .then(res => {
         const u = res.data;
         setForm({
+          handle: u.handle || '',
           phone: u.phone || '',
           fullName: u.fullName || '',
           bio: u.bio || '',
@@ -39,6 +40,9 @@ const Profile = () => {
 
   const validate = () => {
     const errors = [];
+    if (!/^[a-z0-9][a-z0-9_]{2,19}$/.test(form.handle)) {
+      errors.push('El handle debe tener entre 3 y 20 caracteres: minúsculas, números y guion bajo, empezando con letra o número');
+    }
     if (form.phone && !/^\+?\d{7,15}$/.test(form.phone)) errors.push('Teléfono inválido');
     if (form.age && (isNaN(form.age) || form.age < 0 || form.age > 120)) errors.push('Edad inválida');
     if (form.birthdate && isNaN(Date.parse(form.birthdate))) errors.push('Fecha de nacimiento inválida');
@@ -91,9 +95,9 @@ const Profile = () => {
                 {(user?.displayName || user?.name || '?').charAt(0).toUpperCase()}
               </Avatar>
               <Typography variant="h5" component="h1">{user?.displayName || user?.name}</Typography>
-              {user?.acct && (
+              {user?.handle && (
                 <Typography variant="body2" color="text.secondary">
-                  @{user.acct}{user.acct.includes('@') ? '' : `@${user.mastodonInstance}`}
+                  @{user.handle}
                 </Typography>
               )}
             </Stack>
@@ -105,6 +109,19 @@ const Profile = () => {
             ) : (
               <Box component="form" onSubmit={handleSubmit}>
                 <Stack spacing={2}>
+                  {/* El handle es lo único de este formulario que ve el resto de
+                      la comunidad; el resto son datos opcionales y privados. */}
+                  <TextField
+                    name="handle"
+                    label="Handle"
+                    value={form.handle}
+                    onChange={handleChange}
+                    fullWidth
+                    required
+                    InputProps={{ startAdornment: <Box sx={{ color: 'text.secondary', mr: 0.5 }}>@</Box> }}
+                    inputProps={{ maxLength: 20, autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
+                    helperText="Tu nombre público en WeedTown: aparece en el feed, foros, chat y Cerca. Minúsculas, números y guion bajo."
+                  />
                   <TextField name="fullName" label="Nombre completo" value={form.fullName} onChange={handleChange} fullWidth />
                   <TextField name="phone" label="Teléfono" value={form.phone} onChange={handleChange} fullWidth
                     placeholder="+521234567890" inputProps={{ inputMode: 'tel' }} />

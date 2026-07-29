@@ -7,7 +7,7 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middlewares/requireAuth');
 
-const publicSelect = { id: true, name: true, displayName: true, avatar: true, acct: true };
+const publicSelect = { id: true, name: true, displayName: true, avatar: true, handle: true };
 
 // GET /api/blocks — cuentas que yo bloqueé (para poder desbloquearlas)
 router.get('/', requireAuth, async (req, res) => {

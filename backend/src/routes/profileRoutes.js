@@ -6,18 +6,26 @@ const prisma = require('../lib/prisma');
 const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
 const { isBlockedBetween } = require('../lib/blocks');
 const avatar = require('../lib/avatar');
+const handleLib = require('../lib/handle');
 
 // Perfil propio: incluye los datos personales opcionales
 const profileSelect = {
-  id: true, mastodonInstance: true, acct: true, displayName: true, email: true,
+  id: true, handle: true, displayName: true, email: true,
   name: true, avatar: true, mastodonAvatar: true, phone: true, fullName: true,
-  bio: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true
+  bio: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true,
+  // Con qué métodos puede entrar esta persona. Solo lo ve su dueño.
+  identities: { select: { provider: true, instance: true, createdAt: true } }
 };
 
-// Perfil público: sin PII (email, teléfono, nombre real, edad, nacimiento, género).
-// La privacidad es la base del proyecto: lo opcional solo lo ve su dueño.
+// Perfil público: sin PII (email, teléfono, nombre real, edad, nacimiento, género)
+// y tampoco los métodos de acceso.
+//
+// La instancia de Mastodon salió de aquí al desacoplar la identidad: era un dato
+// de origen que ya no hace falta para identificar a nadie —para eso está el
+// handle— y decía en qué servidor del fediverso está la cuenta de esa persona.
+// Un dato menos publicado es un dato menos que correlacionar.
 const publicProfileSelect = {
-  id: true, mastodonInstance: true, acct: true, displayName: true,
+  id: true, handle: true, displayName: true,
   name: true, avatar: true, bio: true, createdAt: true
 };
 
@@ -71,6 +79,25 @@ router.put('/me', requireAuth, async (req, res) => {
     return res.status(400).json({ errors });
   }
   try {
+    // El handle es el identificador público: cambiarlo exige validarlo y
+    // comprobar que esté libre. Se normaliza primero para que "Hugo LeMoy" y
+    // "hugolemoy" no sean dos intentos distintos.
+    let nuevoHandle;
+    if (data.handle !== undefined) {
+      const propuesto = handleLib.normalizar(data.handle);
+      const motivo = handleLib.motivoInvalido(propuesto);
+      if (motivo) return res.status(400).json({ errors: [motivo] });
+
+      const tomado = await prisma.user.findUnique({
+        where: { handle: propuesto },
+        select: { id: true }
+      });
+      if (tomado && tomado.id !== req.user.id) {
+        return res.status(409).json({ errors: ['Ese handle ya está en uso'] });
+      }
+      nuevoHandle = propuesto;
+    }
+
     let nuevoAvatar;
     if (data.avatar !== undefined) {
       const propio = await prisma.user.findUnique({
@@ -86,6 +113,7 @@ router.put('/me', requireAuth, async (req, res) => {
       where: { id: req.user.id },
       data: {
         name: data.name || undefined,
+        ...(nuevoHandle !== undefined && { handle: nuevoHandle }),
         ...(nuevoAvatar !== undefined && { avatar: nuevoAvatar }),
         phone: data.phone || null,
         fullName: data.fullName || null,

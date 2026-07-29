@@ -23,6 +23,8 @@
 | Funcionalidad | Estado |
 |---|---|
 | Identidad federada con Mastodon (cualquier instancia) | ✅ Funcionando |
+| Identidad desacoplada del proveedor (`Identity`) y handle propio de WeedTown | ✅ Funcionando |
+| Llaves de acceso (passkey) y correo con enlace mágico | 📋 Siguiente — el modelo ya está listo |
 | Feed de posteos con texto, imagen y hashtags (paginado + búsqueda) | ✅ Funcionando |
 | Perfil de usuario (ver y editar el propio, datos opcionales) | ✅ Funcionando |
 | Avatares pixel art generados por piezas (30,720 combinaciones, sin subir imágenes) | ✅ Funcionando |
@@ -60,7 +62,8 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   ├── prisma/         schema.prisma + migraciones
 │   ├── scripts/        rol.js — asigna el primer MOD/ADMIN (`npm run rol`)
 │   ├── src/
-│   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, moderación, socket, storage
+│   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, moderación, socket,
+│   │   │                 storage, avatar, handle
 │   │   ├── middlewares/  errorHandler, requireAuth (JWT), requireRole, requireNotSuspended
 │   │   └── routes/       auth, posts, comments, media, forum, chat, notifications,
 │   │                     nearby, blocks, reports, admin (moderación), market* (* = stub)
@@ -92,7 +95,7 @@ sequenceDiagram
     U->>M: Autoriza la app
     M-->>B: GET /api/auth/mastodon/callback?code&state
     B->>M: POST /oauth/token + GET /verify_credentials
-    B->>B: Upsert del usuario por (instancia, id de cuenta)
+    B->>B: Busca Identity(MASTODON, "instancia:id"); si no existe, crea cuenta + handle
     B-->>U: 302 → /auth/callback#token=JWT (7 días)
     F->>F: Guarda el JWT en localStorage
     F->>B: GET /api/auth/me (Authorization: Bearer)
@@ -100,8 +103,21 @@ sequenceDiagram
 
 Puntos clave del diseño:
 - **Multi-instancia**: la app se registra dinámicamente en cada instancia de Mastodon la primera vez que un usuario de esa instancia inicia sesión (tabla `MastodonApp`).
-- **Seudonimato por diseño**: el modelo `User` no guarda password y el email es opcional (Mastodon no lo expone); la identidad única es `(mastodonInstance, mastodonId)`.
+- **Seudonimato por diseño**: el modelo `User` no guarda password y el email es opcional (Mastodon no lo expone). La identidad de acceso vive en `Identity` —`(provider, externalId)`— y el identificador público es `User.handle`, propio de WeedTown.
 - **Sesión**: JWT propio firmado con `JWT_SECRET`, enviado en el header `Authorization: Bearer`. El `state` de OAuth también va firmado (anti-CSRF, expira en 10 minutos).
+
+### Identidad y handle
+
+Hasta ahora la cuenta de Mastodon **era** la cuenta: la identidad única era `(mastodonInstance, mastodonId)` sobre `User`, y `acct` —la dirección de Mastodon— hacía además de identificador público en feed, foros, chat, Cerca y moderación. Eso hacía imposible agregar un segundo método de acceso sin rehacer el modelo.
+
+Ahora están separados:
+
+- **`User.handle`** es el identificador público, propio de WeedTown y único en la plataforma. Se elige al darse de alta (derivado del origen, con desempate automático) y se puede cambiar desde el perfil. Formato: `^[a-z0-9][a-z0-9_]{2,19}$`, normalizado antes de guardar, con una lista de **palabras reservadas** —`moderacion`, `soporte`, `weedtown`…— para que nadie se haga pasar por el equipo.
+- **`Identity`** guarda cómo entra cada persona: `(provider, externalId)` único, con la instancia y el handle de origen como datos informativos. Una cuenta puede tener **varias identidades**, que es lo que permitirá entrar por cualquier método y, sobre todo, resolver la recuperación: registrar una llave de acceso y dejar un correo de respaldo.
+
+El perfil público **dejó de exponer la instancia de Mastodon**. Era un dato de origen que decía en qué servidor del fediverso está esa persona; con un handle propio ya no hace falta para identificar a nadie, y es un dato menos que correlacionar.
+
+Agregar llaves de acceso o correo con enlace mágico es ahora escribir un archivo por proveedor y sumar un valor al enum `AuthProvider`: nada del modelo ni de las pantallas vuelve a moverse.
 
 ### Endurecimiento del backend
 
@@ -164,8 +180,8 @@ El panel vive en **`/admin` del mismo frontend**, no en un despliegue aparte. La
 
 ```bash
 cd backend
-npm run rol -- --buscar=hugo                       # encontrar la cuenta
-npm run rol -- --acct=hugo@mastodon.social --rol=ADMIN
+npm run rol -- --buscar=hugo                # encontrar la cuenta
+npm run rol -- --handle=hugolemoy --rol=ADMIN
 npm run rol -- --listar                            # ver quién tiene rol
 ```
 
@@ -231,7 +247,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 152 y cubren cinco áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 226 y cubren siete áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -239,6 +255,8 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Moderación** | Reportes idempotentes, que el chat no sea reportable, que ocultar sea reversible y no borre, el aviso con motivo sin revelar al moderador, y que suspender frene escribir pero no leer |
 | **Foros** | El bloqueo en los tres órdenes, incluido *Relevante* con su SQL cruda, más comentarios y votos |
 | **Almacenamiento** | Subida por la API, y que borrar contenido borre de verdad el archivo del disco — incluido el borrado suave del foro |
+| **Identidad** | Reglas del handle, generación única, varias identidades por cuenta, y que el perfil público ya no exponga la instancia |
+| **Avatares** | Determinismo del dibujo, endpoint cacheable, el default generado y que el avatar no acepte URLs externas |
 | **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
@@ -324,9 +342,9 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | PUT/DELETE | `/api/forum/comments/:id` | 🔒 | Editar / eliminar comentario propio (suave si tiene respuestas) |
 | POST | `/api/forum/comments/:id/reaction` | 🔒 | Reaccionar a comentario del foro (puntúa ±1) |
 | GET | `/api/notifications` (+`/unread-count`, `POST /read-all`) | 🔒 | Centro de notificaciones in-app |
-| GET | `/api/profile/me` | 🔒 | Perfil propio |
+| GET | `/api/profile/me` | 🔒 | Perfil propio, con sus métodos de acceso (`identities`) |
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
-| GET | `/api/profile/:id` | — | Perfil público por id (404 si hay bloqueo de por medio) |
+| GET | `/api/profile/:id` | — | Perfil público por id (404 si hay bloqueo de por medio; sin instancia de Mastodon) |
 | GET | `/api/blocks` | 🔒 | Cuentas que bloqueé |
 | POST | `/api/blocks` | 🔒 | Bloquear (`userId`); idempotente |
 | DELETE | `/api/blocks/:userId` | 🔒 | Desbloquear; idempotente |
@@ -396,7 +414,7 @@ El envío de mensajes entra **por REST** (hereda auth, rate limit y validación)
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 152 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 226 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 

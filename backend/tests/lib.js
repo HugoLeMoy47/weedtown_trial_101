@@ -43,12 +43,21 @@ function suite(name, mark) {
 
   const instance = `${mark}.test`;
 
+  // Cada cuenta de prueba nace con su handle (el identificador público, marcado
+  // con el prefijo de la suite para poder limpiarlo después) y una identidad de
+  // Mastodon, que es como las crea el login real.
   const mkUser = (suffix, extra = {}) => prisma.user.create({
     data: {
-      mastodonInstance: instance,
-      mastodonId: `${mark}-${suffix}-${Date.now()}`,
-      acct: `${mark}_${suffix}`,
+      handle: `${mark}_${suffix}`.toLowerCase().slice(0, 20),
       name: `${mark}_${suffix}`,
+      identities: {
+        create: {
+          provider: 'MASTODON',
+          externalId: `${instance}:${mark}-${suffix}-${Date.now()}`,
+          instance,
+          originHandle: `${mark}_${suffix}`
+        }
+      },
       ...extra
     }
   });
@@ -87,7 +96,10 @@ function suite(name, mark) {
       await prisma.subForum.deleteMany({ where: { id: { in: subIds } } });
     }
 
-    const users = await prisma.user.findMany({ where: { mastodonInstance: instance }, select: { id: true } });
+    const users = await prisma.user.findMany({
+      where: { handle: { startsWith: mark } },
+      select: { id: true }
+    });
     const ids = users.map(u => u.id);
     if (!ids.length) return;
 
@@ -130,6 +142,7 @@ function suite(name, mark) {
       await prisma.message.deleteMany({ where: { chatId: { in: chatIds } } });
       await prisma.chat.deleteMany({ where: { id: { in: chatIds } } });
     }
+    await prisma.identity.deleteMany({ where: { userId: { in: ids } } });
     await prisma.user.deleteMany({ where: { id: { in: ids } } });
   }
 

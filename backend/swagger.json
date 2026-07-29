@@ -295,6 +295,10 @@
       "description": "Identidad federada con Mastodon"
     },
     {
+      "name": "Identidad",
+      "description": "El identificador público es User.handle, propio de WeedTown. Cómo entra cada persona vive en Identity, separado de quién es."
+    },
+    {
       "name": "Posts"
     },
     {
@@ -457,7 +461,7 @@
             }
           }
         },
-        "description": "Incluye `role` y, si aplica, `suspendedUntil` y `suspendedReason`. El rol viaja para que el frontend sepa si pintar el panel; la autorización real se verifica en el servidor en cada petición. Incluye mastodonAvatar (la foto de la instancia) para que el perfil pueda ofrecerla como alternativa al avatar generado."
+        "description": "Devuelve handle (identificador público de WeedTown) en lugar de acct/mastodonInstance, que salieron de User al desacoplar la identidad del proveedor. Incluye `role` y, si aplica, `suspendedUntil` y `suspendedReason`. El rol viaja para que el frontend sepa si pintar el panel; la autorización real se verifica en el servidor en cada petición. Incluye mastodonAvatar (la foto de la instancia) para que el perfil pueda ofrecerla como alternativa al avatar generado."
       }
     },
     "/api/posts": {
@@ -653,7 +657,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Incluye identities: los métodos con los que esa cuenta puede entrar. Solo los ve su dueño."
       },
       "put": {
         "tags": [
@@ -684,9 +689,12 @@
           },
           "401": {
             "description": "No autenticado"
+          },
+          "409": {
+            "description": "Ese handle ya está en uso"
           }
         },
-        "description": "El campo avatar solo acepta dos cosas: una URL de /api/avatars/ generada por este servidor, o la propia foto de Mastodon de esa cuenta. Cualquier otra URL se rechaza — antes valía cualquier http(s), lo que permitía apuntar el avatar a un rastreador externo o colgar la foto de otra persona."
+        "description": "El campo avatar solo acepta dos cosas: una URL de /api/avatars/ generada por este servidor, o la propia foto de Mastodon de esa cuenta. Cualquier otra URL se rechaza — antes valía cualquier http(s), lo que permitía apuntar el avatar a un rastreador externo o colgar la foto de otra persona. El campo handle se normaliza antes de guardar (minúsculas, sin acentos), debe cumplir ^[a-z0-9][a-z0-9_]{2,19}$, no puede ser una palabra reservada y debe estar libre: si lo tiene otra cuenta responde 409."
       }
     },
     "/api/profile/{id}": {
@@ -719,7 +727,8 @@
           "404": {
             "description": "Usuario no encontrado, o hay un bloqueo entre quien consulta y esa cuenta"
           }
-        }
+        },
+        "description": "Ya no expone la instancia de Mastodon: era un dato de origen que decía en qué servidor del fediverso está esa persona, y con un handle propio dejó de hacer falta."
       }
     },
     "/api/posts/{id}/reaction": {

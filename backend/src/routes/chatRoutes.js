@@ -12,7 +12,7 @@ const { blockedWith, isBlockedBetween } = require('../lib/blocks');
 const MAX_MESSAGE_LENGTH = 1000;
 const MESSAGES_PAGE_SIZE = 50;
 
-const participantSelect = { id: true, name: true, displayName: true, avatar: true, acct: true };
+const participantSelect = { id: true, name: true, displayName: true, avatar: true, handle: true };
 
 // Forma pública de una conversación para el usuario actual: el "otro" participante + último mensaje
 function serializeChat(chat, currentUserId) {
@@ -59,7 +59,7 @@ router.get('/users', requireAuth, async (req, res) => {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { displayName: { contains: q, mode: 'insensitive' } },
-          { acct: { contains: q, mode: 'insensitive' } }
+          { handle: { contains: q, mode: 'insensitive' } }
         ]
       },
       select: participantSelect,

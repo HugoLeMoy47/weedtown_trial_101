@@ -196,7 +196,7 @@ const Chat = () => {
                             {(u.displayName || u.name || '?').charAt(0).toUpperCase()}
                           </Avatar>
                         </ListItemAvatar>
-                        <ListItemText primary={u.displayName || u.name} secondary={u.acct} />
+                        <ListItemText primary={u.displayName || u.name} secondary={`@${u.handle}`} />
                       </ListItemButton>
                     ))}
                   </List>

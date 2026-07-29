@@ -82,7 +82,7 @@ const Contenido = ({ reporte }) => {
       {c.title && <Typography variant="subtitle1" fontWeight={700} gutterBottom>{c.title}</Typography>}
       {reporte.targetType === 'USER' ? (
         <Stack spacing={0.5}>
-          <Typography variant="body2"><strong>{c.displayName || c.name}</strong> · {c.acct}</Typography>
+          <Typography variant="body2"><strong>{c.displayName || c.name}</strong> · @{c.handle}</Typography>
           {c.bio && <Typography variant="body2" color="text.secondary">{c.bio}</Typography>}
           <Typography variant="caption" color="text.secondary">En WeedTown desde {fecha(c.createdAt)}</Typography>
         </Stack>
@@ -158,7 +158,7 @@ const TarjetaReporte = ({ reporte, onAccion }) => {
             {(autor.displayName || autor.name || '?').charAt(0).toUpperCase()}
           </Avatar>
           <Typography variant="body2">{autor.displayName || autor.name}</Typography>
-          <Typography variant="caption" color="text.secondary">{autor.acct}</Typography>
+          <Typography variant="caption" color="text.secondary">@{autor.handle}</Typography>
         </Stack>
       )}
 

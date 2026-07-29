@@ -5,6 +5,7 @@ const router = express.Router();
 
 const prisma = require('../lib/prisma');
 const avatar = require('../lib/avatar');
+const { generarUnico: generarHandleUnico } = require('../lib/handle');
 const { requireAuth } = require('../middlewares/requireAuth');
 
 const SCOPES = 'read:accounts';
@@ -123,27 +124,59 @@ router.get('/mastodon/callback', async (req, res) => {
     // misma cuenta estrena siempre el mismo avatar sin tener que elegir nada.
     const semilla = avatar.semillaDesde(`${instance}:${account.id}`);
 
-    const user = await prisma.user.upsert({
-      where: { mastodonInstance_mastodonId: { mastodonInstance: instance, mastodonId: String(account.id) } },
-      update: {
-        acct: account.acct,
-        displayName: account.display_name || null,
-        name: account.display_name || account.username,
-        // `avatar` NO se toca al volver a entrar: antes se sobrescribía en cada
-        // login, así que un avatar elegido se revertía solo. Solo se refresca la
-        // foto de la instancia, que es un dato de origen, no una elección.
-        mastodonAvatar: account.avatar || null
-      },
-      create: {
-        mastodonInstance: instance,
-        mastodonId: String(account.id),
-        acct: account.acct,
-        displayName: account.display_name || null,
-        name: account.display_name || account.username,
-        avatar: avatar.urlDeAvatar(semilla),
-        mastodonAvatar: account.avatar || null
-      }
+    // La identidad ya no vive en User: se busca la fila de Identity de este
+    // proveedor. Así, cuando existan llaves de acceso o correo, entrar por
+    // cualquiera de ellos lleva a la misma cuenta sin tocar nada de esto.
+    const externalId = `${instance}:${account.id}`;
+    const identidad = await prisma.identity.findUnique({
+      where: { provider_externalId: { provider: 'MASTODON', externalId } },
+      include: { user: { select: { id: true } } }
     });
+
+    let user;
+    if (identidad) {
+      user = identidad.user;
+      await prisma.$transaction([
+        prisma.identity.update({
+          where: { id: identidad.id },
+          data: { originHandle: account.acct, lastLoginAt: new Date() }
+        }),
+        prisma.user.update({
+          where: { id: user.id },
+          data: {
+            displayName: account.display_name || null,
+            name: account.display_name || account.username,
+            // Ni `handle` ni `avatar` se tocan al volver a entrar: son
+            // elecciones de la persona, no datos de origen. Solo se refresca la
+            // foto de la instancia, que sí lo es.
+            mastodonAvatar: account.avatar || null
+          }
+        })
+      ]);
+    } else {
+      // Alta: el handle sale del acct de origen, pero ya es de WeedTown y la
+      // persona puede cambiarlo desde su perfil.
+      const handle = await generarHandleUnico(account.username || account.acct);
+      user = await prisma.user.create({
+        data: {
+          handle,
+          displayName: account.display_name || null,
+          name: account.display_name || account.username,
+          avatar: avatar.urlDeAvatar(semilla),
+          mastodonAvatar: account.avatar || null,
+          identities: {
+            create: {
+              provider: 'MASTODON',
+              externalId,
+              instance,
+              originHandle: account.acct,
+              lastLoginAt: new Date()
+            }
+          }
+        },
+        select: { id: true }
+      });
+    }
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     // Token en el fragmento (#): no llega al servidor del frontend ni queda en logs de acceso
@@ -160,7 +193,7 @@ router.get('/me', requireAuth, async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
-        id: true, mastodonInstance: true, acct: true, displayName: true, email: true,
+        id: true, handle: true, displayName: true, email: true,
         name: true, avatar: true, phone: true, fullName: true, bio: true, age: true,
         birthdate: true, gender: true, createdAt: true, updatedAt: true,
         // El rol viaja en la sesión para que el frontend sepa si pintar /admin.

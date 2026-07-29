@@ -24,7 +24,7 @@ const PAGE_SIZE = 20;
 const MAX_NOTA = 500;
 const MAX_DIAS_SUSPENSION = 365;
 
-const autorPublico = { select: { id: true, name: true, displayName: true, avatar: true, acct: true } };
+const autorPublico = { select: { id: true, name: true, displayName: true, avatar: true, handle: true } };
 
 // ---------- Cola de revisión ----------
 
@@ -35,7 +35,7 @@ const reporteInclude = {
   comment: { select: { id: true, content: true, image: true, createdAt: true, hiddenAt: true, postId: true, author: autorPublico } },
   forumPost: { select: { id: true, title: true, content: true, image: true, createdAt: true, hiddenAt: true, author: autorPublico, subforum: { select: { slug: true, name: true } } } },
   forumComment: { select: { id: true, content: true, image: true, createdAt: true, hiddenAt: true, postId: true, author: autorPublico } },
-  targetUser: { select: { id: true, name: true, displayName: true, avatar: true, acct: true, bio: true, createdAt: true, suspendedUntil: true } },
+  targetUser: { select: { id: true, name: true, displayName: true, avatar: true, handle: true, bio: true, createdAt: true, suspendedUntil: true } },
   subforum: { select: { id: true, name: true, slug: true, description: true, archivedAt: true, creator: autorPublico } }
 };
 
@@ -451,7 +451,7 @@ router.put('/users/:id/rol', requireRole('ADMIN'), async (req, res) => {
     if (!objetivo) return res.status(404).json({ error: 'Usuario no encontrado' });
     const actualizado = await prisma.user.update({
       where: { id }, data: { role },
-      select: { id: true, name: true, acct: true, role: true }
+      select: { id: true, name: true, handle: true, role: true }
     });
     res.json(actualizado);
   } catch (e) {
@@ -469,11 +469,11 @@ router.get('/users', async (req, res) => {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { displayName: { contains: q, mode: 'insensitive' } },
-          { acct: { contains: q, mode: 'insensitive' } }
+          { handle: { contains: q, mode: 'insensitive' } }
         ]
       } : { suspendedUntil: { gt: new Date() } },
       select: {
-        id: true, name: true, displayName: true, avatar: true, acct: true,
+        id: true, name: true, displayName: true, avatar: true, handle: true,
         role: true, suspendedUntil: true, suspendedReason: true, createdAt: true
       },
       orderBy: { createdAt: 'desc' },

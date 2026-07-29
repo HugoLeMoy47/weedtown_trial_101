@@ -91,7 +91,7 @@ const Nearby = () => {
   };
 
   const openChat = (person) => {
-    navigate('/chat', { state: { withUser: { id: person.id, name: person.name, displayName: person.displayName, avatar: person.avatar, acct: person.acct } } });
+    navigate('/chat', { state: { withUser: { id: person.id, name: person.name, displayName: person.displayName, avatar: person.avatar, handle: person.handle } } });
   };
 
   const displayName = (p) => p.displayName || p.name;
@@ -234,7 +234,7 @@ const Nearby = () => {
                           secondary={
                             <Stack direction="row" spacing={1} alignItems="center" component="span">
                               <Chip label={p.band} size="small" color={p.band === 'En tu zona' ? 'primary' : 'default'} component="span" />
-                              <Typography variant="caption" color="text.secondary" component="span">{p.acct}</Typography>
+                              <Typography variant="caption" color="text.secondary" component="span">@{p.handle}</Typography>
                             </Stack>
                           }
                           secondaryTypographyProps={{ component: 'span' }}

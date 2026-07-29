@@ -15,7 +15,7 @@ const CELL_TTL_DAYS = 7;
 const GRID_RINGS = 5; // 11×11 celdas de ~2 km ≈ radio efectivo ~11 km
 const POKE_COOLDOWN_HOURS = 12;
 
-const participantSelect = { id: true, name: true, displayName: true, avatar: true, acct: true };
+const participantSelect = { id: true, name: true, displayName: true, avatar: true, handle: true };
 
 function cutoffDate() {
   return new Date(Date.now() - CELL_TTL_DAYS * 24 * 60 * 60 * 1000);

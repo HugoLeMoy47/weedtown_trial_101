@@ -17,10 +17,12 @@ enum UserRole {
 
 model User {
   id               Int          @id @default(autoincrement())
-  // Identidad federada Mastodon: (instancia, id de cuenta) identifica al usuario
-  mastodonInstance String
-  mastodonId       String
-  acct             String
+  // Identificador público de WeedTown, elegido por la persona y único en la
+  // plataforma. Antes este papel lo hacía `acct`, la dirección de Mastodon —
+  // pero eso ata el identificador visible al proveedor con el que entraste, y
+  // hay proveedores donde no existe (en Telegram el usuario es opcional; con
+  // llave de acceso o correo no hay ninguno).
+  handle           String       @unique
   displayName      String?
   email            String?      @unique
   name             String
@@ -65,6 +67,7 @@ model User {
   hiddenForumPosts    ForumPost[]    @relation("ForumPostsHidden")
   hiddenForumComments ForumComment[] @relation("ForumCommentsHidden")
   archivedSubforums   SubForum[]     @relation("SubforumsArchived")
+  identities       Identity[]
   chats            Chat[]           @relation("UserChats")
   messages         Message[]        @relation("UserMessages")
   forumPosts       ForumPost[]
@@ -76,7 +79,36 @@ model User {
   marketItems      MarketItem[]     @relation("UserMarketItems")
   media            Media[]
 
-  @@unique([mastodonInstance, mastodonId])
+}
+
+// Cómo entra una persona. Separar esto de `User` es lo que permite tener más de
+// un método por cuenta: hasta ahora la cuenta de Mastodon *era* la cuenta, así
+// que agregar un segundo proveedor era imposible sin este corte.
+//
+// Tener varias identidades por usuario además resuelve la recuperación: se
+// puede registrar una llave de acceso y dejar un correo de respaldo.
+enum AuthProvider {
+  MASTODON
+  // Etapa 2: PASSKEY, EMAIL
+}
+
+model Identity {
+  id          Int          @id @default(autoincrement())
+  user        User         @relation(fields: [userId], references: [id])
+  userId      Int
+  provider    AuthProvider
+  // Identificador del proveedor, ya normalizado. Para Mastodon es
+  // "instancia:idDeCuenta", que es lo que antes formaba el único compuesto.
+  externalId  String
+  // Datos de origen, informativos: de dónde vino esta identidad. No se usan
+  // para identificar ni para mostrar — para eso está User.handle.
+  instance    String?
+  originHandle String?
+  createdAt   DateTime     @default(now())
+  lastLoginAt DateTime?
+
+  @@unique([provider, externalId])
+  @@index([userId])
 }
 
 // Bloqueo entre personas (HU-SEG-001).

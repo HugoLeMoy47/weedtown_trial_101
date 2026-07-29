@@ -72,7 +72,7 @@ const BlockedAccounts = () => {
                       {name.charAt(0).toUpperCase()}
                     </Avatar>
                   </ListItemAvatar>
-                  <ListItemText primary={name} secondary={b.acct} />
+                  <ListItemText primary={name} secondary={`@${b.handle}`} />
                 </ListItem>
               );
             })}

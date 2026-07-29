@@ -15,7 +15,7 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
   const { user } = useAuth();
   const author = typeof post.author === 'string' ? { name: post.author } : (post.author || {});
   const isMine = user && author.id === user.id;
-  const authorName = author.name || author.acct || 'Anónimo';
+  const authorName = author.name || author.handle || 'Anónimo';
   const tags = (post.hashtags || [])
     .map(h => (typeof h === 'string' ? h : h.hashtag?.tag))
     .filter(Boolean);
