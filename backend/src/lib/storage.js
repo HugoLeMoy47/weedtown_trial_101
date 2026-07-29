@@ -90,7 +90,8 @@ const supabase = {
       body: buffer
     });
     if (!res.ok) {
-      throw new Error(`Supabase Storage respondió ${res.status} al subir la imagen`);
+      const detalle = await res.text().catch(() => '');
+      throw new Error(`Supabase Storage respondió ${res.status} al subir la imagen: ${detalle}`);
     }
     return { url: `${base}/storage/v1/object/public/${bucket}/${key}`, key };
   },
