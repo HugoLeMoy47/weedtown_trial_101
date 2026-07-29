@@ -105,10 +105,13 @@ const Terms = () => {
 
                   <Box component="section">
                     <Typography variant="h6" gutterBottom fontWeight="bold">
-                      3. Moderación Reactiva, Privacidad y Cooperación Mínima
+                      3. Moderación Reactiva, Inexistencia de Obligación de Monitoreo General y Cooperación Mínima
                     </Typography>
                     <Typography variant="body2" color="text.secondary" paragraph>
                       * <strong>Moderación Reactiva, No Proactiva:</strong> WeedTown no realiza monitoreo proactivo ni análisis automatizado sobre mensajes o comunicaciones privadas. La moderación opera exclusivamente por reportes comunitarios.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      * <strong>No Obligación de Monitoreo General:</strong> La Plataforma no está obligada a monitorear contenido generado por usuarios ni garantiza la revisión previa de publicaciones.
                     </Typography>
                     <Typography variant="body2" color="text.secondary" paragraph>
                       * <strong>Comunicaciones Privadas:</strong> La Plataforma no tiene acceso técnico al contenido de chats privados 1-a-1 y no asume responsabilidad por acuerdos privados entre usuarios.
@@ -127,13 +130,30 @@ const Terms = () => {
                     <Typography variant="body2" color="text.secondary" paragraph>
                       La Plataforma podrá suspender cuentas de forma inmediata ante indicios razonables de actividades que puedan generar responsabilidad penal para la comunidad o sus integrantes.
                     </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      * <strong>No Responsabilidad Editorial:</strong> La Plataforma no funge como editor del contenido generado por usuarios y no verifica la veracidad, exactitud o legalidad del mismo.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      * <strong>Sin Garantía de Preservación de Contenido:</strong> La Plataforma no garantiza la preservación indefinida de publicaciones, imágenes o mensajes.
+                    </Typography>
                   </Box>
 
                   <Divider />
 
                   <Box component="section">
                     <Typography variant="h6" gutterBottom fontWeight="bold">
-                      5. Regulación Cannábica Futura
+                      5. Infraestructura y Jurisdicción Técnica
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      La infraestructura técnica de WeedTown puede operar en servidores ubicados dentro o fuera de México, siempre bajo estándares estrictos de privacidad, seudonimato y cifrado que garanticen la protección integral de la comunidad.
+                    </Typography>
+                  </Box>
+
+                  <Divider />
+
+                  <Box component="section">
+                    <Typography variant="h6" gutterBottom fontWeight="bold">
+                      6. Regulación Cannábica Futura
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Ante cualquier reforma regulatoria futura, WeedTown continuará siendo un espacio cultural y no se convertirá en un marketplace de sustancias reguladas ni intermediario sanitario.
@@ -218,7 +238,7 @@ const Terms = () => {
                       3. Neutralidad Política y Protección a Activistas
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      WeedTown mantiene estricta neutralidad partidista. Protegemos la labor de activistas cannábicos y de derechos humanos mediante seudonimato reforzado.
+                      WeedTown mantiene estricta neutralidad partidista. Protegemos la labor de activistas cannábicos y de derechos humanos mediante seudonimato reinforced.
                     </Typography>
                   </Box>
                 </Stack>
