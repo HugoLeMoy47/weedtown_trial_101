@@ -40,7 +40,7 @@
 | Chat 1 a 1 en tiempo real (Socket.IO + REST, búsqueda de personas, historial paginado) | ✅ Funcionando |
 | "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
 | Bloquear personas (efecto mutuo en feed, foros, chat y Cerca; silencioso y reversible) | ✅ Funcionando |
-| Amistad (solicitud + aceptación mutua), posteos "solo amigos" y perfil ajeno con "sobre mí" para amigos | ✅ Funcionando |
+| Amistad (solicitud + aceptación mutua), posteos "solo amigos", perfil ajeno con "sobre mí" y búsqueda de personas | ✅ Funcionando |
 | Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
 | Almacenamiento de imágenes intercambiable (disco local en dev, Supabase Storage en prod) con borrado real al eliminar contenido | ✅ Funcionando |
 | Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
@@ -210,7 +210,7 @@ Antes de esto, cualquier persona registrada era "lo mismo" para efectos de audie
 - **Perfil ajeno** (`/perfil/:id`, `frontend/src/pages/PublicProfile.jsx`): datos públicos siempre; el bloque "Sobre mí" (`aboutMe`, hasta 1000 caracteres, editable desde `/profile`) solo aparece si `friendStatus` es `friends` o es tu propio perfil — el backend decide qué manda, el frontend solo pinta lo que llega. El botón de relación cambia según `friendStatus` (`none` → Agregar amigo, `pending_sent`/`pending_received` → cancelar o aceptar/rechazar, `friends` → dejar de ser amigos), y trae también Reportar/Bloquear.
 - **Bandeja de amistad** (`/amigos`, `frontend/src/pages/Friends.jsx`): solicitudes recibidas, enviadas y lista de amigos. El link "Amigos" del menú lleva un badge con el conteo de solicitudes pendientes (mismo patrón de polling que la campana de notificaciones).
 - **Se llega a un perfil ajeno desde el feed**: el nombre/avatar de cada post en `PostCard` enlaza a `/perfil/:id` (o a `/profile` si el post es tuyo).
-- Pendiente para una fase siguiente: descubribilidad — búsqueda por handle y sugerencias desde Cerca, para no depender de ya haber visto un post de esa persona.
+- **Descubribilidad**: la página `/amigos` trae un buscador de personas por nombre o handle que **reusa `GET /api/chat/users?q=`** — ya existía para abrir chats nuevos y no expone PII, así que en vez de duplicar esa consulta se le agregó un segundo consumidor. Cada resultado lleva a `/perfil/:id`. En `/cerca`, el nombre de cada persona de la lista también enlaza a su perfil — la sugerencia geográfica y la búsqueda por handle terminan en el mismo lugar: el botón de relación de la Fase 2.
 
 ### Avatares generados
 

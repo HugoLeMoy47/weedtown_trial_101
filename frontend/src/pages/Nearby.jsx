@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container, Box, Paper, Typography, Button, Alert, Stack, List, ListItem,
   ListItemAvatar, ListItemText, Avatar, Chip, CircularProgress, Divider,
@@ -224,13 +224,22 @@ const Nearby = () => {
                           </Stack>
                         }
                       >
-                        <ListItemAvatar>
+                        <ListItemAvatar component={RouterLink} to={`/perfil/${p.id}`}>
                           <Avatar src={p.avatar || undefined} sx={{ bgcolor: 'primary.main' }}>
                             {displayName(p).charAt(0).toUpperCase()}
                           </Avatar>
                         </ListItemAvatar>
                         <ListItemText
-                          primary={displayName(p)}
+                          primary={
+                            <Typography
+                              component={RouterLink}
+                              to={`/perfil/${p.id}`}
+                              variant="body1"
+                              sx={{ color: 'text.primary', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                            >
+                              {displayName(p)}
+                            </Typography>
+                          }
                           secondary={
                             <Stack direction="row" spacing={1} alignItems="center" component="span">
                               <Chip label={p.band} size="small" color={p.band === 'En tu zona' ? 'primary' : 'default'} component="span" />

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Container, Card, CardContent, Typography, List, ListItem, ListItemAvatar, ListItemButton,
-  ListItemText, Avatar, Button, CircularProgress, Box, Alert, Stack
+  ListItemText, Avatar, Button, CircularProgress, Box, Alert, Stack, TextField, InputAdornment
 } from '@mui/material';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
+import SearchIcon from '@mui/icons-material/Search';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
 
@@ -18,6 +19,8 @@ const Friends = () => {
   const [enviadas, setEnviadas] = useState(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
+  const [search, setSearch] = useState('');
+  const [resultados, setResultados] = useState([]);
 
   const cargar = useCallback(() => {
     Promise.all([api.get('/friends'), api.get('/friends/requests')])
@@ -30,6 +33,20 @@ const Friends = () => {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  // Descubribilidad por handle: reusa /api/chat/users, que ya busca personas
+  // por nombre/handle sin PII — es la misma búsqueda que abre un chat nuevo,
+  // aquí solo cambia a dónde lleva el resultado (el perfil, no una conversación).
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) { setResultados([]); return undefined; }
+    const t = setTimeout(() => {
+      api.get('/chat/users', { params: { q } })
+        .then(res => setResultados(res.data.users || []))
+        .catch(() => setResultados([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const conAccion = async (id, fn) => {
     setBusyId(id);
@@ -67,6 +84,29 @@ const Friends = () => {
           <PeopleAltIcon color="action" />
           <Typography variant="h5" component="h1">Amigos</Typography>
         </Stack>
+
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Buscar personas por nombre o handle…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          inputProps={{ 'aria-label': 'Buscar personas' }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start"><SearchIcon fontSize="small" color="action" /></InputAdornment>
+            )
+          }}
+          sx={{ mb: resultados.length > 0 ? 1 : 2 }}
+        />
+
+        {resultados.length > 0 && (
+          <Card sx={{ mb: 2 }}>
+            <List disablePadding>
+              {resultados.map(u => <Persona key={u.id} user={u} />)}
+            </List>
+          </Card>
+        )}
 
         {error && <Alert severity="error" role="alert" sx={{ mb: 2 }}>{error}</Alert>}
 
