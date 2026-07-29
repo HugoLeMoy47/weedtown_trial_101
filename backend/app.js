@@ -199,7 +199,18 @@ app.use('/api/market', require('./src/routes/marketRoutes'));
 app.use('/api/admin', require('./src/routes/adminRoutes'));
 app.use('/api/profile', require('./src/routes/profileRoutes'));
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// El "servers" del JSON queda fijo en localhost:4000 para desarrollo; en
+// cualquier otro entorno (Render, o el que sea) lo reemplazamos en tiempo de
+// arranque con BACKEND_URL, así "Try it out" apunta solo donde este mismo
+// proceso responde de verdad — sin tener que editar swagger.json a mano cada
+// vez que cambia dónde vive el backend.
+const swaggerConBackendReal = {
+  ...swaggerDocument,
+  servers: process.env.BACKEND_URL && process.env.BACKEND_URL !== 'http://localhost:4000'
+    ? [{ url: process.env.BACKEND_URL }, ...swaggerDocument.servers]
+    : swaggerDocument.servers
+};
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerConBackendReal));
 
 app.use(errorHandler);
 
