@@ -104,7 +104,7 @@ sequenceDiagram
     U->>M: Autoriza la app
     M-->>B: GET /api/auth/mastodon/callback?code&state
     B->>M: POST /oauth/token + GET /verify_credentials
-    B->>B: Busca Identity(MASTODON, "instancia:id"); si no existe, crea cuenta + handle
+    B->>B: Busca la Identity MASTODON por instancia e id — si no existe, crea cuenta y handle
     B-->>U: 302 → /auth/callback#token=JWT (7 días)
     F->>F: Guarda el JWT en localStorage
     F->>B: GET /api/auth/me (Authorization: Bearer)
