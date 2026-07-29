@@ -1,5 +1,0 @@
-# SPA fallback: cualquier ruta que no sea un archivo real (index.html, JS,
-# CSS, imágenes...) la sirve index.html con 200, para que React Router la
-# resuelva del lado del cliente. Sin esto, rutas como /auth/callback,
-# /profile o /feed dan 404 porque Cloudflare busca un archivo literal ahí.
-/*    /index.html   200

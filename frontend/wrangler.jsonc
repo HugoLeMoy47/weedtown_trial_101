@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "weedtown",
+  "compatibility_date": "2026-07-29",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "build",
+    // SPA fallback nativo de Workers Static Assets: cualquier ruta que no
+    // coincida con un archivo real (p. ej. /auth/callback, /profile, /feed)
+    // sirve index.html con 200, para que React Router la resuelva del lado
+    // del cliente. El truco de "_redirects" al estilo Pages clásico (/* ->
+    // /index.html) NO sirve aquí: este producto lo detecta como loop infinito
+    // porque su propio manejo de rutas ya intenta strip de .html/index.
+    "not_found_handling": "single-page-application"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
