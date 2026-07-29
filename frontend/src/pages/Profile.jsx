@@ -7,6 +7,7 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
+import AccessMethods from '../components/AccessMethods';
 import { useAuth } from '../hooks/useAuth';
 
 const emptyForm = { handle: '', phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
@@ -14,28 +15,31 @@ const emptyForm = { handle: '', phone: '', fullName: '', bio: '', age: '', birth
 const Profile = () => {
   const { user, setUser } = useAuth();
   const [form, setForm] = useState(emptyForm);
+  const [identities, setIdentities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState([]);
 
+  const cargarPerfil = () => api.get('/profile/me')
+    .then(res => {
+      const u = res.data;
+      setForm({
+        handle: u.handle || '',
+        phone: u.phone || '',
+        fullName: u.fullName || '',
+        bio: u.bio || '',
+        age: u.age ?? '',
+        birthdate: u.birthdate ? u.birthdate.slice(0, 10) : '',
+        gender: u.gender || ''
+      });
+      setIdentities(u.identities || []);
+    })
+    .catch(() => setError('No se pudo cargar el perfil.'));
+
   useEffect(() => {
-    api.get('/profile/me')
-      .then(res => {
-        const u = res.data;
-        setForm({
-          handle: u.handle || '',
-          phone: u.phone || '',
-          fullName: u.fullName || '',
-          bio: u.bio || '',
-          age: u.age ?? '',
-          birthdate: u.birthdate ? u.birthdate.slice(0, 10) : '',
-          gender: u.gender || ''
-        });
-      })
-      .catch(() => setError('No se pudo cargar el perfil.'))
-      .finally(() => setLoading(false));
+    cargarPerfil().finally(() => setLoading(false));
   }, []);
 
   const validate = () => {
@@ -159,6 +163,7 @@ const Profile = () => {
         </Card>
 
         <AvatarStudio user={user} onSaved={setUser} />
+        <AccessMethods identities={identities} onChange={cargarPerfil} />
         <BlockedAccounts />
       </Container>
     </>

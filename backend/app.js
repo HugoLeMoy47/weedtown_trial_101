@@ -46,8 +46,29 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.' }
 });
+// Passkeys: mismo criterio que el OAuth de Mastodon, sin registro externo que
+// ya lo frene por su cuenta.
+const passkeyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos. Intenta de nuevo en unos minutos.' }
+});
+// Enlace mágico: el límite por IP es la primera defensa contra usarlo para
+// mandar correo no deseado a bandejas ajenas (la segunda, por correo
+// destino, vive en emailAuthRoutes.js).
+const emailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes de enlace. Intenta de nuevo en unos minutos.' }
+});
 app.use('/api', apiLimiter);
 app.use('/api/auth/mastodon', authLimiter);
+app.use('/api/auth/passkey', passkeyLimiter);
+app.use('/api/auth/email', emailLimiter);
 
 
 // Health check: proceso vivo + conexión a la base de datos
@@ -63,6 +84,8 @@ app.get('/health', async (req, res) => {
 
 // Rutas principales
 app.use('/api/auth', require('./src/routes/authRoutes'));
+app.use('/api/auth/passkey', require('./src/routes/passkeyAuthRoutes'));
+app.use('/api/auth/email', require('./src/routes/emailAuthRoutes'));
 app.use('/api/posts', require('./src/routes/postRoutes'));
 app.use('/api/comments', require('./src/routes/commentRoutes'));
 app.use('/api/media', require('./src/routes/mediaRoutes'));

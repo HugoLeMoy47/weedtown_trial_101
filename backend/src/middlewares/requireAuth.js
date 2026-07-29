@@ -79,4 +79,63 @@ async function requireNotSuspended(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, optionalAuth, requireRole, requireNotSuspended };
+// Cuarentena de cuentas recién creadas para las acciones de CONTACTO DIRECTO
+// (toque de Cerca, abrir un chat nuevo) — HU-SEG-006.
+//
+// Por qué: con Mastodon, volver después de una suspensión cuesta conseguir
+// otra cuenta en una instancia. Con llave de acceso o correo, cuesta un
+// registro instantáneo y gratuito. Esto no evita la evasión —nada lo hace del
+// todo— pero encarece el paso más dañino: volver a alcanzar a la MISMA
+// persona de inmediato con una cuenta nueva.
+//
+// Por qué solo esas dos acciones y no todo (posts, comentarios, foro): esas
+// siguen abiertas desde el minuto uno a propósito — la moderación reactiva
+// (reportes + ocultar + suspender) ya las cubre igual que a cualquier otra
+// cuenta, y gatear la escritura entera penalizaría a cualquier persona nueva
+// legítima, no solo a quien evade.
+//
+// Por qué no aplica a cuentas con una identidad de Mastodon: esas ya pagan un
+// costo real de origen. La cuarentena es sobre el ALTA barata, no sobre la
+// antigüedad en general.
+const QUARANTINE_HOURS = Number(process.env.SIGNUP_QUARANTINE_HOURS) || 24;
+
+// Función pura (sin req/res) para que rutas que solo cuarentenan una RAMA de
+// su lógica —como abrir chat, que ya sabe distinguir "conversación nueva" de
+// "recuperar una existente"— puedan preguntar sin pasar por el middleware.
+// Un usuario que ya no existe se trata como establecido (fail-open): mismo
+// criterio que requireNotSuspended, que en ese caso deja pasar en vez de fallar.
+async function estaEstablecida(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { createdAt: true, identities: { select: { provider: true } } }
+  });
+  if (!user) return { ok: true };
+  if (user.identities.some(i => i.provider === 'MASTODON')) return { ok: true };
+
+  const antiguedadHoras = (Date.now() - new Date(user.createdAt).getTime()) / 3_600_000;
+  if (antiguedadHoras >= QUARANTINE_HOURS) return { ok: true };
+
+  const disponibleEn = new Date(new Date(user.createdAt).getTime() + QUARANTINE_HOURS * 3_600_000);
+  return { ok: false, disponibleEn };
+}
+
+async function requireEstablished(req, res, next) {
+  if (!req.user?.id) return res.status(401).json({ error: 'No autenticado' });
+  try {
+    const estado = await estaEstablecida(req.user.id);
+    if (!estado.ok) {
+      return res.status(403).json({
+        error: `Tu cuenta es muy nueva para esta acción. Estará disponible ${QUARANTINE_HOURS}h después de darte de alta.`,
+        disponibleEn: estado.disponibleEn
+      });
+    }
+    next();
+  } catch (e) {
+    console.error('Error al verificar la antigüedad de la cuenta:', e);
+    res.status(500).json({ error: 'Error al verificar tu cuenta' });
+  }
+}
+
+module.exports = {
+  requireAuth, optionalAuth, requireRole, requireNotSuspended, requireEstablished, estaEstablecida
+};

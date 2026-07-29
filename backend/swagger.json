@@ -292,7 +292,7 @@
     },
     {
       "name": "Auth",
-      "description": "Identidad federada con Mastodon"
+      "description": "Tres métodos de acceso a la misma cuenta: Mastodon (OAuth 2.0), llave de acceso (passkey/WebAuthn) y enlace mágico por correo."
     },
     {
       "name": "Identidad",
@@ -428,6 +428,192 @@
         }
       }
     },
+    "/api/auth/passkey/register/options": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Opciones para registrar una llave de acceso (passkey)",
+        "description": "Con `Authorization: Bearer` agrega la llave a la cuenta de la sesión. Sin él, da de alta una cuenta nueva (`handle` en el body es una sugerencia opcional). El reto no se guarda en el servidor: viaja firmado en `regToken` (5 min) y hay que devolverlo tal cual en /register/verify.",
+        "security": [
+          { "bearerAuth": [] },
+          {}
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "handle": { "type": "string", "description": "Solo se usa si no hay sesión (alta nueva)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Opciones para navigator.credentials.create() + regToken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "options": { "type": "object", "description": "PublicKeyCredentialCreationOptionsJSON" },
+                    "regToken": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/passkey/register/verify": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Verifica el registro de una llave de acceso",
+        "description": "Con sesión (regToken en modo \"add\") agrega la llave y responde `{ identityId }`. Sin sesión (modo \"signup\") crea la cuenta y responde `{ token }`, igual que el callback de Mastodon.",
+        "security": [
+          { "bearerAuth": [] },
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["attResp", "regToken"],
+                "properties": {
+                  "attResp": { "type": "object", "description": "RegistrationResponseJSON de @simplewebauthn/browser" },
+                  "regToken": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Llave agregada, o cuenta creada con `{ token }`" },
+          "400": {
+            "description": "Reto expirado/inválido, modo no corresponde a la sesión, o verificación fallida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/passkey/login/options": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Opciones para entrar con llave de acceso",
+        "description": "Login \"usernameless\": no pide handle ni correo, el navegador ofrece las llaves de este dominio que tenga guardadas (residentKey).",
+        "responses": {
+          "200": {
+            "description": "Opciones para navigator.credentials.get() + loginToken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "options": { "type": "object", "description": "PublicKeyCredentialRequestOptionsJSON" },
+                    "loginToken": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/passkey/login/verify": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Verifica el acceso con llave de acceso",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["authResp", "loginToken"],
+                "properties": {
+                  "authResp": { "type": "object", "description": "AuthenticationResponseJSON de @simplewebauthn/browser" },
+                  "loginToken": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sesión abierta",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "token": { "type": "string" } } }
+              }
+            }
+          },
+          "400": {
+            "description": "Reto expirado, llave no reconocida o verificación fallida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/email/start": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Pide un enlace mágico por correo",
+        "description": "Con sesión abierta, el enlace agrega ese correo como respaldo de la cuenta actual en vez de iniciar sesión. Responde 200 igual sin importar si el correo ya tiene cuenta o no. Con MAIL_DRIVER=log (default) el enlace se imprime en la consola del backend en vez de mandarse.",
+        "security": [
+          { "bearerAuth": [] },
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": { "email": { "type": "string", "format": "email" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "El enlace se mandó (o no había nada que mandar por el enfriamiento anti-spam)" },
+          "400": {
+            "description": "Correo con formato inválido",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "429": { "description": "Demasiadas solicitudes desde esta IP" }
+        }
+      }
+    },
+    "/api/auth/email/callback": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Clic en el enlace del correo (uso interno del flujo)",
+        "description": "Token de un solo uso, caduca en 15 minutos. Entra a la cuenta existente con ese correo, la crea si es la primera vez, o la agrega como respaldo si se pidió con sesión abierta. Redirige a {FRONTEND_URL}/auth/callback#token=... (misma pantalla que usa Mastodon) o a /login?error=... si el enlace ya no es válido.",
+        "parameters": [
+          { "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirección al frontend" }
+        }
+      }
+    },
     "/api/auth/me": {
       "get": {
         "tags": [
@@ -462,6 +648,32 @@
           }
         },
         "description": "Devuelve handle (identificador público de WeedTown) en lugar de acct/mastodonInstance, que salieron de User al desacoplar la identidad del proveedor. Incluye `role` y, si aplica, `suspendedUntil` y `suspendedReason`. El rol viaja para que el frontend sepa si pintar el panel; la autorización real se verifica en el servidor en cada petición. Incluye mastodonAvatar (la foto de la instancia) para que el perfil pueda ofrecerla como alternativa al avatar generado."
+      }
+    },
+    "/api/auth/identities/{id}": {
+      "delete": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Quita un método de acceso propio",
+        "description": "Genérica para los tres proveedores (Mastodon, llave de acceso, correo): todos son una fila de Identity. Rechaza quitar el último método de una cuenta, porque la dejaría sin forma de entrar.",
+        "security": [
+          { "bearerAuth": [] }
+        ],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Método de acceso eliminado" },
+          "400": {
+            "description": "Es el último método de acceso de la cuenta",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "404": {
+            "description": "No existe o no es de esta cuenta",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
       }
     },
     "/api/posts": {

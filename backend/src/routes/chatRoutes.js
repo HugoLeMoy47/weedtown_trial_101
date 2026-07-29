@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth, requireNotSuspended } = require('../middlewares/requireAuth');
+const { requireAuth, requireNotSuspended, estaEstablecida } = require('../middlewares/requireAuth');
 const { emitToUser } = require('../lib/chatSocket');
 const { blockedWith, isBlockedBetween } = require('../lib/blocks');
 
@@ -129,6 +129,16 @@ router.post('/conversations', requireAuth, requireNotSuspended, async (req, res)
       }
     });
     if (!chat) {
+      // Solo la conversación NUEVA pasa por la cuarentena de altas recientes
+      // (HU-SEG-006, ver requireAuth.js): recuperar una que ya existía no es
+      // "alcanzar a alguien por primera vez".
+      const estado = await estaEstablecida(req.user.id);
+      if (!estado.ok) {
+        return res.status(403).json({
+          error: 'Tu cuenta es muy nueva para abrir conversaciones nuevas. Intenta de nuevo más tarde.',
+          disponibleEn: estado.disponibleEn
+        });
+      }
       chat = await prisma.chat.create({
         data: { users: { connect: [{ id: req.user.id }, { id: otherId }] } },
         include: {

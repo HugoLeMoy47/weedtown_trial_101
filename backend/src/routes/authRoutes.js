@@ -187,6 +187,34 @@ router.get('/mastodon/callback', async (req, res) => {
   }
 });
 
+// DELETE /api/auth/identities/:id — quitar un método de acceso propio.
+//
+// Genérica a propósito: sirve igual para Mastodon, llave de acceso o correo,
+// porque a todos los describe la misma fila de Identity. Un proveedor nuevo
+// no necesita su propio endpoint de borrado.
+router.delete('/identities/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID requerido' });
+  try {
+    const identidad = await prisma.identity.findUnique({ where: { id } });
+    if (!identidad || identidad.userId !== req.user.id) {
+      return res.status(404).json({ error: 'Método de acceso no encontrado' });
+    }
+    const total = await prisma.identity.count({ where: { userId: req.user.id } });
+    if (total <= 1) {
+      return res.status(400).json({
+        error: 'No puedes quitar tu único método de acceso: te quedarías sin forma de entrar'
+      });
+    }
+    // Si era una llave de acceso, su fila en Passkey se borra en cascada.
+    await prisma.identity.delete({ where: { id } });
+    res.json({ message: 'Método de acceso eliminado' });
+  } catch (e) {
+    console.error('Error al eliminar identidad:', e);
+    res.status(500).json({ error: 'Error al eliminar el método de acceso' });
+  }
+});
+
 // GET /api/auth/me — usuario de la sesión actual
 router.get('/me', requireAuth, async (req, res) => {
   try {

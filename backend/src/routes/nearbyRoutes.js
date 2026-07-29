@@ -7,7 +7,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth, requireNotSuspended } = require('../middlewares/requireAuth');
+const { requireAuth, requireNotSuspended, requireEstablished } = require('../middlewares/requireAuth');
 const { isValidCell, centroid, neighborsGrid, cellDistanceKm } = require('../lib/geogrid');
 const { blockedWith, isBlockedBetween } = require('../lib/blocks');
 
@@ -153,7 +153,7 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
 // quien comparte zona, y solo llega a quien está dentro de su cuadrícula. Sin estas
 // comprobaciones el endpoint era un "ping a cualquier userId": como los ids son
 // enteros consecutivos, bastaba recorrerlos para notificar a toda la base.
-router.post('/poke', requireAuth, requireNotSuspended, nearbyLimiter, async (req, res) => {
+router.post('/poke', requireAuth, requireNotSuspended, requireEstablished, nearbyLimiter, async (req, res) => {
   const targetId = Number(req.body.userId);
   if (!targetId) return res.status(400).json({ error: 'userId requerido' });
   if (targetId === req.user.id) return res.status(400).json({ error: 'No puedes mandarte un toque a ti' });

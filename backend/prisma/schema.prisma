@@ -89,7 +89,8 @@ model User {
 // puede registrar una llave de acceso y dejar un correo de respaldo.
 enum AuthProvider {
   MASTODON
-  // Etapa 2: PASSKEY, EMAIL
+  PASSKEY
+  EMAIL
 }
 
 model Identity {
@@ -98,17 +99,63 @@ model Identity {
   userId      Int
   provider    AuthProvider
   // Identificador del proveedor, ya normalizado. Para Mastodon es
-  // "instancia:idDeCuenta", que es lo que antes formaba el único compuesto.
+  // "instancia:idDeCuenta"; para PASSKEY es el credentialId (base64url) de la
+  // llave; para EMAIL es el correo en minúsculas.
   externalId  String
   // Datos de origen, informativos: de dónde vino esta identidad. No se usan
   // para identificar ni para mostrar — para eso está User.handle.
+  // Se reutiliza también como etiqueta legible: en EMAIL guarda el correo (ya
+  // está en externalId, pero mostrarlo no es un dato nuevo) y en PASSKEY el
+  // nombre con el que se registró la llave ("Passkey de Windows Hello"...),
+  // así ninguna pantalla necesita un campo aparte por proveedor.
   instance    String?
   originHandle String?
   createdAt   DateTime     @default(now())
   lastLoginAt DateTime?
+  passkey     Passkey?
 
   @@unique([provider, externalId])
   @@index([userId])
+}
+
+// Datos de verificación WebAuthn de una llave de acceso (PASSKEY). Separado de
+// Identity a propósito: es la única información que un proveedor necesita y
+// que los demás no tienen sentido teniendo (clave pública, contador anti-replay).
+// Vive 1 a 1 con su Identity y se borra en cascada con ella.
+model Passkey {
+  id           Int      @id @default(autoincrement())
+  identity     Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  identityId   Int      @unique
+  publicKey    Bytes
+  // Contador anti-replay que reporta el autenticador; debe crecer en cada uso.
+  counter      Int      @default(0)
+  transports   String?  // lista separada por comas, ej. "internal,hybrid"
+  deviceType   String?  // "singleDevice" | "multiDevice" (informativo)
+  backedUp     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+// Enlace mágico: token de un solo uso para entrar/darse de alta por correo.
+// Vive fuera de Identity/User a propósito — antes de que se verifique no hay
+// cuenta todavía, igual que MastodonApp guarda estado de infraestructura sin
+// ser parte del modelo de identidad.
+model MagicLink {
+  id        Int       @id @default(autoincrement())
+  email     String
+  // Solo se guarda el hash (sha256) del token: el token en claro únicamente
+  // vive en la URL que recibe la persona por correo. Si la base se filtrara,
+  // no alcanzaría para iniciar sesión como nadie.
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+  // Con sesión abierta, pedir un enlace mágico es "agregar este correo como
+  // respaldo", no "entrar" — se guarda a qué cuenta hay que colgarlo para que
+  // el callback (que puede abrirse desde otro dispositivo o rato después) lo
+  // sepa sin depender de que siga esa misma sesión activa.
+  addToUserId Int?
+
+  @@index([email, createdAt])
 }
 
 // Bloqueo entre personas (HU-SEG-001).

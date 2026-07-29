@@ -24,7 +24,7 @@
 |---|---|
 | Identidad federada con Mastodon (cualquier instancia) | ✅ Funcionando |
 | Identidad desacoplada del proveedor (`Identity`) y handle propio de WeedTown | ✅ Funcionando |
-| Llaves de acceso (passkey) y correo con enlace mágico | 📋 Siguiente — el modelo ya está listo |
+| Llaves de acceso (passkey/WebAuthn) y correo con enlace mágico | ✅ Funcionando |
 | Feed de posteos con texto, imagen y hashtags (paginado + búsqueda) | ✅ Funcionando |
 | Perfil de usuario (ver y editar el propio, datos opcionales) | ✅ Funcionando |
 | Avatares pixel art generados por piezas (30,720 combinaciones, sin subir imágenes) | ✅ Funcionando |
@@ -63,10 +63,12 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   ├── scripts/        rol.js — asigna el primer MOD/ADMIN (`npm run rol`)
 │   ├── src/
 │   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, moderación, socket,
-│   │   │                 storage, avatar, handle
-│   │   ├── middlewares/  errorHandler, requireAuth (JWT), requireRole, requireNotSuspended
-│   │   └── routes/       auth, posts, comments, media, forum, chat, notifications,
-│   │                     nearby, blocks, reports, admin (moderación), market* (* = stub)
+│   │   │                 storage, avatar, handle, webauthn, mailer
+│   │   ├── middlewares/  errorHandler, requireAuth (JWT), requireRole, requireNotSuspended,
+│   │   │                 requireEstablished (cuarentena de altas nuevas)
+│   │   └── routes/       auth, auth/passkey, auth/email, posts, comments, media, forum,
+│   │                     chat, notifications, nearby, blocks, reports, admin (moderación),
+│   │                     market* (* = stub)
 │   └── tests/          Pruebas de integración (`npm test`) contra una base aparte
 ├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
 │   └── src/
@@ -106,6 +108,39 @@ Puntos clave del diseño:
 - **Seudonimato por diseño**: el modelo `User` no guarda password y el email es opcional (Mastodon no lo expone). La identidad de acceso vive en `Identity` —`(provider, externalId)`— y el identificador público es `User.handle`, propio de WeedTown.
 - **Sesión**: JWT propio firmado con `JWT_SECRET`, enviado en el header `Authorization: Bearer`. El `state` de OAuth también va firmado (anti-CSRF, expira en 10 minutos).
 
+### Llave de acceso (passkey / WebAuthn) y enlace mágico por correo
+
+Etapa 2 del plan de autenticación: dos métodos más hacia la misma cuenta, sin tocar `User` ni `Identity` — exactamente lo que la etapa 1 dejó preparado. `AuthProvider` ahora tiene `MASTODON`, `PASSKEY` y `EMAIL`; cualquiera de los tres lleva a la misma cuenta si hay más de uno registrado.
+
+**Llave de acceso.** Usa [`@simplewebauthn/server`](https://simplewebauthn.dev/) en el backend y `@simplewebauthn/browser` en el frontend — es la única dependencia nueva del proyecto en autenticación, y a propósito: el spec de WebAuthn (parsing CBOR/COSE, validación de attestation, firma ES256) es superficie donde un error sutil compromete la autenticación completa, a diferencia de las utilidades que sí se hicieron sin dependencias (`storage.js`, `avatar.js`).
+
+- Registro y login son dos rutas cada uno (`options` → `verify`). El reto (challenge) no se guarda en el servidor: viaja firmado en un JWT de 5 minutos hacia el navegador y vuelve en la verificación — mismo patrón que el `state` del OAuth de Mastodon.
+- `POST /api/auth/passkey/register/options` distingue el modo por la sesión: **con** `Authorization: Bearer` agrega la llave a la cuenta actual; **sin** sesión da de alta una cuenta nueva (`handle` es una sugerencia opcional en el body).
+- El login es **usernameless**: pide una llave con `residentKey: 'required'` al registrar, así el navegador puede ofrecer las guardadas de este dominio sin pedir handle ni correo.
+- La clave pública y el contador anti-replay viven en un modelo `Passkey` aparte, 1 a 1 con su `Identity` y borrado en cascada con ella — es la única información que este proveedor necesita y que los demás no tienen sentido cargando.
+- **El RP ID es el dominio del FRONTEND**, no del backend, y el spec de WebAuthn exige un dominio válido: no funciona sobre una IP de LAN (ej. `http://192.168.1.77:3000`), aunque el resto de la app sí. `localhost` funciona bien para desarrollo; para producción hace falta un dominio real.
+
+**Enlace mágico.** Mismo patrón de dos pasos que el OAuth de Mastodon (`start` → `callback`), pero sin intermediario: el "código" es el token que sale por correo.
+
+- `POST /api/auth/email/start` genera un token de un solo uso (se guarda su hash, nunca el token en claro) con 15 minutos de vida y lo manda por correo. Responde 200 igual sin importar si ese correo ya tiene cuenta o no.
+- `GET /api/auth/email/callback?token=` lo canjea, entra a la cuenta existente o la crea si es la primera vez, y redirige a `{FRONTEND_URL}/auth/callback#token=...` — **la misma pantalla que ya usa Mastodon**, así que el callback no necesitó ni una línea de frontend nuevo.
+- Con sesión abierta, pedir un enlace no es "entrar": agrega ese correo como respaldo de la cuenta actual (`MagicLink.addToUserId`). Si ese correo ya es el método de otra cuenta, se rechaza — un clic no fusiona cuentas.
+- El envío usa un driver intercambiable (`src/lib/mailer.js`, mismo criterio que `storage.js`): `log` (default) imprime el enlace en la consola del backend — funciona sin credenciales en desarrollo, CI y las pruebas de integración — y `resend` manda de verdad vía la API REST de [Resend](https://resend.com). **En producción hay que poner `MAIL_DRIVER=resend`** con `RESEND_API_KEY` y un dominio propio verificado.
+
+**Quitar un método** es una sola ruta genérica para los tres proveedores — `DELETE /api/auth/identities/:id` — porque a todos los describe la misma fila de `Identity`. Rechaza quitar el último método de una cuenta: eso la dejaría sin forma de entrar.
+
+### Cuarentena de cuentas nuevas (HU-SEG-006)
+
+Abrir el alta trajo un problema que la etapa 1 ya dejó anotado: **cada método nuevo abarata evadir una suspensión**. Con Mastodon, volver cuesta conseguir otra cuenta en una instancia. Con llave de acceso o correo, cuesta un registro instantáneo y gratuito — y el sistema de moderación no tenía ninguna defensa contra eso.
+
+Lo que se agregó:
+
+- Una cuenta **sin ninguna identidad de Mastodon** y con menos de 24 h desde su alta (`SIGNUP_QUARANTINE_HOURS`) no puede mandar un toque de Cerca ni abrir una conversación de chat **nueva**. Sí puede seguir leyendo, publicar, comentar y responder en un chat que alguien más haya abierto con ella — la cuarentena es sobre *contactar por primera vez*, no sobre escribir.
+- Una cuenta con una identidad de Mastodon nunca pasa por esto, sin importar su antigüedad: ya paga un costo real de origen.
+- Rate limits dedicados en `/api/auth/passkey` y `/api/auth/email` (aparte del general de la API), más un enfriamiento de 60 s por correo destino en `/api/auth/email/start` para que no sirva para mandar spam a un buzón ajeno.
+
+**Lo que esto NO resuelve**, dicho sin rodeos: una cuenta evasora sigue pudiendo publicar y comentar en público desde el minuto uno con una cuenta nueva — igual que cualquier persona nueva legítima. Gatear toda la escritura penalizaría el alta de quien no hizo nada malo, así que ese caso se dejó en manos de la moderación reactiva que ya existe (reportes + ocultar + suspender), no de una regla de antigüedad. Si el volumen de evasión lo justifica, ahí es donde seguiría esta tarea.
+
 ### Identidad y handle
 
 Hasta ahora la cuenta de Mastodon **era** la cuenta: la identidad única era `(mastodonInstance, mastodonId)` sobre `User`, y `acct` —la dirección de Mastodon— hacía además de identificador público en feed, foros, chat, Cerca y moderación. Eso hacía imposible agregar un segundo método de acceso sin rehacer el modelo.
@@ -117,7 +152,7 @@ Ahora están separados:
 
 El perfil público **dejó de exponer la instancia de Mastodon**. Era un dato de origen que decía en qué servidor del fediverso está esa persona; con un handle propio ya no hace falta para identificar a nadie, y es un dato menos que correlacionar.
 
-Agregar llaves de acceso o correo con enlace mágico es ahora escribir un archivo por proveedor y sumar un valor al enum `AuthProvider`: nada del modelo ni de las pantallas vuelve a moverse.
+Llaves de acceso y correo con enlace mágico (etapa 2, ver más abajo) confirmaron la apuesta: cada uno es un archivo de rutas nuevo y un valor más en `AuthProvider` — `User` e `Identity` no se tocaron. Lo único que si necesitó tabla propia fue lo que ningún otro proveedor tiene sentido cargando: la clave pública y el contador anti-replay de cada llave (`Passkey`, 1 a 1 con su `Identity`).
 
 ### Endurecimiento del backend
 
@@ -194,7 +229,7 @@ De ahí en adelante, un `ADMIN` reparte roles desde el panel. Un `MOD` puede mod
 | Capa | Tecnología |
 |---|---|
 | API | Node.js 18+, Express 4 |
-| Identidad | OAuth 2.0 de Mastodon + JWT (`jsonwebtoken`) |
+| Identidad | OAuth 2.0 de Mastodon, llave de acceso (`@simplewebauthn/server`+`browser`) y enlace mágico por correo (Resend) + JWT (`jsonwebtoken`) |
 | Base de datos | PostgreSQL gestionado en **Supabase** (dev/pruebas); Prisma ORM 6 |
 | Web | React 18, **MUI v5** (Material Design, claro/oscuro), React Router 6, Axios |
 | Móvil | Expo / React Native |
@@ -247,7 +282,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 226 y cubren siete áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 259 y cubren ocho áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -258,6 +293,7 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Identidad** | Reglas del handle, generación única, varias identidades por cuenta, y que el perfil público ya no exponga la instancia |
 | **Avatares** | Determinismo del dibujo, endpoint cacheable, el default generado y que el avatar no acepte URLs externas |
 | **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
+| **Acceso** | Alta y login con llave de acceso (con un autenticador de software real, no un mock — ver `tests/webauthnAuthenticator.js`), agregar/quitar métodos, enlace mágico (alta, reingreso, respaldo, un solo uso) y la cuarentena de cuentas nuevas en toque y chat |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
 
@@ -304,10 +340,13 @@ Después, desde cualquier equipo de la red: `http://<IP-LAN>:3000`.
 | `DIRECT_URL` | Postgres conexión directa/sesión (migraciones de Prisma) |
 | `JWT_SECRET` | Secreto para firmar los JWT de sesión y el `state` de OAuth. Usar un valor largo y aleatorio |
 | `BACKEND_URL` | URL pública del backend; forma el `redirect_uri` de OAuth (`{BACKEND_URL}/api/auth/mastodon/callback`) |
-| `FRONTEND_URL` | URL del frontend; destino de los redirects post-login |
+| `FRONTEND_URL` | URL del frontend; destino de los redirects post-login **y RP ID de las llaves de acceso** (su hostname). WebAuthn exige un dominio válido — no funciona sobre una IP de LAN, aunque el resto de la app sí |
 | `PORT` | Puerto del backend (default 4000) |
 | `STORAGE_DRIVER` | `local` (default, disco del proceso) o `supabase` (Supabase Storage). **En producción tiene que ser `supabase`** |
 | `SUPABASE_URL` · `SUPABASE_SERVICE_KEY` · `SUPABASE_BUCKET` | Solo con el driver `supabase`. La service key es secreta y nunca debe llegar al frontend |
+| `MAIL_DRIVER` | `log` (default, imprime el enlace mágico en la consola) o `resend` (envío real). **En producción tiene que ser `resend`** |
+| `RESEND_API_KEY` · `RESEND_FROM` | Solo con el driver `resend`. `RESEND_FROM` necesita un dominio propio verificado en Resend |
+| `SIGNUP_QUARANTINE_HOURS` | Horas que una cuenta sin identidad de Mastodon debe esperar antes de mandar un toque o abrir un chat nuevo (default 24). Ver [Cuarentena de cuentas nuevas](#cuarentena-de-cuentas-nuevas-hu-seg-006) |
 
 > ⚠️ `.env` está en `.gitignore` y nunca debe commitearse. Si el `redirect_uri` cambia (p. ej. al desplegar), borra las filas de `MastodonApp` para que las apps se re-registren con la nueva URL.
 
@@ -322,6 +361,11 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/health` | — | Estado del proceso y de la BD |
 | GET | `/api/auth/mastodon/start?instance=` | — | Inicia el flujo OAuth (redirige a la instancia) |
 | GET | `/api/auth/mastodon/callback` | — | Callback OAuth (uso interno del flujo) |
+| POST | `/api/auth/passkey/register/options` (+`/verify`) | opcional | Alta o agregar llave de acceso (según haya sesión) |
+| POST | `/api/auth/passkey/login/options` (+`/verify`) | — | Entrar con llave de acceso (usernameless) |
+| POST | `/api/auth/email/start` | opcional | Pide enlace mágico; con sesión lo agrega como respaldo |
+| GET | `/api/auth/email/callback?token=` | — | Canjea el enlace (uso interno del flujo) |
+| DELETE | `/api/auth/identities/:id` | 🔒 | Quita un método de acceso propio (rechaza el último) |
 | GET | `/api/auth/me` | 🔒 | Usuario de la sesión actual |
 | GET | `/api/posts?page=` | — | Feed paginado (20 por página) |
 | POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`) |

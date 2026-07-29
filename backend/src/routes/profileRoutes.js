@@ -13,8 +13,12 @@ const profileSelect = {
   id: true, handle: true, displayName: true, email: true,
   name: true, avatar: true, mastodonAvatar: true, phone: true, fullName: true,
   bio: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true,
-  // Con qué métodos puede entrar esta persona. Solo lo ve su dueño.
-  identities: { select: { provider: true, instance: true, createdAt: true } }
+  // Con qué métodos puede entrar esta persona. Solo lo ve su dueño. `id` es lo
+  // que usa DELETE /api/auth/identities/:id; `originHandle` trae, según el
+  // proveedor, el acct de Mastodon, el correo o el nombre que se le dio a la llave.
+  identities: {
+    select: { id: true, provider: true, instance: true, originHandle: true, createdAt: true, lastLoginAt: true }
+  }
 };
 
 // Perfil público: sin PII (email, teléfono, nombre real, edad, nacimiento, género)
