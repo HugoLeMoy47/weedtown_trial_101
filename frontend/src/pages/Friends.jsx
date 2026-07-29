@@ -9,6 +9,11 @@ import SearchIcon from '@mui/icons-material/Search';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
 
+// Mismo intervalo que el resto del polling de la app (campana, badge de
+// Amigos del Navbar): sin esto, una solicitud que llega mientras esta
+// pantalla ya está abierta no aparece hasta recargar a mano.
+const POLL_MS = 20000;
+
 // Bandeja de amistad (HU-AMI-001): solicitudes recibidas (aceptar/rechazar),
 // enviadas (cancelar) y la lista de amigos ya aceptados. Todo lo que no es
 // "propio contenido" apunta al perfil ajeno (/perfil/:id) — ahí vive el
@@ -33,6 +38,11 @@ const Friends = () => {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  useEffect(() => {
+    const t = setInterval(cargar, POLL_MS);
+    return () => clearInterval(t);
+  }, [cargar]);
 
   // Descubribilidad por handle: reusa /api/chat/users, que ya busca personas
   // por nombre/handle sin PII — es la misma búsqueda que abre un chat nuevo,

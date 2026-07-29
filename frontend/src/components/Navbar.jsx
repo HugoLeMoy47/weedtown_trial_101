@@ -18,6 +18,7 @@ import { BrandMark, BrandWordmark } from './BrandLogo';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
 import api from '../services/api';
+import { requestFeedRefresh } from '../lib/refresh';
 import NotificationBell from './NotificationBell';
 import SuspensionBanner from './SuspensionBanner';
 
@@ -85,7 +86,8 @@ const Navbar = () => {
           <Box
             component={RouterLink}
             to="/feed"
-            aria-label="WeedTown — ir al feed"
+            onClick={requestFeedRefresh}
+            aria-label="WeedTown — ir al feed y actualizarlo"
             sx={{ display: 'flex', alignItems: 'center', gap: 1, textDecoration: 'none', mr: { xs: 0, md: 2 } }}
           >
             <BrandMark size={38} />

@@ -26,6 +26,7 @@
 | Identidad desacoplada del proveedor (`Identity`) y handle propio de WeedTown | ✅ Funcionando |
 | Llaves de acceso (passkey/WebAuthn) y correo con enlace mágico | ✅ Funcionando |
 | Feed de posteos con texto, imagen y hashtags (paginado + búsqueda) | ✅ Funcionando |
+| Contenido en vivo sin recargar: feed avisa de posts nuevos, logo del header refresca, bandeja de amigos se actualiza sola | ✅ Funcionando |
 | Perfil de usuario (ver y editar el propio, datos opcionales) | ✅ Funcionando |
 | Avatares pixel art generados por piezas (30,720 combinaciones, sin subir imágenes) | ✅ Funcionando |
 | UI Material Design con modo claro/oscuro accesible | ✅ Funcionando |
@@ -518,6 +519,14 @@ El envío de mensajes entra **por REST** (hereda auth, rate limit y validación)
 ### Notificaciones del feed principal
 
 El centro de notificaciones ya cubría foro, toques de Cerca y amistad, pero **comentar o reaccionar a un post del feed principal no generaba nada** — a diferencia del foro, que sí notifica respuestas. Ahora `REPLY_POST` (te comentaron) y `REACTION` (te reaccionaron, en post o comentario) también se generan ahí, con las mismas reglas que el resto del sistema: nunca te notificas a ti mismo, y **quitar** una reacción no notifica (solo agregarla o cambiarla). El feed principal no tiene página de detalle por post (a diferencia de `/forum/:slug/post/:id`), así que estas notificaciones traen un recorte del contenido para dar contexto directo en la campana, en vez de enlazar a un permalink que no existe.
+
+### Contenido en vivo, sin recargar a mano
+
+Al ser una red de contenido generado por la comunidad, quedarse viendo una pantalla desactualizada hasta que alguien le da F5 no es aceptable. Tres puntos donde esto se sentía y ya se corrigió:
+
+- **El feed** (`frontend/src/pages/Feed.jsx`) revisa cada 20 s si hay posts más nuevos que el que está arriba, y también al volver a la pestaña (`visibilitychange`/`focus`) — así no hace falta esperar el intervalo completo si solo estabas en otra ventana. En vez de reordenar el feed por debajo de quien está leyendo, aparece un botón *"Hay publicaciones nuevas — actualizar"": mismo patrón que el resto de redes sociales, para no mover contenido bajo el cursor de nadie.
+- **El logo del header** ahora lleva a `/feed` **y** lo refresca — antes, si ya estabas en `/feed`, el clic no hacía nada porque React Router no dispara ningún efecto al navegar a la ruta ya activa. La conexión es un evento de `window` (`frontend/src/lib/refresh.js`, `FEED_REFRESH_EVENT`) que Feed escucha: sin esto, Navbar y Feed no tienen forma de hablarse (no hay un gestor de estado global en el proyecto, y no hacía falta meter uno para esto).
+- **`/amigos`** revisa cada 20 s si hay solicitudes nuevas — antes se cargaba una sola vez al entrar, así que una solicitud que llegaba con la pantalla ya abierta no aparecía hasta recargar. (El accept/reject en sí ya funcionaba bien; lo que faltaba era enterarse de que había algo que gestionar sin salir y volver a entrar.)
 
 **Mecánica del foro (modelo Reddit)**: las reacciones son el voto — 👍🌿👀 suman +1, 😒 resta −1. El orden *Relevante* usa `score/(horas+2)^1.5` (decaimiento temporal), *Top* filtra por periodo. Hilos anidados hasta 3 niveles (más profundo se aplana con "en respuesta a @usuario"). Notificaciones: respuesta a tu post, respuesta a tu comentario y post nuevo en subforos que sigues.
 
