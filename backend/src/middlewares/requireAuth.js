@@ -21,9 +21,13 @@ async function requireAuth(req, res, next) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true }
+      select: { id: true, deletedAt: true }
     });
-    if (!user) return res.status(401).json({ error: 'Sesión no válida o usuario inexistente' });
+    // Una cuenta eliminada (HU-PRIV-001) borra todas sus identidades, así que
+    // en la práctica ya no se puede volver a entrar — pero un JWT emitido
+    // ANTES de eliminarla sigue siendo válido hasta sus 7 días de vigencia. Sin
+    // este chequeo, esa sesión vieja podría seguir usando la API de por vida.
+    if (!user || user.deletedAt) return res.status(401).json({ error: 'Sesión no válida o usuario inexistente' });
     req.user = { id: user.id };
     next();
   } catch (e) {

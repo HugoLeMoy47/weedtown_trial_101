@@ -9,6 +9,7 @@ const { REACTION_TYPES, summarizeReactions, toggleReaction, removeReaction, reac
 const { blockedWith, isBlockedBetween, excludeBlocked } = require('../lib/blocks');
 const storage = require('../lib/storage');
 const { soloVisible } = require('../lib/moderation');
+const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
 
 const MAX_SUBFORUMS_PER_USER = 3;
 const PAGE_SIZE = 20;
@@ -238,6 +239,9 @@ router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (r
   if (image && !IMAGE_URL_RE.test(image)) {
     return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
   }
+  if (demasiadosEnlaces(content)) {
+    return res.status(400).json({ error: `Un post no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
+  }
   try {
     const subforum = await prisma.subForum.findUnique({
       where: { slug: req.params.slug },
@@ -246,6 +250,9 @@ router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (r
     if (!subforum) return res.status(404).json({ error: 'Subforo no encontrado' });
     if (subforum.archivedAt) {
       return res.status(403).json({ error: 'Este subforo está archivado: puedes leerlo, pero ya no admite publicaciones nuevas' });
+    }
+    if (await esContenidoRepetido('forumPost', req.user.id, content)) {
+      return res.status(429).json({ error: 'Ya publicaste exactamente este mismo contenido hace poco' });
     }
     const post = await prisma.forumPost.create({
       data: { title, content, image, authorId: req.user.id, subforumId: subforum.id },
@@ -387,12 +394,18 @@ router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req,
   if (image && !IMAGE_URL_RE.test(image)) {
     return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
   }
+  if (demasiadosEnlaces(content)) {
+    return res.status(400).json({ error: `Un comentario no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
+  }
   try {
     const post = await prisma.forumPost.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     // Comentar es contactar: con un bloqueo de por medio el post no existe
     if (await isBlockedBetween(req.user.id, post.authorId)) {
       return res.status(404).json({ error: 'Post no encontrado' });
+    }
+    if (await esContenidoRepetido('forumComment', req.user.id, content)) {
+      return res.status(429).json({ error: 'Ya mandaste exactamente este mismo comentario hace poco' });
     }
 
     let depth = 0;

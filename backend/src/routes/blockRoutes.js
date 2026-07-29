@@ -6,6 +6,7 @@ const router = express.Router();
 
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middlewares/requireAuth');
+const { log } = require('../lib/logger');
 
 const publicSelect = { id: true, name: true, displayName: true, avatar: true, handle: true };
 
@@ -52,6 +53,7 @@ router.post('/', requireAuth, async (req, res) => {
       }
     });
 
+    log('bloqueo_creado', { blockerId: req.user.id, blockedId, requestId: req.id });
     res.json({ blocked: true, user: target });
   } catch (e) {
     console.error('Error al bloquear:', e);

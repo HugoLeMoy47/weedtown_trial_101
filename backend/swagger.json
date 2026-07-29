@@ -350,10 +350,25 @@
         "tags": [
           "Sistema"
         ],
-        "summary": "Estado del proceso y conexión a la base de datos",
+        "summary": "Estado del proceso y de sus dependencias",
+        "description": "Reporta la conexión a la base, y qué driver de storage y de mailer están activos (STORAGE_DRIVER, MAIL_DRIVER) — ambos ya se validaron al arrancar el proceso, así que esto dice cuál está activo, no si responde en este instante. Incluye el uptime del proceso.",
         "responses": {
           "200": {
-            "description": "Proceso y BD operativos"
+            "description": "Proceso y BD operativos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "db": { "type": "string", "example": "ok" },
+                    "storage": { "type": "string", "example": "local" },
+                    "mailer": { "type": "string", "example": "log" },
+                    "uptimeSegundos": { "type": "integer" }
+                  }
+                }
+              }
+            }
           },
           "503": {
             "description": "Proceso vivo pero sin conexión a la BD"
@@ -907,6 +922,60 @@
           }
         },
         "description": "El campo avatar solo acepta dos cosas: una URL de /api/avatars/ generada por este servidor, o la propia foto de Mastodon de esa cuenta. Cualquier otra URL se rechaza — antes valía cualquier http(s), lo que permitía apuntar el avatar a un rastreador externo o colgar la foto de otra persona. El campo handle se normaliza antes de guardar (minúsculas, sin acentos), debe cumplir ^[a-z0-9][a-z0-9_]{2,19}$, no puede ser una palabra reservada y debe estar libre: si lo tiene otra cuenta responde 409."
+      },
+      "delete": {
+        "tags": [
+          "Perfil"
+        ],
+        "summary": "Eliminar (anonimizar) mi cuenta",
+        "description": "HU-PRIV-001. No borra la fila ni el contenido propio (posts, comentarios, mensajes): los anonimiza, poniendo el User en un estado donde deja de identificar a nadie — todo lo que referencia esa cuenta se muestra como \"Cuenta eliminada\" sin tocar una sola fila de contenido. Borra las identidades (no se puede volver a entrar por ningún método), los bloqueos, los follows de subforo y las notificaciones propias. Un JWT emitido antes de esta llamada deja de autenticar de inmediato. Queda registrado en PrivacyAction.",
+        "security": [
+          { "bearerAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["confirm"],
+                "properties": {
+                  "confirm": { "type": "string", "description": "Debe ser exactamente el handle actual de la cuenta" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Cuenta anonimizada" },
+          "400": {
+            "description": "\"confirm\" no coincide con el handle",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "No autenticado",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/profile/me/export": {
+      "get": {
+        "tags": [
+          "Perfil"
+        ],
+        "summary": "Exportar mis datos",
+        "description": "HU-PRIV-001, derecho de acceso/portabilidad. Junta perfil, métodos de acceso (sin datos internos de una llave, como su clave pública), posts, comentarios, contenido de foro, bloqueos, reportes hechos, subforos creados/seguidos, mensajes ENVIADOS (no los recibidos, que son en parte contenido de alguien más) y notificaciones. Queda registrado en PrivacyAction.",
+        "security": [
+          { "bearerAuth": [] }
+        ],
+        "responses": {
+          "200": { "description": "Volcado JSON de los datos propios" },
+          "401": {
+            "description": "No autenticado",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
       }
     },
     "/api/profile/{id}": {

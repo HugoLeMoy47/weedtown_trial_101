@@ -17,6 +17,7 @@ const avatar = require('../lib/avatar');
 const mailer = require('../lib/mailer');
 const { generarUnico: generarHandleUnico } = require('../lib/handle');
 const { optionalAuth } = require('../middlewares/requireAuth');
+const { log } = require('../lib/logger');
 
 const TOKEN_TTL_MIN = 15;
 const REENVIO_COOLDOWN_SEG = 60;
@@ -144,6 +145,11 @@ router.get('/callback', async (req, res) => {
     }
 
     const sessionToken = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    log('auth_exito', {
+      proveedor: 'EMAIL',
+      modo: enlace.addToUserId ? 'agregar' : (identidad ? 'login' : 'alta'),
+      userId, requestId: req.id
+    });
     res.redirect(frontendUrl(`/auth/callback#token=${sessionToken}`));
   } catch (e) {
     console.error('Error en callback de enlace mágico:', e);

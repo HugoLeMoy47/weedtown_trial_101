@@ -7,6 +7,9 @@
     "dev": "nodemon app.js",
     "start": "node app.js",
     "test": "node tests/run.js",
+    "test:ci": "node tests/run.js",
+    "test:smoke": "node tests/run.js smoke.test.js",
+    "test:reset": "node tests/reset.js",
     "rol": "node scripts/rol.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate"

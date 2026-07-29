@@ -52,8 +52,20 @@ module.exports = async function run() {
     const enCola = r.data.reports.find(x => x.targetId === post.id);
     check('el reporte aparece con su contenido en contexto', Boolean(enCola?.contenido?.content));
     check('la cola trae el motivo en texto legible', Boolean(enCola?.reasonText));
-    check('la cola NO revela quién reportó',
-      !JSON.stringify(enCola).includes('reporter') && !JSON.stringify(enCola).includes(String(ana.id)));
+    // Chequeo ESTRUCTURAL, no de substring: con más suites en la corrida los
+    // ids crecen, y el id de quien reporta puede colar por coincidencia como
+    // substring de otro número (post, autor, conteos...) sin que haya fuga
+    // real. Lo que sí prueba la ausencia de fuga es que ninguna clave del
+    // objeto (a cualquier profundidad razonable) se llame reporter/reporterId.
+    function sinClaveReporter(valor, profundidad = 0) {
+      if (!valor || typeof valor !== 'object' || profundidad > 4) return true;
+      if (Array.isArray(valor)) return valor.every(v => sinClaveReporter(v, profundidad + 1));
+      return Object.entries(valor).every(([clave, v]) => {
+        if (/^reporter/i.test(clave)) return false;
+        return sinClaveReporter(v, profundidad + 1);
+      });
+    }
+    check('la cola NO revela quién reportó', sinClaveReporter(enCola));
 
     console.log('\n  — Ocultar es reversible —');
     r = await call('POST', `/api/admin/content/POST/${post.id}/ocultar`, { tok: tMod, body: { reason: 'ACOSO', note: 'nota interna' } });

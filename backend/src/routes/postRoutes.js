@@ -8,6 +8,7 @@ const { REACTION_TYPES, summarizeReactions, toggleReaction, reactionCounts } = r
 const { blockedWith, isBlockedBetween, excludeBlocked } = require('../lib/blocks');
 const storage = require('../lib/storage');
 const { soloVisible } = require('../lib/moderation');
+const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
 
 // Topes de contenido: defensa contra payloads abusivos
 const MAX_POST_LENGTH = 2000;
@@ -90,8 +91,14 @@ router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
   if (image && !IMAGE_URL_RE.test(image)) {
     return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
   }
+  if (demasiadosEnlaces(content)) {
+    return res.status(400).json({ error: `Un posteo no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
+  }
   const tags = parseHashtags(req.body.hashtags) || [];
   try {
+    if (await esContenidoRepetido('post', req.user.id, content)) {
+      return res.status(429).json({ error: 'Ya publicaste exactamente este mismo contenido hace poco' });
+    }
     const post = await prisma.post.create({
       data: {
         content,
@@ -259,12 +266,18 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
   if (image && !IMAGE_URL_RE.test(image)) {
     return res.status(400).json({ error: 'Imagen inválida: debe ser una URL http(s)' });
   }
+  if (demasiadosEnlaces(content)) {
+    return res.status(400).json({ error: `Un comentario no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
+  }
   try {
     const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     // Comentar es contactar: con un bloqueo de por medio el post no existe
     if (await isBlockedBetween(req.user.id, post.authorId)) {
       return res.status(404).json({ error: 'Post no encontrado' });
+    }
+    if (await esContenidoRepetido('comment', req.user.id, content)) {
+      return res.status(429).json({ error: 'Ya mandaste exactamente este mismo comentario hace poco' });
     }
     const comment = await prisma.comment.create({
       data: { content, image, postId, authorId: req.user.id },

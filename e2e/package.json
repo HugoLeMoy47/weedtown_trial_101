@@ -1,0 +1,12 @@
+{
+  "name": "weedtown-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node run.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "dotenv": "^16.4.5"
+  }
+}

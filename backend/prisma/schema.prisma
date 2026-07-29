@@ -40,6 +40,13 @@ model User {
   birthdate        DateTime?
   gender           String?
   role             UserRole     @default(USER)
+  // Eliminación propia de la cuenta (HU-PRIV-001), distinta de moderar: acá el
+  // dueño de los datos ejerce su derecho a que se borren los suyos, no se
+  // preserva evidencia de nada. Es ANONIMIZACIÓN, no borrado de la fila: el
+  // contenido público (posts, comentarios, mensajes) sigue siendo parte de
+  // conversaciones de otras personas, así que se queda, pero deja de poder
+  // identificar a quien lo escribió — ver src/lib/privacy.js.
+  deletedAt        DateTime?
   // Suspensión temporal (HU-SEG-005): la cuenta existe y se puede leer, pero no
   // puede publicar, comentar, chatear ni mandar toques hasta la fecha.
   suspendedUntil   DateTime?
@@ -78,6 +85,7 @@ model User {
   notificationActs Notification[]   @relation("NotificationActor")
   marketItems      MarketItem[]     @relation("UserMarketItems")
   media            Media[]
+  privacyActions   PrivacyAction[]
 
 }
 
@@ -512,6 +520,26 @@ model MarketItem {
   image       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ---------- Privacidad: exportación y eliminación propia (HU-PRIV-001) ----------
+
+enum PrivacyActionType {
+  EXPORTAR_DATOS
+  ELIMINAR_CUENTA
+}
+
+// Bitácora de las dos acciones de privacidad que puede hacer una persona
+// sobre SÍ MISMA. Mismo criterio que ModerationAction: queda registrado que
+// pasó, aunque para ese momento la cuenta ya esté anonimizada.
+model PrivacyAction {
+  id        Int               @id @default(autoincrement())
+  user      User              @relation(fields: [userId], references: [id])
+  userId    Int
+  type      PrivacyActionType
+  createdAt DateTime          @default(now())
+
+  @@index([userId])
 }
 
 model Media {

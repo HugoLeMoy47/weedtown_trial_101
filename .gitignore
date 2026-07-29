@@ -15,6 +15,10 @@ node_modules/
 /mobile/android/
 /mobile/ios/
 
+# Salida de las pruebas E2E (Playwright) — se regenera en cada corrida
+/e2e/test-results/
+/e2e/playwright-report/
+
 # Logs
 logs
 *.log

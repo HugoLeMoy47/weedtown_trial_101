@@ -7,6 +7,8 @@ const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
 const { isBlockedBetween } = require('../lib/blocks');
 const avatar = require('../lib/avatar');
 const handleLib = require('../lib/handle');
+const privacy = require('../lib/privacy');
+const { log } = require('../lib/logger');
 
 // Perfil propio: incluye los datos personales opcionales
 const profileSelect = {
@@ -132,6 +134,38 @@ router.put('/me', requireAuth, async (req, res) => {
   } catch (e) {
     console.error('Error al actualizar perfil:', e);
     res.status(500).json({ error: 'Error al actualizar perfil' });
+  }
+});
+
+// Exportar mis propios datos (HU-PRIV-001) — derecho de acceso/portabilidad.
+router.get('/me/export', requireAuth, async (req, res) => {
+  try {
+    const datos = await privacy.exportarDatos(req.user.id);
+    await prisma.privacyAction.create({ data: { userId: req.user.id, type: 'EXPORTAR_DATOS' } });
+    log('privacidad_exportar_datos', { userId: req.user.id, requestId: req.id });
+    res.setHeader('Content-Disposition', `attachment; filename="weedtown-datos-${req.user.id}.json"`);
+    res.json(datos);
+  } catch (e) {
+    console.error('Error al exportar datos:', e);
+    res.status(500).json({ error: 'Error al exportar tus datos' });
+  }
+});
+
+// Eliminar (anonimizar) mi cuenta (HU-PRIV-001). Exige repetir el propio
+// handle como confirmación explícita — no hay contraseña que volver a pedir,
+// y es la única acción de la cuenta que no se puede deshacer desde el perfil.
+router.delete('/me', requireAuth, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { handle: true, deletedAt: true } });
+    if (!user || user.deletedAt) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (req.body?.confirm !== user.handle) {
+      return res.status(400).json({ error: 'Escribe tu handle exacto en "confirm" para eliminar la cuenta' });
+    }
+    await privacy.anonimizarCuenta(req.user.id);
+    res.json({ message: 'Tu cuenta fue eliminada. Ya no podrás iniciar sesión con ningún método.' });
+  } catch (e) {
+    console.error('Error al eliminar cuenta:', e);
+    res.status(500).json({ error: 'Error al eliminar la cuenta' });
   }
 });
 

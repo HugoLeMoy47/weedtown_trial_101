@@ -8,6 +8,7 @@ import Navbar from '../components/Navbar';
 import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
 import AccessMethods from '../components/AccessMethods';
+import AccountPrivacy from '../components/AccountPrivacy';
 import { useAuth } from '../hooks/useAuth';
 
 const emptyForm = { handle: '', phone: '', fullName: '', bio: '', age: '', birthdate: '', gender: '' };
@@ -165,6 +166,7 @@ const Profile = () => {
         <AvatarStudio user={user} onSaved={setUser} />
         <AccessMethods identities={identities} onChange={cargarPerfil} />
         <BlockedAccounts />
+        <AccountPrivacy />
       </Container>
     </>
   );

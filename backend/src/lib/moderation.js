@@ -7,6 +7,7 @@
 //      quién reportó ni qué moderador actuó.
 //   3. El chat privado no es moderable: no aparece en ReportTargetType.
 const prisma = require('./prisma');
+const { log } = require('./logger');
 
 const MOTIVOS = ['SPAM', 'ACOSO', 'ODIO', 'ILEGAL', 'DESINFORMACION', 'SEXUAL', 'SUPLANTACION', 'OTRO'];
 
@@ -63,6 +64,10 @@ async function registrar({ moderatorId, type, targetType, targetId, reason = nul
     await prisma.moderationAction.create({
       data: { moderatorId, type, targetType, targetId, reason, note }
     });
+    // A diferencia del reporte, acá el moderador SÍ se identifica: la
+    // bitácora ya lo hace (es de uso interno del equipo), este evento nada más
+    // lo espeja para el colector de logs.
+    log('moderacion_accion', { moderatorId, type, targetType, targetId, reason });
   } catch (e) {
     console.error('No se pudo registrar la acción de moderación:', e);
   }

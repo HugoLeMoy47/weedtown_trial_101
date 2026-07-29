@@ -10,6 +10,7 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middlewares/requireAuth');
 const { esMotivoValido, esObjetivoValido, OBJETIVOS, MOTIVOS } = require('../lib/moderation');
+const { log } = require('../lib/logger');
 
 const MAX_DETALLE = 500;
 
@@ -83,6 +84,7 @@ router.post('/', requireAuth, reportLimiter, async (req, res) => {
         [campo]: targetId
       }
     });
+    log('reporte_creado', { targetType, targetId, reason, requestId: req.id });
     res.json({ reported: true, duplicado: false });
   } catch (e) {
     console.error('Error al crear el reporte:', e);

@@ -45,6 +45,10 @@
 | Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
 | Reportar contenido, cuentas y subforos (motivos tipificados, sin revelar quién reporta) | ✅ Funcionando |
 | Panel de moderación en `/admin`: cola de revisión, ocultar contenido, suspender cuentas, gestionar subforos y bitácora | ✅ Funcionando |
+| Exportar mis datos y eliminar (anonimizar) mi cuenta, con bitácora propia | ✅ Funcionando |
+| Cuarentena de altas nuevas para contacto directo (toque, chat) — HU-SEG-006 | ✅ Funcionando |
+| Control de spam: contenido repetido en ráfaga y exceso de enlaces por posteo | ✅ Funcionando |
+| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -141,6 +145,22 @@ Lo que se agregó:
 
 **Lo que esto NO resuelve**, dicho sin rodeos: una cuenta evasora sigue pudiendo publicar y comentar en público desde el minuto uno con una cuenta nueva — igual que cualquier persona nueva legítima. Gatear toda la escritura penalizaría el alta de quien no hizo nada malo, así que ese caso se dejó en manos de la moderación reactiva que ya existe (reportes + ocultar + suspender), no de una regla de antigüedad. Si el volumen de evasión lo justifica, ahí es donde seguiría esta tarea.
 
+### Exportar y eliminar tu cuenta (HU-PRIV-001)
+
+Dos derechos sobre los datos propios, distintos del panel de moderación: acá es la persona ejerciendo control sobre lo suyo, no alguien más decidiendo sobre contenido ajeno. Ambos desde *Perfil → Tus datos*.
+
+- **`GET /api/profile/me/export`** junta el perfil, los métodos de acceso (sin datos internos de una llave — la clave pública no es "tu dato", es un artefacto de seguridad), posts, comentarios, posts y comentarios de foro, bloqueos, reportes hechos, subforos creados/seguidos, mensajes **enviados** (no los recibidos: son en parte el contenido de alguien más) y notificaciones. Se descarga como un `.json`.
+- **`DELETE /api/profile/me`** exige repetir el propio handle en `confirm` — no hay contraseña que volver a pedir, y es la única acción del perfil que no se puede deshacer.
+
+**Es anonimización, no borrado de fila**, y a propósito choca con la otra regla del proyecto ("moderación nunca borra nada"): son dos derechos distintos. Moderación preserva evidencia de un reporte; esto es el dueño de sus datos pidiendo que dejen de identificarlo. Como `Post.author`, `Comment.author`, `Message.sender`, etc. son relaciones a la fila de `User` —no una copia del nombre en cada fila— anonimizar esa única fila hace que **todo** el historial de esa cuenta se muestre como "Cuenta eliminada" sin tocar un solo post, comentario o mensaje: no quedan hilos rotos ni respuestas huérfanas.
+
+Qué pasa exactamente (`src/lib/privacy.js`):
+
+- El `User` se anonimiza en el lugar: handle aleatorio nuevo, nombre "Cuenta eliminada", y en null todo lo demás (email, teléfono, bio, edad, nacimiento, género, avatares, celda de Cerca). El rol vuelve a `USER`.
+- Se borran sus identidades (con lo que **no puede volver a entrar por ningún método**, ni Mastodon, llave ni correo), sus bloqueos en ambas direcciones, sus follows de subforo y las notificaciones donde ella es la destinataria.
+- Un JWT emitido **antes** de eliminar la cuenta deja de servir de inmediato — `requireAuth` ahora rechaza cualquier sesión de una cuenta con `deletedAt`, para que no quede viva hasta sus 7 días de vigencia.
+- Queda una fila en `PrivacyAction` (`EXPORTAR_DATOS` / `ELIMINAR_CUENTA`) por cada acción, igual de auditable que `ModerationAction` pero para lo que la persona hace sobre sí misma.
+
 ### Identidad y handle
 
 Hasta ahora la cuenta de Mastodon **era** la cuenta: la identidad única era `(mastodonInstance, mastodonId)` sobre `User`, y `acct` —la dirección de Mastodon— hacía además de identificador público en feed, foros, chat, Cerca y moderación. Eso hacía imposible agregar un segundo método de acceso sin rehacer el modelo.
@@ -156,14 +176,17 @@ Llaves de acceso y correo con enlace mágico (etapa 2, ver más abajo) confirmar
 
 ### Endurecimiento del backend
 
-- **helmet**: headers de seguridad (CORP en `cross-origin` para servir `/uploads` al frontend); `x-powered-by` deshabilitado.
+- **helmet**: CORP en `cross-origin` para servir `/uploads` al frontend; `x-powered-by` deshabilitado. **CSP** propia (no el default de helmet): `default-src 'self'` en todo menos `style-src`, que necesita `'unsafe-inline'` porque Swagger UI (`/api-docs`) inyecta `<style>` para el resaltado de sintaxis — no hay forma de evitarlo sin dejar de servir Swagger UI. **Permissions-Policy** manual (Helmet 8 no trae helper): todo apagado salvo `geolocation=(self)`. **HSTS** solo si `BACKEND_URL` empieza con `https://` — mandarlo en HTTP de desarrollo no hace nada (los navegadores lo ignoran) pero confunde.
 - **CORS estricto**: solo se acepta el origen de `FRONTEND_URL`.
-- **Rate limiting**: 300 peticiones/15 min por IP en toda la API; 20/15 min en el flujo OAuth (`/api/auth/mastodon/*`). Respeta proxies (`trust proxy`).
-- **Límites de payload**: body JSON ≤ 100 kB; imágenes ≤ 5 MB por multipart (multer, solo JPG/PNG/WebP, nombre aleatorio).
+- **Rate limiting**: 300 peticiones/15 min por IP en toda la API; 20/15 min en Mastodon OAuth y en passkeys; 10/15 min en enlace mágico (más un enfriamiento de 60 s por correo destino, ver arriba). Cada límite alcanzado queda como evento `rate_limit_excedido` en el log estructurado. Respeta proxies (`trust proxy`).
+- **Límites de payload**: body JSON ≤ 100 kB; imágenes ≤ 5 MB por multipart (multer, solo JPG/PNG/WebP, nombre aleatorio); el handshake de Socket.IO ≤ 20 kB (el chat no sube payloads propios del cliente, solo el JWT de auth).
 - **Límites de contenido**: post del feed ≤ 2000 caracteres, comentario ≤ 1000; post de foro ≤ 10000, comentario de foro ≤ 2000; máximo 10 hashtags de ≤ 30 caracteres; bio ≤ 500. El campo `image` debe ser URL http(s).
+- **Control de spam** (`src/lib/antiSpam.js`): un posteo o comentario (feed o foro) con más de 5 enlaces se rechaza con 400; repetir el mismo texto exacto en menos de 10 minutos se rechaza con 429. No sustituye al rate limit por IP — lo complementa mirando el contenido, no solo la frecuencia.
 - **Privacidad**: el perfil público (`GET /api/profile/:id`) no expone email, teléfono, nombre real, edad, fecha de nacimiento ni género — esos datos solo los ve su dueño en `/api/profile/me`.
 - **Errores sanitizados**: el detalle (stack, Prisma) solo se registra en el servidor; el cliente recibe mensajes genéricos salvo en errores de validación.
 - **Rol de cuenta**: `User.role` (`USER` por defecto, `MOD`, `ADMIN`). El middleware `requireRole` lee el rol **de la base en cada petición**, no del JWT, para que revocarlo surta efecto de inmediato en vez de esperar a que caduque el token (7 días). Todo `/api/admin` exige sesión + `MOD`/`ADMIN`; `/api/market` exige sesión mientras sea stub. El portón vive **dentro de cada router**, no en el punto de montaje, para que la protección viaje con el código.
+- **Logging estructurado** (`src/lib/logger.js`): una línea JSON por evento — login exitoso (los tres proveedores, alta/login/agregar), bloqueo creado, reporte creado, acción de moderación, exportar/eliminar cuenta, límite de tasa alcanzado. Cada request lleva un id de correlación (`X-Request-Id`, generado por `src/middlewares/requestId.js` si el cliente no manda uno) que también sale en la línea de morgan de esa misma petición. Nunca se registra contenido de posts/mensajes, tokens ni PII completa — solo ids y lo mínimo para reconstruir qué pasó. No sustituye a morgan, que sigue dando la traza legible de cada request en desarrollo.
+- **`/health` ampliado**: además de la conexión a la base, reporta qué driver de storage y de mailer están activos (`STORAGE_DRIVER`, `MAIL_DRIVER`) y el uptime del proceso. No los prueba en vivo en cada consulta —ya se validaron al arrancar, storage.js y mailer.js lanzan si su configuración es inválida— así que esto responde "¿qué driver está activo" más que "¿ese driver responde ahora mismo".
 
 ### Bloquear personas
 
@@ -235,6 +258,7 @@ De ahí en adelante, un `ADMIN` reparte roles desde el panel. Un `MOD` puede mod
 | Móvil | Expo / React Native |
 | Docs API | Swagger UI en `/api-docs` |
 | Tiempo real | Socket.IO 4 (handshake autenticado con el JWT de sesión; entrega de mensajes en vivo) |
+| Pruebas E2E | Playwright (`e2e/`), navegador real contra backend + frontend levantados aparte |
 
 Notas:
 - En producción la base de datos puede apuntar a cualquier PostgreSQL: solo cambian `DATABASE_URL` y `DIRECT_URL`.
@@ -282,7 +306,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 259 y cubren ocho áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 292 y cubren once áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -294,10 +318,39 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Avatares** | Determinismo del dibujo, endpoint cacheable, el default generado y que el avatar no acepte URLs externas |
 | **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
 | **Acceso** | Alta y login con llave de acceso (con un autenticador de software real, no un mock — ver `tests/webauthnAuthenticator.js`), agregar/quitar métodos, enlace mágico (alta, reingreso, respaldo, un solo uso) y la cuarentena de cuentas nuevas en toque y chat |
+| **Privacidad** | Exportar datos, anonimizar cuenta (handle, PII, identidades, bloqueos), que el contenido se quede pero muestre "Cuenta eliminada", y que un JWT emitido antes de eliminar deje de servir |
+| **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
+| **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las otras 288 |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
 
 Sin Docker ni Postgres local, la forma más simple de tener una base separada es **el mismo proyecto de Supabase con un esquema aparte**: se copian las cadenas de `.env` y se les agrega `?schema=weedtown_test`. Prisma crea ahí su propio juego de tablas; la app de desarrollo usa `public` y no las ve. Si prefieres aislamiento estricto, apunta `.env.test` a un segundo proyecto de Supabase o a un Postgres local — no cambia nada más.
+
+**Scripts disponibles** (`backend/package.json`):
+
+| Script | Qué hace |
+|---|---|
+| `npm test` | Las 292 pruebas de integración |
+| `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
+| `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las 292 |
+| `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
+
+### 5. Pruebas E2E (navegador real)
+
+```bash
+cd e2e
+npm install
+npx playwright install chromium   # una sola vez
+npm test
+```
+
+Un ciclo aparte de la suite de integración: en vez de hablar con la API por HTTP, un Chromium real (Playwright) navega la app compilada — prueba que el frontend y el backend interoperan de verdad, no solo que cada endpoint responde por su cuenta. `e2e/run.js` reinicia el mismo schema de pruebas, levanta backend y frontend apuntando ahí (puertos 4020/3021, para no chocar con nada más que tengas corriendo) y apaga todo al terminar.
+
+Cubre hoy: alta y login con llave de acceso (con un autenticador WebAuthn virtual vía Chrome DevTools Protocol — sin hardware ni perfil de navegador), enlace mágico (seguir el enlace y pedirlo desde `/login`), y crear un posteo y comentarlo.
+
+**Lo que falta, dicho sin rodeos**: login con Mastodon (necesitaría una cuenta de prueba desechable en una instancia real), bloqueo mutuo, chat 1 a 1 y "Cerca" (piden verificar entrega en vivo por Socket.IO entre dos sesiones a la vez) y el flujo de moderación (necesita una cuenta con rol `MOD` ya asignada). El molde ya está — agregar cada uno es una spec más en `e2e/tests/`, siguiendo `_helpers.js`.
+
+> Las specs corren en serie (`workers: 1`) a propósito: todas comparten el mismo backend y la misma base, así que en paralelo una ve el feed de otra. Y los timeouts son generosos (90 s por prueba): la base de pruebas vive en Supabase, no en Postgres local, y cada pantalla hace varias peticiones en cadena con latencia real de red.
 
 ### Despliegue
 
@@ -388,6 +441,8 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/notifications` (+`/unread-count`, `POST /read-all`) | 🔒 | Centro de notificaciones in-app |
 | GET | `/api/profile/me` | 🔒 | Perfil propio, con sus métodos de acceso (`identities`) |
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio |
+| GET | `/api/profile/me/export` | 🔒 | Descargar mis datos (perfil, contenido propio, bloqueos, reportes, mensajes enviados…) |
+| DELETE | `/api/profile/me` | 🔒 | Eliminar (anonimizar) mi cuenta — exige `{ confirm: "mi-handle" }` |
 | GET | `/api/profile/:id` | — | Perfil público por id (404 si hay bloqueo de por medio; sin instancia de Mastodon) |
 | GET | `/api/blocks` | 🔒 | Cuentas que bloqueé |
 | POST | `/api/blocks` | 🔒 | Bloquear (`userId`); idempotente |

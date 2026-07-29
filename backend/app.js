@@ -8,8 +8,14 @@ const morgan = require('morgan');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
 const { errorHandler } = require('./src/middlewares/errorHandler');
+const { requestId } = require('./src/middlewares/requestId');
+const { log } = require('./src/lib/logger');
 
 const { allowedOrigins } = require('./src/lib/allowedOrigins');
+
+// Token propio de morgan: une cada línea de acceso con los eventos
+// estructurados de logger.js que haya disparado esa misma petición.
+morgan.token('id', req => req.id);
 
 // SEC-03: Validación estricta de entorno al arrancar el proceso
 function validarEntorno() {
@@ -28,9 +34,39 @@ app.disable('x-powered-by');
 
 // Headers de seguridad. CORP en cross-origin: las imágenes de /uploads
 // se consumen desde el frontend, que vive en otro origen.
+//
+// La CSP es la que realmente importa aquí y a la vez la más fácil de romper
+// sin darse cuenta: Swagger UI (/api-docs) inyecta <style> inline para el
+// resaltado de sintaxis, así que styleSrc necesita 'unsafe-inline' — no hay
+// forma de servir Swagger UI sin eso. Todo lo demás se queda en 'self'.
+const HTTPS = (process.env.BACKEND_URL || '').startsWith('https://');
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"]
+    }
+  },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  // Solo tiene sentido cuando el backend realmente sirve por HTTPS: en HTTP
+  // los navegadores ignoran este header, pero mandarlo en desarrollo confunde.
+  hsts: HTTPS ? { maxAge: 15552000, includeSubDomains: true } : false
 }));
+// Permissions-Policy no tiene helper propio en Helmet 8: se manda a mano.
+// Todo apagado salvo geolocation — que ningún request al backend usa
+// directamente (el navegador la captura en el frontend), pero sí conviene no
+// bloquearla por si algún día algo la delega vía iframe.
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), payment=(), usb=(), geolocation=(self)');
+  next();
+});
 
 // CORS restringido a los orígenes del frontend — localhost y/o IP LAN
 // (curl y apps nativas no mandan Origin, por eso se permite sin él)
@@ -39,11 +75,27 @@ app.use(cors({ origin: allowedOrigins }));
 // El contenido viaja como JSON chico; las imágenes van por multipart (multer, 5 MB)
 app.use(express.json({ limit: '100kb' }));
 
-// SEC-04: En desarrollo usamos morgan('dev'); en producción un formato anónimo sin registrar direcciones IP ni PII
+// Antes que morgan y que las rutas: todo lo que loguea esta petición —de
+// acceso o estructurado— necesita ya el id.
+app.use(requestId);
+
+// SEC-04: en producción, formato anónimo con id de correlación y sin
+// direcciones IP ni PII. En desarrollo, 'dev' (coloreado, más legible) —
+// el id de esa misma petición también sale en los eventos de logger.js.
 if (process.env.NODE_ENV === 'production') {
-  app.use(morgan(':method :url :status :response-time ms - :res[content-length]'));
+  app.use(morgan(':id :method :url :status :response-time ms - :res[content-length]'));
 } else {
   app.use(morgan('dev'));
+}
+
+// Evento de seguridad cuando un límite se alcanza — de por sí no dice si es
+// abuso o solo una persona con mala conexión reintentando, pero un pico de
+// estos en el log estructurado es la señal para ir a mirar.
+function alTocarLimite(nombre) {
+  return (req, res, next, options) => {
+    log('rate_limit_excedido', { limitador: nombre, ruta: req.originalUrl, requestId: req.id });
+    res.status(options.statusCode).json(options.message);
+  };
 }
 
 // Rate limit general de la API
@@ -52,7 +104,8 @@ const apiLimiter = rateLimit({
   limit: 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
+  handler: alTocarLimite('api')
 });
 // Rate limit estricto para el flujo de autenticación (anti abuso del OAuth)
 const authLimiter = rateLimit({
@@ -60,7 +113,8 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.' }
+  message: { error: 'Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.' },
+  handler: alTocarLimite('mastodon_oauth')
 });
 // Passkeys: mismo criterio que el OAuth de Mastodon, sin registro externo que
 // ya lo frene por su cuenta.
@@ -69,7 +123,8 @@ const passkeyLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Demasiados intentos. Intenta de nuevo en unos minutos.' }
+  message: { error: 'Demasiados intentos. Intenta de nuevo en unos minutos.' },
+  handler: alTocarLimite('passkey')
 });
 // Enlace mágico: el límite por IP es la primera defensa contra usarlo para
 // mandar correo no deseado a bandejas ajenas (la segunda, por correo
@@ -79,7 +134,8 @@ const emailLimiter = rateLimit({
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Demasiadas solicitudes de enlace. Intenta de nuevo en unos minutos.' }
+  message: { error: 'Demasiadas solicitudes de enlace. Intenta de nuevo en unos minutos.' },
+  handler: alTocarLimite('email')
 });
 app.use('/api', apiLimiter);
 app.use('/api/auth/mastodon', authLimiter);
@@ -87,15 +143,29 @@ app.use('/api/auth/passkey', passkeyLimiter);
 app.use('/api/auth/email', emailLimiter);
 
 
-// Health check: proceso vivo + conexión a la base de datos
+// Health check: proceso vivo + dependencias críticas (BD, storage, mailer).
+// Storage y mailer no se prueban en vivo en cada consulta —ya se validaron al
+// arrancar el proceso (storage.js y mailer.js lanzan si su configuración es
+// inválida)— esto reporta qué driver está activo en cada uno, que es lo que
+// suele importar para diagnosticar "¿por qué no llegó la imagen/el correo?".
 const prisma = require('./src/lib/prisma');
+const storage = require('./src/lib/storage');
+const mailer = require('./src/lib/mailer');
 app.get('/health', async (req, res) => {
+  const estado = {
+    status: 'ok',
+    db: 'ok',
+    storage: storage.driver,
+    mailer: mailer.driver,
+    uptimeSegundos: Math.round(process.uptime())
+  };
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', db: 'ok' });
   } catch (e) {
-    res.status(503).json({ status: 'ok', db: 'error' });
+    estado.db = 'error';
+    return res.status(503).json(estado);
   }
+  res.json(estado);
 });
 
 // Rutas principales
@@ -113,7 +183,6 @@ app.use('/api/avatars', require('./src/routes/avatarRoutes'));
 
 // Imágenes subidas (posts y comentarios). Solo con el driver de disco local:
 // con un almacenamiento externo las sirve ese servicio, no este proceso.
-const storage = require('./src/lib/storage');
 if (storage.esLocal) {
   app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
     immutable: true,

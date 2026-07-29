@@ -119,9 +119,17 @@ async function main() {
 
   // ---------- 4. Correr las suites ----------
 
+  // Filtro opcional por nombre de archivo (npm test -- smoke.test.js), para
+  // "test:smoke": correr una sola suite chica sin esperar las 259 pruebas.
+  const filtro = process.argv.slice(2);
   const suites = fs.readdirSync(__dirname)
     .filter(f => f.endsWith('.test.js'))
+    .filter(f => filtro.length === 0 || filtro.includes(f))
     .sort();
+
+  if (filtro.length && suites.length === 0) {
+    abortar(`Ningún archivo coincide con el filtro: ${filtro.join(', ')}`);
+  }
 
   const resultados = [];
   for (const archivo of suites) {

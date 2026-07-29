@@ -25,6 +25,7 @@ const avatar = require('../lib/avatar');
 const { rpName, rpID, origin } = require('../lib/webauthn');
 const { generarUnico: generarHandleUnico } = require('../lib/handle');
 const { optionalAuth } = require('../middlewares/requireAuth');
+const { log } = require('../lib/logger');
 
 function firmarReto(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
@@ -148,6 +149,7 @@ router.post('/register/verify', optionalAuth, async (req, res) => {
           passkey: { create: datosPasskey }
         }
       });
+      log('auth_exito', { proveedor: 'PASSKEY', modo: 'agregar', userId: req.user.id, requestId: req.id });
       return res.json({ message: 'Llave de acceso registrada', identityId: identity.id });
     }
 
@@ -174,6 +176,7 @@ router.post('/register/verify', optionalAuth, async (req, res) => {
     });
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    log('auth_exito', { proveedor: 'PASSKEY', modo: 'alta', userId: user.id, requestId: req.id });
     res.json({ token });
   } catch (e) {
     console.error('Error verificando registro de passkey:', e);
@@ -249,6 +252,7 @@ router.post('/login/verify', async (req, res) => {
     ]);
 
     const token = jwt.sign({ userId: identidad.userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    log('auth_exito', { proveedor: 'PASSKEY', modo: 'login', userId: identidad.userId, requestId: req.id });
     res.json({ token });
   } catch (e) {
     console.error('Error verificando acceso con passkey:', e);

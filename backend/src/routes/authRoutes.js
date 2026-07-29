@@ -7,6 +7,7 @@ const prisma = require('../lib/prisma');
 const avatar = require('../lib/avatar');
 const { generarUnico: generarHandleUnico } = require('../lib/handle');
 const { requireAuth } = require('../middlewares/requireAuth');
+const { log } = require('../lib/logger');
 
 const SCOPES = 'read:accounts';
 
@@ -179,6 +180,7 @@ router.get('/mastodon/callback', async (req, res) => {
     }
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    log('auth_exito', { proveedor: 'MASTODON', modo: identidad ? 'login' : 'alta', userId: user.id, requestId: req.id });
     // Token en el fragmento (#): no llega al servidor del frontend ni queda en logs de acceso
     res.redirect(frontendUrl(`/auth/callback#token=${token}`));
   } catch (e) {
