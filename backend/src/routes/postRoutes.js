@@ -252,9 +252,17 @@ async function reactToPost(req, res, type) {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     const { myReaction } = await toggleReaction(req.user.id, { postId }, type);
+    // Solo al AGREGAR o CAMBIAR reacción (myReaction truthy) — quitarla
+    // (myReaction null) no notifica, igual que a nadie le avisan que le
+    // quitaron un like.
+    if (myReaction && post.authorId !== req.user.id) {
+      await prisma.notification.create({
+        data: { type: 'REACTION', recipientId: post.authorId, actorId: req.user.id, postId }
+      });
+    }
     const reactions = await reactionCounts({ postId });
     res.json({ postId, myReaction, reactions });
   } catch (e) {
@@ -317,6 +325,11 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
       data: { content, image, postId, authorId: req.user.id },
       include: commentInclude
     });
+    if (post.authorId !== req.user.id) {
+      await prisma.notification.create({
+        data: { type: 'REPLY_POST', recipientId: post.authorId, actorId: req.user.id, postId }
+      });
+    }
     res.json(serializeComment(comment, req.user.id));
   } catch (e) {
     console.error('Error al comentar:', e);

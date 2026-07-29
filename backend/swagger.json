@@ -1926,7 +1926,8 @@
         "tags": [
           "Notificaciones"
         ],
-        "summary": "Últimas notificaciones del usuario (REPLY_POST, REPLY_COMMENT, NEW_SUBFORUM_POST)",
+        "summary": "Últimas notificaciones del usuario (REPLY_POST, REPLY_COMMENT, NEW_SUBFORUM_POST, POKE, FRIEND_REQUEST, FRIEND_ACCEPTED, REACTION, CHAT_MESSAGE, CONTENIDO_OCULTO, CUENTA_SUSPENDIDA)",
+        "description": "REACTION y REPLY_POST del feed principal traen `post`/`comment` con un recorte del contenido para dar contexto (a diferencia del foro, el feed no tiene página de detalle por post). CHAT_MESSAGE se colapsa: una ráfaga de mensajes de la misma persona en la misma conversación genera una sola notificación mientras siga sin leerse.",
         "security": [
           {
             "bearerAuth": []

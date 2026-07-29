@@ -23,6 +23,11 @@ router.post('/:id/reaction', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Comentario no encontrado' });
     }
     const { myReaction } = await toggleReaction(req.user.id, { commentId }, type);
+    if (myReaction && comment.authorId !== req.user.id) {
+      await prisma.notification.create({
+        data: { type: 'REACTION', recipientId: comment.authorId, actorId: req.user.id, commentId }
+      });
+    }
     const reactions = await reactionCounts({ commentId });
     res.json({ commentId, myReaction, reactions });
   } catch (e) {

@@ -8,14 +8,34 @@ import api from '../services/api';
 
 const POLL_MS = 30000;
 
+// Recorte corto del contenido de un post/comentario del feed principal, para
+// darle contexto a la notificación sin tener página de detalle a la que
+// enlazar (a diferencia del foro, que sí tiene permalink).
+function recorte(texto, max = 40) {
+  if (!texto) return null;
+  return texto.length > max ? `${texto.slice(0, max)}…` : texto;
+}
+
 function describe(n) {
   const actor = n.actor?.name || 'Alguien';
   const title = n.forumPost?.title ? `«${n.forumPost.title}»` : 'tu publicación';
   switch (n.type) {
-    case 'REPLY_POST': return `${actor} respondió a tu post ${title}`;
+    case 'REPLY_POST': {
+      if (n.forumPost) return `${actor} respondió a tu post ${title}`;
+      const fragmento = recorte(n.post?.content);
+      return fragmento ? `${actor} comentó tu post: «${fragmento}»` : `${actor} comentó tu post`;
+    }
     case 'REPLY_COMMENT': return `${actor} respondió a tu comentario en ${title}`;
     case 'NEW_SUBFORUM_POST': return `Nuevo post en ${n.subforum?.name || 'un subforo que sigues'}: ${title}`;
     case 'POKE': return `${actor} te mandó un toque 👋 desde Cerca`;
+    case 'FRIEND_REQUEST': return `${actor} te mandó una solicitud de amistad`;
+    case 'FRIEND_ACCEPTED': return `${actor} aceptó tu solicitud de amistad`;
+    case 'REACTION': {
+      const sobre = n.comment ? 'tu comentario' : 'tu post';
+      const fragmento = recorte((n.post || n.comment)?.content);
+      return fragmento ? `A ${actor} le gustó ${sobre}: «${fragmento}»` : `A ${actor} le gustó ${sobre}`;
+    }
+    case 'CHAT_MESSAGE': return `${actor} te mandó un mensaje`;
     // Moderación: el actor viene vacío a propósito — se dice qué pasó y por qué,
     // no quién lo decidió.
     case 'CONTENIDO_OCULTO':
@@ -29,6 +49,11 @@ function describe(n) {
 function targetPath(n) {
   if (n.type === 'POKE') return '/cerca';
   if (n.type === 'CONTENIDO_OCULTO' || n.type === 'CUENTA_SUSPENDIDA') return '/profile';
+  if (n.type === 'FRIEND_REQUEST' || n.type === 'FRIEND_ACCEPTED') return '/amigos';
+  if (n.type === 'CHAT_MESSAGE') return '/chat';
+  // REPLY_POST/REACTION del feed principal: no hay página de detalle de un
+  // post suelto (a diferencia del foro), así que el destino es el feed.
+  if ((n.type === 'REPLY_POST' && !n.forumPost) || (n.type === 'REACTION' && !n.forumPost)) return '/feed';
   const slug = n.forumPost?.subforum?.slug || n.subforum?.slug;
   if (n.forumPost && slug) return `/forum/${slug}/post/${n.forumPost.id}`;
   if (slug) return `/forum/${slug}`;

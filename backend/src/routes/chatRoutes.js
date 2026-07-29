@@ -197,6 +197,25 @@ router.post('/conversations/:id/messages', requireAuth, requireNotSuspended, asy
     for (const user of chat.users) {
       emitToUser(user.id, 'chat:message', { chatId, message });
     }
+
+    // Notificación in-app para quien no está viendo el chat en ese momento: el
+    // socket solo entrega a sesiones conectadas AHORA, así que sin esto un
+    // mensaje mandado mientras la otra persona está fuera de /chat se pierde
+    // sin dejar rastro. Se colapsa: si ya hay una notificación sin leer de esta
+    // misma conversación, no se apila una nueva por cada mensaje — una ráfaga
+    // de mensajes solo debe verse como "tienes un mensaje nuevo", no como diez.
+    const destinatarios = chat.users.filter(u => u.id !== req.user.id);
+    await Promise.all(destinatarios.map(async (u) => {
+      const yaHayNoLeida = await prisma.notification.findFirst({
+        where: { type: 'CHAT_MESSAGE', chatId, recipientId: u.id, actorId: req.user.id, readAt: null },
+        select: { id: true }
+      });
+      if (yaHayNoLeida) return;
+      await prisma.notification.create({
+        data: { type: 'CHAT_MESSAGE', recipientId: u.id, actorId: req.user.id, chatId }
+      });
+    }));
+
     res.json(message);
   } catch (e) {
     console.error('Error al enviar mensaje:', e);

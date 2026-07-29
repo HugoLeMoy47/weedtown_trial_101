@@ -37,7 +37,9 @@ router.get('/', requireAuth, async (req, res) => {
         include: {
           actor: { select: { id: true, name: true, avatar: true } },
           subforum: { select: { id: true, name: true, slug: true } },
-          forumPost: { select: { id: true, title: true, subforum: { select: { slug: true } } } }
+          forumPost: { select: { id: true, title: true, subforum: { select: { slug: true } } } },
+          post: { select: { id: true, content: true } },
+          comment: { select: { id: true, content: true } }
         }
       }),
       prisma.notification.count({ where: { ...where, readAt: null } })

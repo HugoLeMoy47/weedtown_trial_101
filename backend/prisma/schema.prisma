@@ -249,6 +249,7 @@ model Post {
   hiddenBy     User?         @relation("PostsHidden", fields: [hiddenById], references: [id])
   hiddenById   Int?
   hiddenReason ReportReason?
+  notifications Notification[]
 
   @@index([hiddenAt, createdAt])
 }
@@ -282,6 +283,7 @@ model Comment {
   hiddenBy     User?         @relation("CommentsHidden", fields: [hiddenById], references: [id])
   hiddenById   Int?
   hiddenReason ReportReason?
+  notifications Notification[]
 }
 
 // Reacciones cannábicas: una por usuario por post o comentario (HU-RC-001)
@@ -315,10 +317,11 @@ model Reaction {
 }
 
 model Chat {
-  id        Int       @id @default(autoincrement())
-  users     User[]    @relation("UserChats")
-  messages  Message[]
-  createdAt DateTime  @default(now())
+  id            Int            @id @default(autoincrement())
+  users         User[]         @relation("UserChats")
+  messages      Message[]
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
 }
 
 model Message {
@@ -526,6 +529,8 @@ enum NotificationType {
   POKE
   FRIEND_REQUEST
   FRIEND_ACCEPTED
+  REACTION
+  CHAT_MESSAGE
   CONTENIDO_OCULTO
   CUENTA_SUSPENDIDA
 }
@@ -536,6 +541,14 @@ model Notification {
   recipient      User             @relation("NotificationRecipient", fields: [recipientId], references: [id])
   recipientId    Int
   actor          User             @relation("NotificationActor", fields: [actorId], references: [id])
+  // Feed principal (a diferencia de forumPostId/forumCommentId, que son del foro):
+  // REPLY_POST/REACTION usan postId o commentId según sobre qué se interactuó.
+  post           Post?            @relation(fields: [postId], references: [id])
+  postId         Int?
+  comment        Comment?         @relation(fields: [commentId], references: [id])
+  commentId      Int?
+  chat           Chat?            @relation(fields: [chatId], references: [id])
+  chatId         Int?
   actorId        Int
   subforum       SubForum?        @relation(fields: [subforumId], references: [id])
   subforumId     Int?
