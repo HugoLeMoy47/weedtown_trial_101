@@ -14,12 +14,22 @@ function getTokenPayload(req) {
   }
 }
 
-// Exige sesión válida
-function requireAuth(req, res, next) {
+// Exige sesión válida y que la cuenta exista activamente en la base de datos (SEC-02)
+async function requireAuth(req, res, next) {
   const payload = getTokenPayload(req);
-  if (!payload) return res.status(401).json({ error: 'No autenticado' });
-  req.user = { id: payload.userId };
-  next();
+  if (!payload || !payload.userId) return res.status(401).json({ error: 'No autenticado' });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true }
+    });
+    if (!user) return res.status(401).json({ error: 'Sesión no válida o usuario inexistente' });
+    req.user = { id: user.id };
+    next();
+  } catch (e) {
+    console.error('Error al verificar la sesión:', e);
+    res.status(500).json({ error: 'Error al verificar la sesión' });
+  }
 }
 
 // Adjunta req.user si hay token válido, pero no bloquea (rutas públicas personalizables)

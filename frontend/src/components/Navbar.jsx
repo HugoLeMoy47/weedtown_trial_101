@@ -158,6 +158,10 @@ const Navbar = () => {
               <ListItemIcon>{mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}</ListItemIcon>
               <ListItemText primary={mode === 'light' ? 'Modo oscuro' : 'Modo claro'} />
             </ListItemButton>
+            <ListItemButton component={RouterLink} to="/terms" onClick={() => setDrawerOpen(false)}>
+              <ListItemIcon><GavelIcon /></ListItemIcon>
+              <ListItemText primary="Términos y Privacidad" />
+            </ListItemButton>
             {user && (
               <ListItemButton onClick={handleLogout}>
                 <ListItemIcon><LogoutIcon /></ListItemIcon>

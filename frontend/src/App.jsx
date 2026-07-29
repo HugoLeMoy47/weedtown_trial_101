@@ -10,6 +10,7 @@ import Chat from './pages/Chat';
 import Nearby from './pages/Nearby';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
+import Terms from './pages/Terms';
 import AuthCallback from './pages/AuthCallback';
 import RequireAuth from './components/RequireAuth';
 import RequireRole from './components/RequireRole';
@@ -26,6 +27,7 @@ function App() {
             <Route path="/" element={<Navigate to="/feed" replace />} />
             <Route path="/home" element={<Navigate to="/feed" replace />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/feed" element={<RequireAuth><Feed /></RequireAuth>} />
             <Route path="/forum" element={<RequireAuth><Forum /></RequireAuth>} />

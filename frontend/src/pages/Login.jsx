@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Stack, IconButton, Tooltip,
-  CircularProgress, Divider, Collapse
+  CircularProgress, Divider, Collapse, Checkbox, FormControlLabel, Link
 } from '@mui/material';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { BrandMark, BrandWordmark } from '../components/BrandLogo';
+import Footer from '../components/Footer';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
@@ -32,6 +33,9 @@ const Login = () => {
   const { mode, toggle } = useColorMode();
   const error = ERROR_MESSAGES[searchParams.get('error')] || '';
 
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsErr, setTermsErr] = useState('');
+
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyError, setPasskeyError] = useState('');
   const [altaPasskey, setAltaPasskey] = useState(false);
@@ -42,7 +46,17 @@ const Login = () => {
   const [emailMsg, setEmailMsg] = useState('');
   const [emailErr, setEmailErr] = useState('');
 
+  const validarTerminos = () => {
+    if (!termsAccepted) {
+      setTermsErr('Debes declarar que eres mayor de 18 años y aceptar los Términos y Condiciones.');
+      return false;
+    }
+    setTermsErr('');
+    return true;
+  };
+
   const entrarConPasskey = async () => {
+    if (!validarTerminos()) return;
     setPasskeyError('');
     setPasskeyBusy(true);
     try {
@@ -61,6 +75,7 @@ const Login = () => {
   };
 
   const crearCuentaConPasskey = async () => {
+    if (!validarTerminos()) return;
     setPasskeyError('');
     setPasskeyBusy(true);
     try {
@@ -81,6 +96,7 @@ const Login = () => {
 
   const pedirEnlaceMagico = async (e) => {
     e.preventDefault();
+    if (!validarTerminos()) return;
     setEmailErr('');
     setEmailMsg('');
     if (!email.trim()) return;
@@ -107,114 +123,144 @@ const Login = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!validarTerminos()) return;
     const domain = instance.trim();
     if (!domain) return;
     window.location.href = `${API_URL}/auth/mastodon/start?instance=${encodeURIComponent(domain)}`;
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
-      <Tooltip title={mode === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}>
-        <IconButton
-          onClick={toggle}
-          sx={{ position: 'fixed', top: 16, right: 16 }}
-          color="secondary"
-          aria-label={mode === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
-        >
-          {mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
-        </IconButton>
-      </Tooltip>
+    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
+      <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+        <Tooltip title={mode === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}>
+          <IconButton
+            onClick={toggle}
+            sx={{ position: 'fixed', top: 16, right: 16 }}
+            color="secondary"
+            aria-label={mode === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+          >
+            {mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
+          </IconButton>
+        </Tooltip>
 
-      <Card sx={{ maxWidth: 420, width: '100%' }} component="main">
-        <CardContent sx={{ p: 4 }}>
-          <Stack spacing={3} alignItems="center">
-            <Stack spacing={1.5} alignItems="center">
-              <BrandMark size={96} />
-              <BrandWordmark variant="h4" component="h1" />
-            </Stack>
-            <Typography variant="body1" color="text.secondary" textAlign="center">
-              La red de la comunidad cannábica mexicana. Un espacio seguro y con respeto — inicia sesión con tu cuenta del fediverso.
-            </Typography>
-
-            <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-              <Stack spacing={2}>
-                <TextField
-                  id="mastodon-instance"
-                  label="Tu instancia de Mastodon"
-                  placeholder="mastodon.social"
-                  value={instance}
-                  onChange={e => setInstance(e.target.value)}
-                  required
-                  fullWidth
-                  autoFocus
-                  helperText="Ejemplo: mastodon.social, mstdn.mx, hachyderm.io"
-                />
-                {error && <Alert severity="error" role="alert">{error}</Alert>}
-                <Button type="submit" variant="contained" size="large" fullWidth>
-                  Entrar con Mastodon
-                </Button>
+        <Card sx={{ maxWidth: 440, width: '100%', my: 4 }} component="main">
+          <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
+            <Stack spacing={3} alignItems="center">
+              <Stack spacing={1.5} alignItems="center">
+                <BrandMark size={96} />
+                <BrandWordmark variant="h4" component="h1" />
               </Stack>
-            </Box>
+              <Typography variant="body1" color="text.secondary" textAlign="center">
+                La red de la comunidad cannábica mexicana. Un espacio seguro y con respeto — inicia sesión con tu cuenta del fediverso.
+              </Typography>
 
-            <Divider flexItem>o</Divider>
+              {/* Casilla obligatoria de 18+ y TyCyP */}
+              <Box sx={{ width: '100%', bgcolor: 'action.hover', p: 1.5, borderRadius: 1 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={termsAccepted}
+                      onChange={(e) => {
+                        setTermsAccepted(e.target.checked);
+                        if (e.target.checked) setTermsErr('');
+                      }}
+                      color="primary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" color="text.primary">
+                      Declaro que tengo <strong>18 años o más</strong> y acepto los{' '}
+                      <Link component={RouterLink} to="/terms" target="_blank" rel="noopener" color="primary">
+                        Términos y Condiciones y la Política de Privacidad
+                      </Link>.
+                    </Typography>
+                  }
+                />
+              </Box>
+              {termsErr && <Alert severity="error" role="alert" sx={{ width: '100%' }}>{termsErr}</Alert>}
 
-            <Stack spacing={1.5} sx={{ width: '100%' }}>
-              <Button
-                variant="outlined" size="large" fullWidth startIcon={<VpnKeyIcon />}
-                onClick={entrarConPasskey} disabled={passkeyBusy}
-              >
-                {passkeyBusy ? 'Conectando…' : 'Entrar con llave de acceso'}
-              </Button>
-              <Button size="small" onClick={() => setAltaPasskey(v => !v)} disabled={passkeyBusy}>
-                {altaPasskey ? 'Cancelar' : '¿Primera vez? Crear cuenta con llave de acceso'}
-              </Button>
-              <Collapse in={altaPasskey}>
-                <Stack spacing={1.5}>
+              <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
+                <Stack spacing={2}>
                   <TextField
-                    label="Handle (opcional)"
-                    placeholder="como quieres llamarte"
-                    value={handlePropuesto}
-                    onChange={e => setHandlePropuesto(e.target.value)}
+                    id="mastodon-instance"
+                    label="Tu instancia de Mastodon"
+                    placeholder="mastodon.social"
+                    value={instance}
+                    onChange={e => setInstance(e.target.value)}
+                    required
                     fullWidth
-                    size="small"
-                    inputProps={{ maxLength: 20, autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
+                    autoFocus
+                    helperText="Ejemplo: mastodon.social, mstdn.mx, hachyderm.io"
                   />
-                  <Button variant="contained" fullWidth onClick={crearCuentaConPasskey} disabled={passkeyBusy}>
-                    {passkeyBusy ? 'Creando…' : 'Crear cuenta con llave de acceso'}
+                  {error && <Alert severity="error" role="alert">{error}</Alert>}
+                  <Button type="submit" variant="contained" size="large" fullWidth disabled={!termsAccepted}>
+                    Entrar con Mastodon
                   </Button>
                 </Stack>
-              </Collapse>
-              {passkeyError && <Alert severity="error" role="alert">{passkeyError}</Alert>}
-            </Stack>
+              </Box>
 
-            <Divider flexItem>o</Divider>
+              <Divider flexItem>o</Divider>
 
-            <Box component="form" onSubmit={pedirEnlaceMagico} sx={{ width: '100%' }}>
-              <Stack spacing={1.5}>
-                <TextField
-                  label="Tu correo"
-                  type="email"
-                  placeholder="tu@correo.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  fullWidth
-                  size="small"
-                  InputProps={{ startAdornment: <MailOutlineIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1 }} /> }}
-                />
-                <Button type="submit" variant="outlined" fullWidth disabled={emailBusy}>
-                  {emailBusy ? 'Enviando…' : 'Entrar con enlace por correo'}
+              <Stack spacing={1.5} sx={{ width: '100%' }}>
+                <Button
+                  variant="outlined" size="large" fullWidth startIcon={<VpnKeyIcon />}
+                  onClick={entrarConPasskey} disabled={passkeyBusy || !termsAccepted}
+                >
+                  {passkeyBusy ? 'Conectando…' : 'Entrar con llave de acceso'}
                 </Button>
-                {emailErr && <Alert severity="error" role="alert">{emailErr}</Alert>}
-                {emailMsg && <Alert severity="success" role="status">{emailMsg}</Alert>}
+                <Button size="small" onClick={() => setAltaPasskey(v => !v)} disabled={passkeyBusy || !termsAccepted}>
+                  {altaPasskey ? 'Cancelar' : '¿Primera vez? Crear cuenta con llave de acceso'}
+                </Button>
+                <Collapse in={altaPasskey}>
+                  <Stack spacing={1.5}>
+                    <TextField
+                      label="Handle (opcional)"
+                      placeholder="como quieres llamarte"
+                      value={handlePropuesto}
+                      onChange={e => setHandlePropuesto(e.target.value)}
+                      fullWidth
+                      size="small"
+                      inputProps={{ maxLength: 20, autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
+                    />
+                    <Button variant="contained" fullWidth onClick={crearCuentaConPasskey} disabled={passkeyBusy || !termsAccepted}>
+                      {passkeyBusy ? 'Creando…' : 'Crear cuenta con llave de acceso'}
+                    </Button>
+                  </Stack>
+                </Collapse>
+                {passkeyError && <Alert severity="error" role="alert">{passkeyError}</Alert>}
               </Stack>
-            </Box>
 
-            <Typography variant="caption" color="text.secondary" textAlign="center">
-              No creamos contraseñas: entra con Mastodon, una llave de acceso o un enlace por correo.
-            </Typography>
-          </Stack>
-        </CardContent>
-      </Card>
+              <Divider flexItem>o</Divider>
+
+              <Box component="form" onSubmit={pedirEnlaceMagico} sx={{ width: '100%' }}>
+                <Stack spacing={1.5}>
+                  <TextField
+                    label="Tu correo"
+                    type="email"
+                    placeholder="tu@correo.com"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    fullWidth
+                    size="small"
+                    InputProps={{ startAdornment: <MailOutlineIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1 }} /> }}
+                  />
+                  <Button type="submit" variant="outlined" fullWidth disabled={emailBusy || !termsAccepted}>
+                    {emailBusy ? 'Enviando…' : 'Entrar con enlace por correo'}
+                  </Button>
+                  {emailErr && <Alert severity="error" role="alert">{emailErr}</Alert>}
+                  {emailMsg && <Alert severity="success" role="status">{emailMsg}</Alert>}
+                </Stack>
+              </Box>
+
+              <Typography variant="caption" color="text.secondary" textAlign="center">
+                No creamos contraseñas: entra con Mastodon, una llave de acceso o un enlace por correo.
+              </Typography>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
+      <Footer />
     </Box>
   );
 };

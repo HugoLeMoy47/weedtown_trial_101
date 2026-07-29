@@ -11,6 +11,16 @@ const { errorHandler } = require('./src/middlewares/errorHandler');
 
 const { allowedOrigins } = require('./src/lib/allowedOrigins');
 
+// SEC-03: Validación estricta de entorno al arrancar el proceso
+function validarEntorno() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.trim().length < 16 || secret === 'secret' || secret === '123456') {
+    console.error('❌ ERROR CRÍTICO DE SEGURIDAD: JWT_SECRET no está configurado o es un valor por defecto inseguro (debe tener al menos 16 caracteres).');
+    process.exit(1);
+  }
+}
+validarEntorno();
+
 const app = express();
 // Necesario para que el rate limit identifique la IP real detrás de un proxy (deploy)
 app.set('trust proxy', 1);
@@ -28,7 +38,13 @@ app.use(cors({ origin: allowedOrigins }));
 
 // El contenido viaja como JSON chico; las imágenes van por multipart (multer, 5 MB)
 app.use(express.json({ limit: '100kb' }));
-app.use(morgan('dev'));
+
+// SEC-04: En desarrollo usamos morgan('dev'); en producción un formato anónimo sin registrar direcciones IP ni PII
+if (process.env.NODE_ENV === 'production') {
+  app.use(morgan(':method :url :status :response-time ms - :res[content-length]'));
+} else {
+  app.use(morgan('dev'));
+}
 
 // Rate limit general de la API
 const apiLimiter = rateLimit({
