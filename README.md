@@ -45,7 +45,7 @@
 | Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
 | Panóptico: indicadores agregados de crecimiento, actividad, salud social, foros y moderación dentro de `/admin` (solo `ADMIN`), sobre columnas ya existentes — cero migraciones | ✅ Funcionando |
 | Almacenamiento de imágenes intercambiable (disco local en dev, Supabase Storage en prod) con borrado real al eliminar contenido | ✅ Funcionando |
-| Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
+| Web responsiva para móvil (barra flotante inferior + menú de avatar, chat de una vista, mapa adaptable) | ✅ Funcionando |
 | Reportar contenido, cuentas y subforos (motivos tipificados, sin revelar quién reporta) | ✅ Funcionando |
 | Panel de moderación en `/admin`: cola de revisión, ocultar contenido, suspender cuentas, gestionar subforos y bitácora | ✅ Funcionando |
 | Exportar mis datos y eliminar (anonimizar) mi cuenta, con bitácora propia | ✅ Funcionando |
@@ -382,13 +382,13 @@ npm test
 
 Un ciclo aparte de la suite de integración: en vez de hablar con la API por HTTP, un Chromium real (Playwright) navega la app compilada — prueba que el frontend y el backend interoperan de verdad, no solo que cada endpoint responde por su cuenta. `e2e/run.js` reinicia el mismo schema de pruebas, levanta backend y frontend apuntando ahí (puertos 4020/3021, para no chocar con nada más que tengas corriendo) y apaga todo al terminar.
 
-Cubre hoy: alta y login con llave de acceso (con un autenticador WebAuthn virtual vía Chrome DevTools Protocol — sin hardware ni perfil de navegador), enlace mágico (seguir el enlace y pedirlo desde `/login`), crear un posteo y comentarlo, y navegación móvil por el menú hamburguesa.
+Cubre hoy: alta y login con llave de acceso (con un autenticador WebAuthn virtual vía Chrome DevTools Protocol — sin hardware ni perfil de navegador), enlace mágico (seguir el enlace y pedirlo desde `/login`), crear un posteo y comentarlo, y navegación móvil por la barra inferior y el menú de avatar.
 
 **Lo que falta, dicho sin rodeos**: login con Mastodon (necesitaría una cuenta de prueba desechable en una instancia real), bloqueo mutuo, chat 1 a 1 y "Cerca" (piden verificar entrega en vivo por Socket.IO entre dos sesiones a la vez) y el flujo de moderación (necesita una cuenta con rol `MOD` ya asignada). El molde ya está — agregar cada uno es una spec más en `e2e/tests/`, siguiendo `_helpers.js`.
 
 > Las specs corren en serie (`workers: 1`) a propósito: todas comparten el mismo backend y la misma base, así que en paralelo una ve el feed de otra. Y los timeouts son generosos (90 s por prueba): la base de pruebas vive en Supabase, no en Postgres local, y cada pantalla hace varias peticiones en cadena con latencia real de red.
 
-**Dos proyectos de Playwright** (`e2e/playwright.config.js`): `Desktop` corre las specs de siempre sin cambios, y `Mobile Chrome` (`devices['Pixel 5']`) corre solo `mobile-nav.spec.js` — antes de esto ninguna prueba automatizada había ejercitado el menú hamburguesa ni el layout responsivo. Es a propósito una prueba del estado *actual* del menú (recorre Feed/Foros/Chat/Cerca/Amigos y confirma que cada uno carga), no una validación de que el diseño móvil sea bueno: sirve de línea base para detectar qué rompe un futuro rediseño de navegación móvil.
+**Dos proyectos de Playwright** (`e2e/playwright.config.js`): `Desktop` corre las specs de siempre sin cambios, y `Mobile Chrome` (`devices['Pixel 5']`) corre solo `mobile-nav.spec.js` — que recorre los cinco destinos por la barra inferior, abre el menú del avatar y verifica que el compositor de chat queda visible y usable con la barra retraída.
 
 ### Despliegue
 
@@ -563,6 +563,19 @@ Al ser una red de contenido generado por la comunidad, quedarse viendo una panta
 - **`/amigos`** revisa cada 20 s si hay solicitudes nuevas — antes se cargaba una sola vez al entrar, así que una solicitud que llegaba con la pantalla ya abierta no aparecía hasta recargar. (El accept/reject en sí ya funcionaba bien; lo que faltaba era enterarse de que había algo que gestionar sin salir y volver a entrar.)
 
 **Mecánica del foro (modelo Reddit)**: las reacciones son el voto — 👍🌿👀 suman +1, 😒 resta −1. El orden *Relevante* usa `score/(horas+2)^1.5` (decaimiento temporal), *Top* filtra por periodo. Hilos anidados hasta 3 niveles (más profundo se aplana con "en respuesta a @usuario"). Notificaciones: respuesta a tu post, respuesta a tu comentario y post nuevo en subforos que sigues.
+
+### Navegación móvil: barra flotante en vez de cajón (HU-NAV-001/002/003)
+
+Cambiar de Feed a Chat —la acción más frecuente del producto— costaba estirar el pulgar a la esquina superior izquierda (la zona más difícil de alcanzar sosteniendo el teléfono con una mano), abrir el cajón, leer una lista y tocar. El ciclo 3 lo reemplaza por debajo del breakpoint `md` — **de `md` para arriba el escritorio queda pixel-idéntico a como estaba**, es un requisito explícito, no un detalle.
+
+- **Barra flotante + FAB como dos piezas separadas** (variante C del prototipo), con los cinco destinos de `baseLinks` (Feed, Foros, Chat, Cerca, Amigos). Se ve bien sin FAB — en Chat, Cerca y Amigos, que no tienen nada que crear, se estira a todo el ancho disponible; en Feed y Subforum le deja el espacio justo al FAB, que vive en esas páginas (no en Navbar) y se reposiciona vía las mismas constantes compartidas (`frontend/src/lib/mobileNav.js`) para quedar pixel-alineado sin coordinarse en cada cambio.
+- **El cajón desaparece.** Tema claro/oscuro, Términos y privacidad y cerrar sesión se mudan al menú que abre el avatar arriba a la derecha — que además de eso ahora **deja de ser un enlace directo a `/profile`** en móvil (en escritorio sigue siéndolo, sin cambios). Moderación entra a ese menú solo con rol `MOD`/`ADMIN` — ocultarla es comodidad de interfaz, la protección real la sigue haciendo el servidor con 403. Cuentas bloqueadas no se movió: sigue viviendo en `Profile.jsx`.
+- **Chat es el punto caro.** Con una conversación abierta, la barra se repliega y aparece la flecha de regreso que ya existía. Fijar una barra encima de un compositor con el teclado abierto es un bug clásico de iOS —el viewport de diseño no se redimensiona al abrir el teclado—, así que el layout tiene que enterarse del estado, no ser un envoltorio ciego: `Chat.jsx` avisa a `Navbar.jsx` cuándo hay una conversación abierta con un evento de `window` (mismo patrón que `refresh.js` — no hay gestor de estado global en el proyecto y no hacía falta meter uno para esto).
+- **Padding inferior, resuelto una sola vez.** En vez de agregarlo página por página (se olvidaría en alguna), `Navbar.jsx` inyecta un `GlobalStyles` con `padding-bottom` en `body` — solo por debajo de `md`, solo con sesión iniciada, y en cero mientras la barra está replegada en chat. El mismo bloque fija `overscroll-behavior-y: contain` para que el rebote de scroll de iOS no muestre contenido por debajo de la barra.
+- **`/cerca` en móvil**: el mapa usa `45dvh` en vez de `45vh` (en iOS Safari, `vh` se calcula contra el viewport *grande* — el que existe con la barra de direcciones oculta — así que salía más alto de lo esperado), y un `ResizeObserver` llama a `map.invalidateSize()` cuando el contenedor cambia de alto — sin eso Leaflet no se entera al girar el teléfono o al aparecer/ocultarse la barra de direcciones, y pinta cuadros grises o descoloca los círculos de zona.
+- **`viewport-fit=cover`** en `frontend/public/index.html` — sin esa palabra, `env(safe-area-inset-bottom)` devuelve cero en iOS y todo el CSS de área segura de la barra no hace nada, en silencio.
+
+**Verificado en Chromium (Playwright, `Mobile Chrome` = `devices['Pixel 5']`), no en hardware real.** El área segura de iOS, el zoom al enfocar un campo con letra menor a 16 px y el rebote de scroll **no se reproducen en el emulador** — solo en un iPhone físico. Quedan implementados según spec y sin forma de confirmarlos en este entorno; es un pendiente explícito, no un "ya se probó".
 
 ---
 
