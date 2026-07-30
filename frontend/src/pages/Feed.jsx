@@ -12,6 +12,7 @@ import Navbar from '../components/Navbar';
 import PostCard from '../components/PostCard';
 import PostModal from '../components/PostModal';
 import { FEED_REFRESH_EVENT } from '../lib/refresh';
+import { DOCK_BOTTOM_OFFSET, DOCK_SIDE_MARGIN_PX } from '../lib/mobileNav';
 
 // Cada cuánto se revisa si hay posts más nuevos que el que está arriba (solo
 // una consulta ligera a la página 1, no recarga nada todavía) — mismo orden
@@ -233,7 +234,15 @@ function Feed() {
             color="primary"
             onClick={() => setShowModal(true)}
             aria-label="Crear posteo"
-            sx={{ position: 'fixed', bottom: 24, right: 24 }}
+            sx={{
+              position: 'fixed',
+              // Móvil: en la misma fila que la barra flotante (variante C, ver
+              // Navbar.jsx/mobileNav.js) — mismos números para que quede
+              // pixel-alineada con ella. Escritorio: sin cambios.
+              bottom: { xs: DOCK_BOTTOM_OFFSET, md: 24 },
+              right: { xs: `${DOCK_SIDE_MARGIN_PX}px`, md: 24 },
+              borderRadius: { xs: '18px', md: '50%' }
+            }}
           >
             <AddIcon />
           </Fab>

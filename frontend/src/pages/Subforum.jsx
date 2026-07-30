@@ -11,6 +11,7 @@ import ForumPostCard from '../components/ForumPostCard';
 import ImagePicker from '../components/ImagePicker';
 import api from '../services/api';
 import { SORT_OPTIONS, PERIOD_OPTIONS } from '../lib/forum';
+import { DOCK_BOTTOM_OFFSET, DOCK_SIDE_MARGIN_PX } from '../lib/mobileNav';
 
 const NewForumPostDialog = ({ open, onClose, slug, onCreated }) => {
   const [title, setTitle] = useState('');
@@ -211,7 +212,12 @@ const Subforum = () => {
             color="primary"
             onClick={() => setShowDialog(true)}
             aria-label="Crear post en este subforo"
-            sx={{ position: 'fixed', bottom: 24, right: 24 }}
+            sx={{
+              position: 'fixed',
+              bottom: { xs: DOCK_BOTTOM_OFFSET, md: 24 },
+              right: { xs: `${DOCK_SIDE_MARGIN_PX}px`, md: 24 },
+              borderRadius: { xs: '18px', md: '50%' }
+            }}
           >
             <AddIcon />
           </Fab>
