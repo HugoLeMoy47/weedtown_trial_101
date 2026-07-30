@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WeedTown — Planeación de mejoras · Relatoría día 1</title>
+<style>
+:root{
+  --bg:#f6f7f4; --panel:#ffffff; --ink:#16201a; --ink2:#4b5a51; --ink3:#7a8a80;
+  --line:#dfe4de; --green:#2e7d32; --green-soft:#e8f2e9; --green-deep:#1b4d20;
+  --red:#c62828; --red-soft:#fdecea; --orange:#e07b00; --orange-soft:#fff3e0;
+  --amber:#b58900; --amber-soft:#fdf6e3; --blue:#1565c0; --blue-soft:#e8f0fb;
+  --purple:#6a1b9a; --purple-soft:#f3e9f7;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#12160f; --panel:#1a2018; --ink:#e8efe6; --ink2:#a9b8a8; --ink3:#7c8c7b;
+    --line:#2b3529; --green:#7bbf7f; --green-soft:#1e2c1f; --green-deep:#a8dcaa;
+    --red:#ef8a80; --red-soft:#2e1a18; --orange:#ffb44d; --orange-soft:#2e2313;
+    --amber:#e0c05a; --amber-soft:#2b2614; --blue:#7fb0ee; --blue-soft:#16202e;
+    --purple:#c79ae0; --purple-soft:#241a2b;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px 80px}
+
+header.hero{border-bottom:1px solid var(--line);background:var(--panel);margin-bottom:0}
+.hero-in{max-width:1180px;margin:0 auto;padding:28px 20px 22px}
+.eyebrow{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--green);font-weight:700}
+h1{margin:8px 0 6px;font-size:29px;line-height:1.2;letter-spacing:-.02em}
+.sub{color:var(--ink2);font-size:14.5px;max-width:74ch;margin:0}
+.metaline{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:16px;font-size:12.5px;color:var(--ink3)}
+.metaline b{color:var(--ink2);font-weight:600}
+
+nav.tabs{position:sticky;top:0;z-index:30;background:var(--panel);border-bottom:1px solid var(--line);
+  box-shadow:0 1px 0 rgba(0,0,0,.02)}
+.tabs-in{max-width:1180px;margin:0 auto;padding:0 12px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tabs-in::-webkit-scrollbar{display:none}
+.tab{appearance:none;border:0;background:none;color:var(--ink2);font:inherit;font-size:13.5px;font-weight:600;
+  padding:13px 14px;cursor:pointer;white-space:nowrap;border-bottom:2.5px solid transparent;transition:.13s}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected=true]{color:var(--green);border-bottom-color:var(--green)}
+.tab .n{display:inline-block;font-family:var(--mono);font-size:11px;opacity:.6;margin-right:5px}
+
+.panel{display:none;padding-top:30px}
+.panel.on{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+h2{font-size:21px;margin:34px 0 12px;letter-spacing:-.01em;scroll-margin-top:70px}
+h2:first-child{margin-top:0}
+h3{font-size:16px;margin:26px 0 9px;color:var(--ink)}
+h4{font-size:13.5px;margin:18px 0 7px;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin-bottom:6px}
+code{font-family:var(--mono);font-size:12.5px;background:var(--green-soft);color:var(--green-deep);
+  padding:1.5px 5px;border-radius:4px}
+a{color:var(--green)}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:0 0 16px}
+.card.tight{padding:15px 18px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(175px,1fr))}
+
+.chip{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 9px;border-radius:20px;vertical-align:middle}
+.c-red{background:var(--red-soft);color:var(--red)}
+.c-org{background:var(--orange-soft);color:var(--orange)}
+.c-amb{background:var(--amber-soft);color:var(--amber)}
+.c-grn{background:var(--green-soft);color:var(--green)}
+.c-blu{background:var(--blue-soft);color:var(--blue)}
+.c-pur{background:var(--purple-soft);color:var(--purple)}
+
+.note{border-left:3px solid var(--blue);background:var(--blue-soft);padding:13px 16px;border-radius:0 8px 8px 0;margin:0 0 15px}
+.warn{border-left:3px solid var(--orange);background:var(--orange-soft);padding:13px 16px;border-radius:0 8px 8px 0;margin:0 0 15px}
+.danger{border-left:3px solid var(--red);background:var(--red-soft);padding:13px 16px;border-radius:0 8px 8px 0;margin:0 0 15px}
+.good{border-left:3px solid var(--green);background:var(--green-soft);padding:13px 16px;border-radius:0 8px 8px 0;margin:0 0 15px}
+.note p:last-child,.warn p:last-child,.danger p:last-child,.good p:last-child{margin-bottom:0}
+.gotcha-t{font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:5px}
+.note .gotcha-t{color:var(--blue)} .warn .gotcha-t{color:var(--orange)}
+.danger .gotcha-t{color:var(--red)} .good .gotcha-t{color:var(--green)}
+
+table{width:100%;border-collapse:collapse;margin:0 0 16px;font-size:13.5px}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);font-weight:700;
+  border-bottom:2px solid var(--line)}
+tbody tr:hover{background:var(--green-soft)}
+td.mid,th.mid{text-align:center}
+.tw{overflow-x:auto}
+
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:15px 16px}
+.kpi .v{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.kpi .l{font-size:12px;color:var(--ink3);margin-top:4px}
+
+details{border:1px solid var(--line);border-radius:9px;padding:0;margin:0 0 10px;background:var(--panel);overflow:hidden}
+summary{cursor:pointer;padding:12px 16px;font-weight:600;font-size:14px;list-style:none;display:flex;
+  align-items:center;gap:9px}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸";color:var(--green);font-size:13px;transition:.15s;display:inline-block}
+details[open] summary::before{transform:rotate(90deg)}
+details .body{padding:0 16px 15px;border-top:1px solid var(--line);padding-top:13px}
+details .body>*:last-child{margin-bottom:0}
+
+pre{background:var(--green-soft);border:1px solid var(--line);border-radius:9px;padding:13px 15px;
+  overflow-x:auto;font-family:var(--mono);font-size:12.2px;line-height:1.55;margin:0 0 14px}
+pre code{background:none;padding:0;color:var(--ink)}
+.del{color:var(--red)} .add{color:var(--green)}
+
+svg{max-width:100%;height:auto;display:block}
+figure{margin:0 0 18px}
+figcaption{font-size:12.5px;color:var(--ink3);margin-top:7px;line-height:1.5}
+
+.hu{border:1px solid var(--line);border-left:4px solid var(--green);border-radius:0 10px 10px 0;
+  background:var(--panel);padding:15px 18px;margin:0 0 13px}
+.hu .id{font-family:var(--mono);font-size:11.5px;color:var(--green);font-weight:700}
+.hu .t{font-weight:700;margin:3px 0 7px;font-size:14.5px}
+.hu ul{margin-bottom:0;font-size:13.5px}
+
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink3);margin:-4px 0 16px}
+.legend span{display:flex;align-items:center;gap:5px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+hr{border:0;border-top:1px solid var(--line);margin:30px 0}
+.foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink3)}
+.copybtn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink2);
+  font:inherit;font-size:12.5px;padding:7px 13px;border-radius:7px;cursor:pointer}
+.copybtn:hover{border-color:var(--green);color:var(--green)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-in">
+    <div class="eyebrow">WeedTown · Planeación de producto</div>
+    <h1>Relatoría del día 1 → implicaciones y plan de ataque</h1>
+    <p class="sub">Análisis de las cuatro iniciativas planteadas en la transcripción del primer día de uso, cruzadas contra el estado real del código. Este documento <b>no propone implementación todavía</b>: mide alcance, riesgo, dependencias ocultas y orden de ejecución.</p>
+    <div class="metaline">
+      <span><b>Fecha:</b> 29 jul 2026</span>
+      <span><b>Fase:</b> 1 completa · Fase 2 (mercado) no iniciada</span>
+      <span><b>HEAD:</b> <code>014ec93</code></span>
+      <span><b>Rol:</b> auditoría de código + PO + QA</span>
+      <span><b>Fuente:</b> <code>primer día de uso weedtown_transcript</code></span>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <div class="tabs-in">
+    <button class="tab" role="tab" aria-selected="true" data-p="p0"><span class="n">00</span>Diagnóstico</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="pa"><span class="n">A</span>Acceso y alta</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="pb"><span class="n">B</span>Cámara</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="pc"><span class="n">C</span>Pin de amigos 500 m</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="pd"><span class="n">D</span>Navegación móvil</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="pe"><span class="n">05</span>Decisión y secuencia</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="pf"><span class="n">06</span>Preguntas abiertas</button>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<!-- ══════════════════ 00 DIAGNÓSTICO ══════════════════ -->
+<section class="panel on" id="p0">
+
+  <h2>Punto de partida</h2>
+  <p>El producto está mucho más maduro de lo que sugiere "primer día de uso". La Fase 1 del roadmap está cerrada: identidad desacoplada con tres proveedores, feed, foros estilo Reddit, chat en tiempo real, Cerca, bloqueos, amistad, reportes, panel de moderación, exportar/eliminar cuenta, 346 pruebas de integración en CI y E2E con Playwright. Lo que la relatoría reporta <b>no son huecos de funcionalidad — son huecos de adopción</b>: la gente no logra entrar, no logra publicar como quiere, y no logra moverse dentro de la app en el dispositivo donde realmente la usa.</p>
+
+  <div class="grid g4" style="margin-bottom:20px">
+    <div class="kpi"><div class="v">4</div><div class="l">iniciativas derivadas</div></div>
+    <div class="kpi"><div class="v" style="color:var(--red)">1</div><div class="l">con riesgo de privacidad crítico</div></div>
+    <div class="kpi"><div class="v" style="color:var(--orange)">3</div><div class="l">bugs latentes descubiertos al auditar</div></div>
+    <div class="kpi"><div class="v" style="color:var(--blue)">3</div><div class="l">ambigüedades que bloquean estimación</div></div>
+  </div>
+
+  <h3>Lectura estratégica</h3>
+  <p>Las tres primeras cosas que dice la relatoría (login confuso, no se puede tomar foto, la navegación móvil es mala) describen el mismo problema visto desde tres ángulos: <b>la app está diseñada para alguien que ya entiende el fediverso y está sentado frente a una laptop</b>. La comunidad objetivo — gente pacheca en México, usando el celular — choca contra esa premisa en los primeros 90 segundos. Esa es la brecha real, y las iniciativas A, B y D la cierran.</p>
+  <p>La cuarta (pin de amigos a 500 m) es de naturaleza distinta: no responde a una fricción observada, sino a una idea creativa del fundador — y la propia relatoría lo dice: <i>"hay que tomarla con pinzas"</i>. Es también la única que toca un principio de privacidad ya declarado en el README. Se trata aparte y con estándar de prueba más alto.</p>
+
+  <h2>Las cuatro iniciativas de un vistazo</h2>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--green)"></i>Bajo riesgo</span>
+    <span><i class="dot" style="background:var(--amber)"></i>Riesgo medio</span>
+    <span><i class="dot" style="background:var(--orange)"></i>Riesgo alto</span>
+    <span><i class="dot" style="background:var(--red)"></i>Riesgo crítico / decisión de producto</span>
+  </div>
+  <div class="tw">
+  <table>
+    <thead><tr>
+      <th style="width:4%"></th><th style="width:23%">Iniciativa</th><th>Qué pide la relatoría</th>
+      <th class="mid" style="width:9%">Esfuerzo</th><th class="mid" style="width:9%">Valor</th><th class="mid" style="width:10%">Riesgo</th><th style="width:16%">Superficie tocada</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><i class="dot" style="background:var(--amber)"></i></td>
+        <td><b>A · Acceso y alta</b></td>
+        <td>Reordenar los métodos: correo → llave → Mastodon. Explicar qué es Mastodon y orientar a quien no lo tiene.</td>
+        <td class="mid">M</td><td class="mid"><b>Alto</b></td><td class="mid"><span class="chip c-amb">Medio</span></td>
+        <td>Frontend + copy + <b>efecto de segundo orden en moderación</b></td>
+      </tr>
+      <tr>
+        <td><i class="dot" style="background:var(--green)"></i></td>
+        <td><b>B · Cámara directa</b></td>
+        <td>Poder tomar la foto desde la web app, no solo elegirla de la galería.</td>
+        <td class="mid">S</td><td class="mid"><b>Alto</b></td><td class="mid"><span class="chip c-grn">Bajo</span></td>
+        <td>2 archivos de frontend. Destapa 2 bugs latentes.</td>
+      </tr>
+      <tr>
+        <td><i class="dot" style="background:var(--red)"></i></td>
+        <td><b>C · Pin de amigos 500 m</b></td>
+        <td>Que un amigo te vea en el mapa con un pin de ±500 m en vez de la zona de 2 km.</td>
+        <td class="mid">L</td><td class="mid">Incierto</td><td class="mid"><span class="chip c-red">Crítico</span></td>
+        <td>Migración + geogrid + rutas + mapa + Términos</td>
+      </tr>
+      <tr>
+        <td><i class="dot" style="background:var(--orange)"></i></td>
+        <td><b>D · Navegación móvil</b></td>
+        <td>Rediseñar <b>solo</b> lo responsivo: controles al alcance del pulgar, moverse entre feed / foros / chat sin ir a la esquina superior izquierda.</td>
+        <td class="mid">L</td><td class="mid"><b>Muy alto</b></td><td class="mid"><span class="chip c-org">Alto</span></td>
+        <td>Navbar + layout de las 10 páginas + E2E</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Hallazgos de auditoría (no pedidos, encontrados al revisar)</h2>
+  <p>Tres defectos latentes que la implementación de estas iniciativas va a activar si no se corrigen primero. Los documento acá porque cambian la estimación.</p>
+
+  <details>
+    <summary><span class="chip c-red">Crítico</span> &nbsp;La validación de tamaño corre <i>antes</i> del reescalado — una foto de celular moderno será rechazada</summary>
+    <div class="body">
+      <p>En <code>ImagePicker.jsx</code> el orden es <code>validateImage(raw)</code> → <code>sanitizeImage(raw)</code>. <code>validateImage</code> rechaza cualquier archivo &gt; 5 MB; <code>sanitizeImage</code> es justamente quien reescala a 2048 px y comprime a JPEG 0.85. Una foto de 12 MP de un celular actual pesa entre 4 y 8 MB en origen y quedaría en ~600 kB después de <code>sanitizeImage</code>.</p>
+      <p><b>Efecto:</b> hoy ya afecta a quien sube desde la galería una foto tomada con el celular. Al abrir la cámara directa (iniciativa B) pasa a ser el camino <i>por defecto</i> y el bug se vuelve masivo.</p>
+      <p><b>Corrección:</b> el pre-chequeo debe usar un techo de ingesta amplio (p. ej. 30 MB, para no reventar memoria del canvas) y el límite duro de 5 MB debe aplicarse al <i>resultado</i> de <code>sanitizeImage</code> — que ya lo hace en la línea final. Es mover una comprobación, no reescribir nada.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-org">Alto</span> &nbsp;<code>validateImage</code> valida por extensión del nombre, no por tipo MIME</summary>
+    <div class="body">
+      <p><code>const ext = (file.name.split('.').pop() || '').toLowerCase()</code>. Las capturas de cámara en algunos WebViews de Android y en ciertos navegadores llegan con nombres como <code>image</code>, <code>capture</code> o un UUID sin extensión. Esos archivos se rechazan con "Formato no permitido (.image)" aunque sean JPEG perfectamente válidos.</p>
+      <p><b>Corrección:</b> validar por <code>file.type</code> contra una allowlist de MIME (<code>image/jpeg|png|webp</code>) y dejar la extensión como respaldo, no como fuente de verdad. El backend ya valida MIME en multer, así que esto solo alinea el cliente con el servidor.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-amb">Medio</span> &nbsp;Playwright no tiene un proyecto con viewport móvil</summary>
+    <div class="body">
+      <p><code>e2e/playwright.config.js</code> define un solo <code>use</code> sin <code>devices[...]</code>: todas las specs corren en viewport de escritorio. Es decir, <b>ninguna prueba automatizada ha ejercitado nunca el menú hamburguesa ni el layout responsivo</b> — exactamente la superficie que la iniciativa D va a reescribir por completo.</p>
+      <p><b>Corrección:</b> agregar un <code>projects: [{name:'Desktop'...},{name:'Mobile Chrome', use:{...devices['Pixel 5']}}]</code>. Es prerequisito de D, no un extra: sin esto el rediseño se entrega a ciegas.</p>
+    </div>
+  </details>
+
+  <div class="good">
+    <span class="gotcha-t">✓ Lo que sí está bien resuelto y conviene no tocar</span>
+    <p><b>El bloqueo ya disuelve la amistad.</b> <code>blockRoutes.js</code> llama a <code>romperVinculo</code> al crear un bloqueo, con el comentario explícito <i>"un bloqueo no debe dejar una amistad (ni una solicitud a medias) corriendo"</i>. Cualquier capa nueva que se apoye en <code>areFriends()</code> hereda gratis la semántica de bloqueo. Esto es lo que hace la iniciativa C <i>técnicamente</i> viable — aunque, como se verá, no la hace <i>recomendable</i>.</p>
+    <p><b>El anonimizado de imágenes ya cubre el caso de cámara.</b> <code>sanitizeImage</code> reescribe por canvas, lo que descarta EXIF y GPS. Las fotos de cámara son precisamente las que traen coordenadas embebidas, así que la iniciativa B no abre un hueco de privacidad: entra por una puerta que ya estaba blindada.</p>
+  </div>
+
+</section>
+
+<!-- ══════════════════ A ══════════════════ -->
+<section class="panel" id="pa">
+
+  <h2>A · Acceso y alta <span class="chip c-amb">Riesgo medio</span></h2>
+  <blockquote style="border-left:3px solid var(--line);margin:0 0 18px;padding:2px 0 2px 16px;color:var(--ink2);font-style:italic">
+    "Estoy recibiendo mucha dificultad por parte de los usuarios de entender siquiera qué es Mastodon. […] sugiero un reacomodo de los métodos: en primera instancia el correo para el enlace mágico, en segunda la llave, y en tercera Mastodon. Para Mastodon hay que ser más claros: agregar textos que le indiquen a la gente qué es, si tienen o no tienen, qué hacer, y orientarlos a un servidor."
+  </blockquote>
+
+  <h3>Qué hay hoy en <code>frontend/src/pages/Login.jsx</code></h3>
+  <p>La jerarquía visual actual contradice exactamente lo que la relatoría reporta:</p>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Posición</th><th>Método</th><th>Peso visual</th><th>Modelo de alta</th></tr></thead>
+    <tbody>
+      <tr><td><b>1º</b></td><td>Mastodon</td><td><code>TextField</code> con <code>autoFocus</code> + <code>Button variant="contained" size="large"</code></td><td>Crea cuenta <b>en silencio</b></td></tr>
+      <tr><td><b>2º</b></td><td>Llave de acceso</td><td><code>variant="outlined" size="large"</code></td><td>Toggle explícito <i>"¿Primera vez?"</i></td></tr>
+      <tr><td><b>3º</b></td><td>Correo</td><td><code>size="small"</code>, campo comprimido</td><td>Crea cuenta <b>en silencio</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>El método que menos gente entiende tiene el foco automático del teclado y el único botón sólido de la pantalla. Y el subtítulo (línea 154) remata: <i>"inicia sesión con tu cuenta del fediverso"</i> — le dice a quien llega que la puerta requiere algo que no tiene.</p>
+
+  <div class="warn">
+    <span class="gotcha-t">⚠ Gotcha de diseño — tres modelos mentales en una sola pantalla</span>
+    <p>El reordenamiento por sí solo no resuelve la confusión de fondo: la pantalla mezcla <i>entrar</i> y <i>darse de alta</i> con reglas distintas por método. La llave de acceso pide un clic explícito para crear cuenta; correo y Mastodon la crean sin avisar. La relatoría lo intuye al decir <i>"eso corresponde a login y al sign up"</i>. <b>Recomiendo resolver la inconsistencia en la misma iniciativa</b>: un par de pestañas <i>Entrar / Crear cuenta</i> arriba de todo, y debajo los tres métodos en el orden pedido. Cuesta poco más y elimina la causa raíz en vez del síntoma.</p>
+  </div>
+
+  <h3 id="cuarentena">La implicación que no es obvia: el reordenamiento golpea a moderación</h3>
+  <p>Este es el punto central de esta iniciativa y la razón por la que no es un cambio cosmético.</p>
+  <p>El README documenta HU-SEG-006: una cuenta <b>sin ninguna identidad de Mastodon</b> y con menos de 24 h de antigüedad (<code>SIGNUP_QUARANTINE_HOURS</code>) no puede mandar un toque de Cerca ni abrir un chat nuevo. La justificación está escrita ahí mismo, textual: <i>"cada método nuevo abarata evadir una suspensión. Con Mastodon, volver cuesta conseguir otra cuenta en una instancia. Con llave de acceso o correo, cuesta un registro instantáneo y gratuito."</i></p>
+
+  <figure>
+    <svg viewBox="0 0 900 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama: el reordenamiento desplaza la mayoría de las altas hacia métodos que caen en cuarentena">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+          <path d="M0,0 L7,3.2 L0,6.4 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <g font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="12">
+        <!-- HOY -->
+        <text x="20" y="22" font-size="12.5" font-weight="700" fill="var(--ink2)">HOY — Mastodon en primera posición</text>
+        <rect x="20" y="34" width="120" height="46" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="80" y="55" text-anchor="middle" fill="var(--ink)" font-weight="600">Alta nueva</text>
+        <text x="80" y="70" text-anchor="middle" fill="var(--ink3)" font-size="10.5">100%</text>
+
+        <path d="M144,49 L206,42" stroke="var(--green)" stroke-width="2.5" fill="none" marker-end="url(#ar)" color="var(--green)"/>
+        <path d="M144,64 L206,78" stroke="var(--ink3)" stroke-width="1.4" fill="none" marker-end="url(#ar)" color="var(--ink3)"/>
+
+        <rect x="210" y="26" width="168" height="34" rx="7" fill="var(--green-soft)" stroke="var(--green)"/>
+        <text x="294" y="47" text-anchor="middle" fill="var(--green-deep)" font-size="11.5" font-weight="600">Mastodon · mayoría</text>
+        <rect x="210" y="64" width="168" height="34" rx="7" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="294" y="85" text-anchor="middle" fill="var(--ink2)" font-size="11.5">Correo / llave · minoría</text>
+
+        <path d="M382,43 L446,43" stroke="var(--ink3)" stroke-width="1.4" fill="none" marker-end="url(#ar)" color="var(--ink3)"/>
+        <path d="M382,81 L446,81" stroke="var(--ink3)" stroke-width="1.4" fill="none" marker-end="url(#ar)" color="var(--ink3)"/>
+        <rect x="450" y="26" width="150" height="34" rx="7" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="525" y="47" text-anchor="middle" fill="var(--ink2)" font-size="11.5">Sin cuarentena</text>
+        <rect x="450" y="64" width="150" height="34" rx="7" fill="var(--amber-soft)" stroke="var(--amber)"/>
+        <text x="525" y="85" text-anchor="middle" fill="var(--amber)" font-size="11.5" font-weight="600">Cuarentena 24 h</text>
+        <text x="618" y="66" fill="var(--ink3)" font-size="11">Fricción de alta concentrada</text>
+        <text x="618" y="82" fill="var(--ink3)" font-size="11">en pocas cuentas · costo de evasión alto</text>
+
+        <line x1="20" y1="122" x2="880" y2="122" stroke="var(--line)" stroke-width="1"/>
+
+        <!-- DESPUÉS -->
+        <text x="20" y="152" font-size="12.5" font-weight="700" fill="var(--ink2)">DESPUÉS — Correo en primera posición</text>
+        <rect x="20" y="164" width="120" height="46" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="80" y="185" text-anchor="middle" fill="var(--ink)" font-weight="600">Alta nueva</text>
+        <text x="80" y="200" text-anchor="middle" fill="var(--ink3)" font-size="10.5">100%</text>
+
+        <path d="M144,179 L206,172" stroke="var(--ink3)" stroke-width="1.4" fill="none" marker-end="url(#ar)" color="var(--ink3)"/>
+        <path d="M144,194 L206,208" stroke="var(--orange)" stroke-width="2.5" fill="none" marker-end="url(#ar)" color="var(--orange)"/>
+
+        <rect x="210" y="156" width="168" height="34" rx="7" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="294" y="177" text-anchor="middle" fill="var(--ink2)" font-size="11.5">Mastodon · minoría</text>
+        <rect x="210" y="194" width="168" height="34" rx="7" fill="var(--orange-soft)" stroke="var(--orange)"/>
+        <text x="294" y="215" text-anchor="middle" fill="var(--orange)" font-size="11.5" font-weight="600">Correo / llave · mayoría</text>
+
+        <path d="M382,173 L446,173" stroke="var(--ink3)" stroke-width="1.4" fill="none" marker-end="url(#ar)" color="var(--ink3)"/>
+        <path d="M382,211 L446,211" stroke="var(--orange)" stroke-width="2.5" fill="none" marker-end="url(#ar)" color="var(--orange)"/>
+        <rect x="450" y="156" width="150" height="34" rx="7" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="525" y="177" text-anchor="middle" fill="var(--ink2)" font-size="11.5">Sin cuarentena</text>
+        <rect x="450" y="194" width="150" height="34" rx="7" fill="var(--red-soft)" stroke="var(--red)"/>
+        <text x="525" y="215" text-anchor="middle" fill="var(--red)" font-size="11.5" font-weight="700">Cuarentena 24 h</text>
+        <text x="618" y="196" fill="var(--red)" font-size="11" font-weight="600">La mayoría de altas legítimas</text>
+        <text x="618" y="212" fill="var(--red)" font-size="11" font-weight="600">quedan mutiladas su primer día</text>
+        <text x="618" y="228" fill="var(--ink3)" font-size="11">+ costo de evasión de suspensión → casi cero</text>
+      </g>
+    </svg>
+    <figcaption>El reordenamiento no cambia una sola regla de moderación, pero cambia por completo la <b>población</b> sobre la que esas reglas caen. Es un cambio de política de facto.</figcaption>
+  </figure>
+
+  <p>Dos consecuencias simultáneas, y ninguna es aceptable sin una decisión explícita:</p>
+  <ol>
+    <li><b>Experiencia del primer día degradada para gente legítima.</b> La mayoría de las altas nuevas ya no podrá mandar un toque ni abrir un chat en sus primeras 24 h — justo el momento en que quiere probar la red. Peor: hoy la app le responde con un error, no con una explicación. Hay que <b>hacer legible la cuarentena en la UI</b> ("puedes publicar y comentar; iniciar conversaciones privadas se abre en X horas, es una protección de la comunidad"), o el reordenamiento va a producir la impresión de que la app está rota.</li>
+    <li><b>El costo de evadir una suspensión se desploma.</b> La defensa que el README describe se apoyaba en que la ruta cara (Mastodon) era la ruta principal. Al invertirlo, la ruta barata pasa a ser la principal. Hay que decidir conscientemente cómo se compensa: reforzar la moderación reactiva, subir <code>SIGNUP_QUARANTINE_HOURS</code>, o aceptar el riesgo y medirlo.</li>
+  </ol>
+
+  <div class="note">
+    <span class="gotcha-t">ℹ Alternativa de diseño que evita el dilema</span>
+    <p>Diferenciar la cuarentena por método en vez de por "tiene o no Mastodon": correo <b>verificado</b> (que es lo que el enlace mágico ya demuestra, por definición) es una señal de costo intermedia entre una llave anónima y una cuenta de Mastodon. Podría llevar una cuarentena más corta. Es una línea de código en el middleware <code>requireEstablished</code> y recupera buena parte de la experiencia del primer día sin regalar el flanco de evasión.</p>
+  </div>
+
+  <h3>Explicar Mastodon sin fugar el embudo</h3>
+  <p>La relatoría pide "orientarlos a un servidor de Mastodon". Cuidado: mandar a alguien a registrarse en un tercero <b>a mitad del alta</b> es una fuga de embudo casi garantizada — se va, se atora eligiendo instancia, y no vuelve. El trabajo de este texto no es convertir gente a Mastodon; es <b>descalificar rápido</b>: que quien no sepa qué es entienda en cinco segundos que no lo necesita y siga con correo.</p>
+  <ul>
+    <li>Panel colapsado <i>"¿Qué es Mastodon? — solo si ya tienes cuenta"</i>, cerrado por defecto, debajo de los otros dos métodos.</li>
+    <li>Dentro: dos frases de qué es (red social federada, tu cuenta vive en un servidor independiente), y una línea de cierre inequívoca: <i>"¿No sabes si tienes? Entonces no tienes — entra con tu correo, arriba."</i></li>
+    <li>Lista corta y curada de instancias (p. ej. <code>mstdn.mx</code>, <code>mastodon.social</code>) con <code>target="_blank" rel="noopener"</code>, marcadas explícitamente como "te lleva fuera de WeedTown".</li>
+    <li>Mantener el campo de instancia con <code>placeholder</code> y <code>helperText</code> — pero quitarle <code>autoFocus</code>, que pasa al campo de correo.</li>
+  </ul>
+
+  <h3>Historias de usuario</h3>
+  <div class="hu">
+    <div class="id">HU-ACC-001</div>
+    <div class="t">Reordenar los métodos de acceso por comprensibilidad</div>
+    <ul>
+      <li><b>Como</b> persona que llega por primera vez y no conoce el fediverso, <b>quiero</b> que la opción más fácil sea la primera que veo, <b>para</b> entrar sin tener que investigar nada.</li>
+      <li><b>CA1:</b> el orden visual es correo → llave de acceso → Mastodon (colapsado).</li>
+      <li><b>CA2:</b> <code>autoFocus</code> está en el campo de correo; el campo de instancia ya no lo tiene.</li>
+      <li><b>CA3:</b> el subtítulo ya no afirma que se entra "con tu cuenta del fediverso".</li>
+      <li><b>CA4:</b> los tres métodos siguen bloqueados hasta aceptar 18+ y TyC (no se relaja nada).</li>
+      <li><b>CA5:</b> <code>e2e/tests/passkey.spec.js</code> y <code>magic-link.spec.js</code> pasan en verde tras actualizar selectores.</li>
+    </ul>
+  </div>
+  <div class="hu">
+    <div class="id">HU-ACC-002</div>
+    <div class="t">Separar "Entrar" de "Crear cuenta"</div>
+    <ul>
+      <li><b>Como</b> persona nueva, <b>quiero</b> saber si estoy entrando o registrándome, <b>para</b> no crear una cuenta duplicada sin darme cuenta.</li>
+      <li><b>CA1:</b> ningún método crea cuenta en silencio desde la pestaña "Entrar".</li>
+      <li><b>CA2:</b> desde "Crear cuenta", los tres métodos comunican que van a dar de alta.</li>
+      <li><b>CA3:</b> intentar entrar con un correo sin cuenta da un mensaje accionable sin revelar si el correo existe (<b>preservar</b> la respuesta 200 uniforme actual de <code>/auth/email/start</code>).</li>
+    </ul>
+  </div>
+  <div class="hu">
+    <div class="id">HU-ACC-003</div>
+    <div class="t">Explicar Mastodon y desviar a quien no lo tiene</div>
+    <ul>
+      <li><b>CA1:</b> panel colapsable, cerrado por defecto, con qué es Mastodon en ≤3 frases.</li>
+      <li><b>CA2:</b> instrucción explícita de usar correo para quien no sabe si tiene cuenta.</li>
+      <li><b>CA3:</b> enlaces externos con <code>rel="noopener"</code> y aviso de que salen de WeedTown.</li>
+    </ul>
+  </div>
+  <div class="hu" style="border-left-color:var(--orange)">
+    <div class="id" style="color:var(--orange)">HU-SEG-007</div>
+    <div class="t">Hacer legible la cuarentena de altas nuevas</div>
+    <ul>
+      <li><b>Como</b> persona recién registrada por correo, <b>quiero</b> entender por qué no puedo mandar un toque, <b>para</b> no pensar que la app falla.</li>
+      <li><b>CA1:</b> las superficies afectadas (toque en Cerca, abrir chat nuevo) muestran un aviso explicativo con el tiempo restante, en lugar de un error genérico.</li>
+      <li><b>CA2:</b> el texto explica que es una protección de la comunidad, no un castigo.</li>
+      <li><b>Bloqueante de HU-ACC-001</b> — no se debe liberar el reordenamiento sin esto.</li>
+    </ul>
+  </div>
+
+  <div class="danger">
+    <span class="gotcha-t">✖ Impacto en pruebas — no opcional</span>
+    <p><code>e2e/tests/_helpers.js</code> navega el login con selectores de texto literal: <code>page.click('text=¿Primera vez? Crear cuenta con llave de acceso')</code> y <code>input[placeholder="como quieres llamarte"]</code>. Cualquier cambio de copy en esa pantalla rompe <b>las tres specs E2E</b> (passkey, magic-link y posts, que depende de <code>crearCuentaConPasskey</code>). Actualizar helpers va en el mismo PR, no después.</p>
+  </div>
+
+</section>
+
+<!-- ══════════════════ B ══════════════════ -->
+<section class="panel" id="pb">
+
+  <h2>B · Cámara directa desde la web app <span class="chip c-grn">Riesgo bajo</span></h2>
+  <blockquote style="border-left:3px solid var(--line);margin:0 0 18px;padding:2px 0 2px 16px;color:var(--ink2);font-style:italic">
+    "Para las publicaciones donde hay foto, nos hace falta integrar la capacidad de la red de invocar la cámara directamente. Solo está teniendo acceso a la galería — y si bien eso es correcto y es lo esperado, sí falta que la persona pueda tomarse una foto directamente desde la web app para subirla."
+  </blockquote>
+
+  <p><b>Es la iniciativa con mejor relación valor/esfuerzo del lote.</b> Toca dos archivos de frontend, no requiere backend, no requiere migración y no abre ningún hueco de privacidad. Pero tiene tres trampas concretas.</p>
+
+  <h3>Estado actual</h3>
+  <p><code>ImagePicker.jsx</code> tiene un único <code>&lt;input type="file"&gt;</code> oculto con <code>accept=".jpg,.jpeg,.png,.webp"</code>, disparado por un <code>IconButton</code>. Sin atributo <code>capture</code>, el navegador móvil ofrece el selector del sistema — que en la práctica abre la galería.</p>
+
+  <h3>Las tres trampas</h3>
+
+  <div class="danger">
+    <span class="gotcha-t">✖ Trampa 1 — <code>capture</code> no <i>agrega</i> la cámara: la <i>sustituye</i></span>
+    <p>El instinto es agregar <code>capture="environment"</code> al input existente. <b>Eso rompe el caso actual</b>: en iOS Safari y Chrome de Android, un input con <code>capture</code> abre la cámara directamente y <b>elimina la opción de galería</b>. Se cambiaría un problema por el opuesto.</p>
+      <p><b>Patrón correcto: dos puntos de entrada.</b> Un menú (o dos botones) con <i>Tomar foto</i> → input <b>con</b> <code>capture</code>, y <i>Elegir de galería</i> → input <b>sin</b> <code>capture</code>. Ambos comparten el mismo <code>handleSelect</code>. En escritorio, <code>capture</code> se ignora silenciosamente, así que conviene mostrar la opción de cámara solo en dispositivos táctiles: <code>window.matchMedia('(pointer: coarse)').matches</code>.</p>
+  </div>
+
+  <div class="danger">
+    <span class="gotcha-t">✖ Trampa 2 — el límite de 5 MB rechaza la foto antes de poder comprimirla</span>
+    <p>Detallado en el <a href="#" data-go="p0">Diagnóstico</a>. <code>validateImage</code> corre antes que <code>sanitizeImage</code>, así que una foto de cámara de 12 MP (4–8 MB) se rechaza <b>aunque</b> el pipeline la dejaría en ~600 kB. Con la cámara como camino por defecto, esto pasa de ser un caso borde a ser el caso común. <b>Corregir esto es parte de esta iniciativa, no un ticket aparte.</b></p>
+  </div>
+
+  <div class="warn">
+    <span class="gotcha-t">⚠ Trampa 3 — validación por extensión vs. nombres de captura</span>
+    <p>Las capturas llegan a veces sin extensión utilizable en <code>file.name</code>. Validar por <code>file.type</code> y dejar la extensión como respaldo. El backend ya valida MIME en multer; esto solo alinea al cliente.</p>
+  </div>
+
+  <div class="note">
+    <span class="gotcha-t">ℹ Sobre <code>Permissions-Policy: camera=()</code></span>
+    <p><code>backend/app.js:67</code> manda <code>camera=()</code>. <b>No afecta a esta iniciativa</b>: la cabecera gobierna <code>getUserMedia()</code>, no un <code>&lt;input capture&gt;</code>, que delega en la app de cámara del sistema operativo. Dos precisiones para el equipo:</p>
+    <ul style="margin-bottom:0">
+      <li>Sí bloquearía una <b>vista previa en vivo dentro de la página</b> (filtros, encuadre, escáner QR). Si eso llega a estar en el roadmap, hay que abrir <code>camera=(self)</code> conscientemente.</li>
+      <li>Esa cabecera la sirve el <b>backend</b>. El frontend se despliega como assets estáticos en Cloudflare Workers, de modo que la política que rige al documento HTML es la que sirva Cloudflare, no ésta. <b>Verificar en producción</b> qué cabeceras llegan al documento — es un punto ciego, independientemente de esta iniciativa.</li>
+    </ul>
+  </div>
+
+  <div class="good">
+    <span class="gotcha-t">✓ Privacidad: entra por una puerta ya blindada</span>
+    <p>Las fotos de cámara son la principal fuente de EXIF con GPS. <code>sanitizeImage</code> reescribe por canvas y produce un binario nuevo sin metadatos, y además renombra a <code>imagen.jpg</code> porque el nombre original también puede llevar datos. La cámara directa no requiere <b>ningún</b> trabajo adicional de privacidad. Vale la pena decírselo a la persona usuaria en el tooltip: es una ventaja competitiva real y hoy está escondida.</p>
+  </div>
+
+  <h3>Historias de usuario</h3>
+  <div class="hu">
+    <div class="id">HU-IMG-002</div>
+    <div class="t">Tomar una foto desde la app</div>
+    <ul>
+      <li><b>Como</b> persona en su celular, <b>quiero</b> tomar la foto en el momento sin salir de WeedTown, <b>para</b> publicar lo que estoy viendo ahora.</li>
+      <li><b>CA1:</b> en dispositivo táctil, el botón de imagen ofrece <i>Tomar foto</i> y <i>Elegir de galería</i>.</li>
+      <li><b>CA2:</b> en escritorio el comportamiento es idéntico al actual (una sola acción: elegir archivo).</li>
+      <li><b>CA3:</b> la foto tomada pasa por <code>sanitizeImage</code>; el archivo subido no contiene EXIF ni GPS.</li>
+      <li><b>CA4:</b> una foto de 12 MP se acepta y se publica (regresión del bug de los 5 MB).</li>
+      <li><b>CA5:</b> una captura cuyo <code>file.name</code> no trae extensión se acepta si su MIME es válido.</li>
+      <li><b>CA6:</b> aplica en las tres superficies que usan <code>ImagePicker</code>: post de feed, comentario y post de foro.</li>
+    </ul>
+  </div>
+  <div class="hu" style="border-left-color:var(--red)">
+    <div class="id" style="color:var(--red)">HU-IMG-003 · deuda</div>
+    <div class="t">Corregir el orden de validación de tamaño</div>
+    <ul>
+      <li><b>CA1:</b> el pre-chequeo usa un techo de ingesta amplio (~30 MB) para proteger memoria del canvas.</li>
+      <li><b>CA2:</b> el límite duro de 5 MB se evalúa sobre el resultado de <code>sanitizeImage</code>.</li>
+      <li><b>CA3:</b> el mensaje de error distingue "demasiado grande para procesar" de "no se pudo comprimir lo suficiente".</li>
+    </ul>
+  </div>
+
+  <p><b>Estimación:</b> S (1–2 días con pruebas). <b>Dependencias:</b> ninguna. <b>Recomendación:</b> primera en salir — entrega valor visible de inmediato y limpia dos defectos de camino.</p>
+
+</section>
+
+<!-- ══════════════════ C ══════════════════ -->
+<section class="panel" id="pc">
+
+  <h2>C · Pin de amigos con margen de 500 m <span class="chip c-red">Crítico — decisión de producto</span></h2>
+  <blockquote style="border-left:3px solid var(--red);margin:0 0 18px;padding:2px 0 2px 16px;color:var(--ink2);font-style:italic">
+    "Me gustaría que si eres amigo de alguien, ese alguien se muestre en el mapa con un pin que minimice […] que no sea la rejilla de dos kilómetros, sino un pin con un margen de error de 500 metros. <b>Analizar la viabilidad y qué tanto eso implica en el tema de privacidad es importante</b>, que no se pierda ese punto."
+  </blockquote>
+  <p>La petición incluye su propia condición: analizar viabilidad y privacidad. Eso es lo que sigue, y la conclusión es incómoda pero clara.</p>
+
+  <h3>Lo primero: esto rompe un principio declarado, no un parámetro</h3>
+  <div class="danger">
+    <span class="gotcha-t">✖ Cambio de principio de diseño</span>
+    <p>El README dice, textual: <i>"El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, <b>nunca pins individuales</b>."</i> La propuesta introduce el primer pin individual del producto. No es afinar 2000 m a 500 m: es pasar de <b>k-anonimato por celda</b> (todos los de una zona son indistinguibles) a <b>señalar a una persona en un punto</b>. Son dos modelos de privacidad distintos.</p>
+  </div>
+
+  <h3>Modelo de amenaza — quién es el adversario aquí</h3>
+  <p>No es un adversario abstracto. WeedTown es una red de la comunidad cannábica en México, y su propio README pone la seguridad como principio número uno. Los adversarios plausibles de una persona que publica contenido cannábico y aparece ubicada a 500 m son: extorsión y robo dirigido (particularmente a quien cultiva), acoso u hostigamiento policial, y doxxing por parte de exparejas o conocidos. <b>Un pin de 500 m en una colonia densa, sumado a una cara y un handle, es material suficiente para encontrar a alguien.</b> El estándar de prueba tiene que ser alto.</p>
+
+  <h3>Cuatro formas de implementar "±500 m" — solo una sobrevive</h3>
+  <p>La distinción decisiva es <b>ofuscar por desplazamiento</b> (mover el punto) frente a <b>ofuscar por cuantización</b> (redondear el punto a una rejilla fija). Parecen equivalentes y no lo son: un desplazamiento es una función <b>invertible</b> — quien descubre el vector, descubre la posición real, para siempre. Una cuantización es <b>muchos-a-uno</b> — no hay nada que invertir.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Comparación entre desplazamiento invertible y cuantización a rejilla">
+      <g font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5">
+        <!-- izquierda: offset -->
+        <text x="30" y="22" font-weight="700" font-size="13" fill="var(--red)">✖ Desplazamiento (offset) — invertible</text>
+        <rect x="30" y="34" width="380" height="236" rx="10" fill="var(--red-soft)" stroke="var(--red)" stroke-opacity=".35"/>
+        <circle cx="150" cy="150" r="5.5" fill="var(--red)"/>
+        <text x="150" y="172" text-anchor="middle" fill="var(--red)" font-size="10.5" font-weight="700">posición real</text>
+        <circle cx="300" cy="110" r="5.5" fill="var(--ink3)"/>
+        <text x="300" y="98" text-anchor="middle" fill="var(--ink2)" font-size="10.5">pin mostrado</text>
+        <line x1="150" y1="150" x2="294" y2="112" stroke="var(--red)" stroke-width="2" stroke-dasharray="5 3"/>
+        <text x="222" y="139" text-anchor="middle" fill="var(--red)" font-size="10.5" font-weight="700">vector fijo v⃗</text>
+        <text x="52" y="215" fill="var(--ink2)" font-size="11">Basta que <tspan font-weight="700">una vez</tspan> un amigo sepa dónde estás</text>
+        <text x="52" y="231" fill="var(--ink2)" font-size="11">de verdad (te visitó, te vio en un evento) para</text>
+        <text x="52" y="247" fill="var(--ink2)" font-size="11">despejar v⃗. Desde ese momento te sigue con</text>
+        <text x="52" y="263" fill="var(--red)" font-size="11" font-weight="700">precisión de GPS, indefinidamente.</text>
+
+        <!-- derecha: snap -->
+        <text x="490" y="22" font-weight="700" font-size="13" fill="var(--green)">✓ Cuantización a rejilla (snap) — irreversible</text>
+        <rect x="490" y="34" width="380" height="236" rx="10" fill="var(--green-soft)" stroke="var(--green)" stroke-opacity=".4"/>
+        <g stroke="var(--green)" stroke-opacity=".45" stroke-width="1">
+          <line x1="530" y1="60" x2="530" y2="200"/><line x1="600" y1="60" x2="600" y2="200"/>
+          <line x1="670" y1="60" x2="670" y2="200"/><line x1="740" y1="60" x2="740" y2="200"/>
+          <line x1="810" y1="60" x2="810" y2="200"/>
+          <line x1="530" y1="60" x2="810" y2="60"/><line x1="530" y1="95" x2="810" y2="95"/>
+          <line x1="530" y1="130" x2="810" y2="130"/><line x1="530" y1="165" x2="810" y2="165"/>
+          <line x1="530" y1="200" x2="810" y2="200"/>
+        </g>
+        <rect x="600" y="95" width="70" height="35" fill="var(--green)" fill-opacity=".22"/>
+        <circle cx="618" cy="121" r="3.5" fill="var(--ink3)"/>
+        <circle cx="641" cy="104" r="3.5" fill="var(--ink3)"/>
+        <circle cx="655" cy="118" r="3.5" fill="var(--red)"/>
+        <circle cx="628" cy="110" r="3.5" fill="var(--ink3)"/>
+        <rect x="600" y="95" width="70" height="35" fill="none" stroke="var(--green)" stroke-width="2.2"/>
+        <text x="635" y="86" text-anchor="middle" fill="var(--green)" font-size="10.5" font-weight="700">celda ~500 m</text>
+        <text x="512" y="228" fill="var(--ink2)" font-size="11">Todos los puntos de la celda producen</text>
+        <text x="512" y="244" fill="var(--ink2)" font-size="11"><tspan font-weight="700">el mismo</tspan> identificador. No hay vector que despejar</text>
+        <text x="512" y="260" fill="var(--green)" font-size="11" font-weight="700">ni promedio que reduzca el error.</text>
+      </g>
+    </svg>
+    <figcaption>Es exactamente el criterio que ya usa <code>geogrid.js</code> hoy — y la razón por la que su comentario de cabecera dice <i>"cuadrícula fija: anti-triangulación"</i>. La propuesta debe respetar ese mismo criterio o no debe existir.</figcaption>
+  </figure>
+
+  <div class="tw">
+  <table>
+    <thead><tr>
+      <th style="width:22%">Opción</th><th style="width:22%">Mecánica</th>
+      <th class="mid">Resiste muestreo repetido</th><th class="mid">Resiste colusión entre amigos</th>
+      <th class="mid">Resiste "un amigo que ya sabe dónde vives"</th><th class="mid" style="width:11%">Veredicto</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><b>A.</b> Ruido aleatorio por consulta</td>
+        <td>Offset distinto cada vez que se pide el mapa</td>
+        <td class="mid"><b style="color:var(--red)">NO</b><br><span style="font-size:11.5px;color:var(--ink3)">el error cae como 1/√N: ~25 observaciones bajan ±500 m a ~±100 m</span></td>
+        <td class="mid" style="color:var(--red)">NO</td><td class="mid" style="color:var(--red)">NO</td>
+        <td class="mid"><span class="chip c-red">Prohibida</span></td>
+      </tr>
+      <tr>
+        <td><b>B.</b> Offset fijo por usuario</td>
+        <td>Un vector constante persistido, igual para todos sus amigos</td>
+        <td class="mid" style="color:var(--green)">Sí</td>
+        <td class="mid" style="color:var(--green)">Sí<br><span style="font-size:11.5px;color:var(--ink3)">todos ven el mismo punto</span></td>
+        <td class="mid"><b style="color:var(--red)">NO — falla catastrófica</b><br><span style="font-size:11.5px;color:var(--ink3)">un solo dato real despeja el vector y lo vuelve seguimiento permanente</span></td>
+        <td class="mid"><span class="chip c-red">Rechazada</span></td>
+      </tr>
+      <tr>
+        <td><b>C.</b> Offset fijo por par (usuario, amigo)</td>
+        <td>Un vector distinto para cada amistad</td>
+        <td class="mid" style="color:var(--green)">Sí</td>
+        <td class="mid"><b style="color:var(--red)">NO</b><br><span style="font-size:11.5px;color:var(--ink3)">3 amigos que comparan pantallas trilateran la posición real</span></td>
+        <td class="mid" style="color:var(--red)">NO</td>
+        <td class="mid"><span class="chip c-red">Rechazada</span></td>
+      </tr>
+      <tr style="background:var(--green-soft)">
+        <td><b>D.</b> Rejilla fija de 0.005° (~550 m)</td>
+        <td>Misma matemática que hoy, celda 4× más fina por lado</td>
+        <td class="mid" style="color:var(--green)"><b>Sí</b></td>
+        <td class="mid" style="color:var(--green)"><b>Sí</b></td>
+        <td class="mid" style="color:var(--green)"><b>Sí</b><br><span style="font-size:11.5px;color:var(--ink3)">no revela nada más allá del cuadro</span></td>
+        <td class="mid"><span class="chip c-grn">Única viable</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Aun eligiendo la opción D, quedan cinco costos reales</h3>
+
+  <details open>
+    <summary><span class="chip c-red">1</span> &nbsp;El servidor pasa a conocer tu ubicación con 16× más precisión — y eso es incondicional</summary>
+    <div class="body">
+      <p>Hoy el conocimiento máximo del servidor sobre cualquier persona es una celda de ~4.5 km². Con una rejilla de 0.005° pasa a ~0.28 km². <b>Esa pérdida no depende de que "solo la vean los amigos"</b>: una filtración de la base, un requerimiento judicial o un administrador desleal obtienen 500 m en vez de 2 km. La restricción por amistad se aplica en la capa de consulta; el dato ya está almacenado.</p>
+      <p>Mitigaciones si se procede: columna separada de la celda gruesa, TTL propio y mucho más corto (48 h en vez de 7 días), y poblarla <b>solo</b> si la persona activó explícitamente el modo preciso — de modo que quien no lo use conserve exactamente la privacidad de hoy.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-org">2</span> &nbsp;"Ser amigo" es una compuerta más débil de lo que parece</summary>
+    <div class="body">
+      <p><code>areFriends()</code> es sólido técnicamente (simétrico, aceptación mutua, y el bloqueo lo disuelve). El problema no es el código, es el comportamiento: la gente acepta solicitudes de amistad con muy poco escrutinio. Una solicitud bien hecha por ingeniería social = ubicación a 500 m. Y el producto <i>ya</i> tiene búsqueda de personas por nombre y handle, así que el atacante ni siquiera necesita suerte.</p>
+      <p><b>Consecuencia de diseño:</b> compartir posición precisa no puede ser automático para todos los amigos. Como mínimo, un interruptor global apagado por defecto; idealmente, una lista de permitidos por persona, visible y revocable con un toque.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-amb">3</span> &nbsp;La revocación es imperfecta y hay que decirlo</summary>
+    <div class="body">
+      <p>Desamistar retira a alguien de la capa precisa de inmediato — eso es fácil. Lo que no se puede deshacer es lo que ya vio o capturó en pantalla. La UI debe decirlo con todas sus letras antes de activar la función, no en los Términos. Es la diferencia entre una funcionalidad honesta y una que promete algo que no puede cumplir.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-amb">4</span> &nbsp;Deuda de pruebas y de superficie</summary>
+    <div class="body">
+      <ul>
+        <li>La CI ya prueba la <b>paridad de rejilla</b> entre <code>backend/src/lib/geogrid.js</code> y <code>frontend/src/lib/geo.js</code>. Una segunda rejilla exige una segunda prueba de paridad — barata, pero obligatoria: una divergencia silenciosa entre cliente y servidor es un bug de privacidad, no de funcionalidad.</li>
+        <li>Un endpoint nuevo debe heredar <b>todas</b> las compuertas de <code>GET /api/nearby</code>: reciprocidad, bloqueos, rate limit anti-scraping, TTL — <b>más</b> <code>areFriends</code>. Cada una que se omita es un agujero.</li>
+        <li>La respuesta uniforme 404 que hoy protege al toque (no revelar si alguien existe, dónde está o si te bloqueó) debe replicarse tal cual.</li>
+        <li>Términos y Condiciones y la exportación de datos (<code>privacy.js</code>) deben contemplar el campo nuevo.</li>
+      </ul>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-blu">5</span> &nbsp;No hay evidencia de demanda</summary>
+    <div class="body">
+      <p>A diferencia de A, B y D — que salen de fricción observada en usuarios reales el primer día — ésta sale de una idea creativa, y la propia relatoría la marca como <i>"hay que tomarla con pinzas"</i>. Se propone gastar la iniciativa más cara y más riesgosa del lote sobre la hipótesis menos validada. En términos de WSJF, es la peor asignación posible de la capacidad del ciclo.</p>
+    </div>
+  </details>
+
+  <h3>Recomendación</h3>
+  <div class="danger">
+    <span class="gotcha-t">Recomendación de PO + auditoría</span>
+    <p><b>No construir en este ciclo.</b> Documentar como RFC con la opción D como <b>único</b> diseño permitido, dejarlo explícitamente fuera de alcance, y reevaluar cuando (a) el rediseño móvil esté en producción, y (b) haya uso medible de Cerca que justifique el costo. Si se decide avanzar antes, que sea como <i>spike</i> escrito y revisado — no como código.</p>
+  </div>
+
+  <div class="good">
+    <span class="gotcha-t">✓ Alternativa que entrega ~80% del valor con 0% del riesgo</span>
+    <p>El trabajo real detrás de la idea es <b>"enterarme de que un amigo anda cerca para poder verlo"</b>. Eso no requiere un pin más fino. Requiere:</p>
+    <ul style="margin-bottom:0">
+      <li>Una sección <b>"Amigos cerca"</b> en <code>/cerca</code>, arriba del mapa, con la banda gruesa que <b>ya existe</b> (<code>bandLabel</code> devuelve "En tu zona" / "A ~4 km").</li>
+      <li>Una notificación opcional cuando un amigo aparece en tu zona.</li>
+      <li>Un botón <i>"¿nos vemos?"</i> que abre el chat — donde las dos personas deciden, <b>de mutuo acuerdo y en el momento</b>, si se dicen dónde están.</li>
+    </ul>
+    <p>Se resuelve con la rejilla actual, sin migración, sin almacenar un solo dato nuevo y sin tocar un principio del README. Y deja la decisión de precisión donde debe estar: en una conversación entre dos personas, no en una base de datos. <b>Estimación: S/M</b>, contra L de la propuesta original.</p>
+  </div>
+
+</section>
+
+<!-- ══════════════════ D ══════════════════ -->
+<section class="panel" id="pd">
+
+  <h2>D · Rediseño de la navegación móvil <span class="chip c-org">Riesgo alto por alcance</span></h2>
+  <blockquote style="border-left:3px solid var(--line);margin:0 0 18px;padding:2px 0 2px 16px;color:var(--ink2);font-style:italic">
+    "Este tema va a estar bien cabrón porque es un rediseño y solo aplica a mobile. La navegación de mobile es muy mala: si bien el producto es responsivo, la realidad es que la UX no está diseñada para atender las funciones básicas en el contexto de una web app. Necesitamos rediseñar solo la parte responsiva para tener los controles más a la mano — poder navegar entre foros, entre feeds, entre chats. Tener que tocar la esquina superior izquierda es un despropósito en una web app."
+  </blockquote>
+  <p>El diagnóstico de la relatoría es correcto y la auditoría del código lo confirma. Es también la iniciativa de mayor impacto en el uso diario, y la de mayor riesgo de desbordarse.</p>
+
+  <h3>Por qué la navegación actual falla</h3>
+  <p><code>Navbar.jsx</code> es un <code>AppBar</code> de escritorio con un <code>Drawer</code> anclado a la izquierda para móvil. Cambiar de Feed a Chat — la acción más frecuente del producto — cuesta: <b>estirar el pulgar a la esquina superior izquierda</b> (la zona más difícil de alcanzar en un teléfono sostenido con una mano) → abrir el cajón → leer una lista de seis elementos → tocar. Tres acciones y un alcance incómodo, para lo que en cualquier app nativa es un toque.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zonas de alcance del pulgar: la hamburguesa está en la peor zona y la barra inferior en la mejor">
+      <g font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5">
+        <defs>
+          <radialGradient id="reach" cx="50%" cy="100%" r="105%">
+            <stop offset="0%" stop-color="#2e7d32" stop-opacity=".34"/>
+            <stop offset="42%" stop-color="#b58900" stop-opacity=".24"/>
+            <stop offset="72%" stop-color="#c62828" stop-opacity=".22"/>
+            <stop offset="100%" stop-color="#c62828" stop-opacity=".30"/>
+          </radialGradient>
+        </defs>
+
+        <!-- HOY -->
+        <text x="60" y="20" font-weight="700" font-size="13" fill="var(--red)">HOY — hamburguesa arriba a la izquierda</text>
+        <rect x="60" y="32" width="176" height="292" rx="22" fill="var(--panel)" stroke="var(--line)" stroke-width="2"/>
+        <rect x="66" y="38" width="164" height="280" rx="17" fill="url(#reach)"/>
+        <rect x="66" y="38" width="164" height="34" rx="17" fill="var(--panel)" fill-opacity=".82"/>
+        <circle cx="82" cy="55" r="10" fill="var(--red)" fill-opacity=".22" stroke="var(--red)" stroke-width="2"/>
+        <g stroke="var(--red)" stroke-width="1.6"><line x1="77" y1="52" x2="87" y2="52"/><line x1="77" y1="55" x2="87" y2="55"/><line x1="77" y1="58" x2="87" y2="58"/></g>
+        <text x="248" y="52" fill="var(--red)" font-size="11.5" font-weight="700">← zona roja</text>
+        <text x="248" y="68" fill="var(--ink2)" font-size="11">3 acciones + alcance forzado</text>
+        <text x="248" y="84" fill="var(--ink2)" font-size="11">para la navegación más frecuente</text>
+        <text x="148" y="196" text-anchor="middle" fill="var(--ink3)" font-size="11">contenido</text>
+        <text x="148" y="306" text-anchor="middle" fill="var(--green)" font-size="10.5" font-weight="700">zona cómoda desperdiciada</text>
+
+        <!-- PROPUESTA -->
+        <text x="450" y="20" font-weight="700" font-size="13" fill="var(--green)">PROPUESTA — BottomNavigation fija</text>
+        <rect x="450" y="32" width="176" height="292" rx="22" fill="var(--panel)" stroke="var(--line)" stroke-width="2"/>
+        <rect x="456" y="38" width="164" height="280" rx="17" fill="url(#reach)"/>
+        <rect x="456" y="38" width="164" height="32" rx="17" fill="var(--panel)" fill-opacity=".82"/>
+        <text x="470" y="58" fill="var(--ink2)" font-size="10">logo</text>
+        <text x="588" y="58" fill="var(--ink2)" font-size="10" text-anchor="end">🔔  ◍</text>
+        <rect x="456" y="272" width="164" height="46" rx="10" fill="var(--panel)" fill-opacity=".95" stroke="var(--green)" stroke-width="2"/>
+        <g fill="var(--green)">
+          <circle cx="473" cy="290" r="5"/><circle cx="506" cy="290" r="5"/><circle cx="539" cy="290" r="5"/>
+          <circle cx="572" cy="290" r="5"/><circle cx="603" cy="290" r="5"/>
+        </g>
+        <g fill="var(--ink2)" font-size="7.5" text-anchor="middle">
+          <text x="473" y="308">Feed</text><text x="506" y="308">Foros</text><text x="539" y="308">Chat</text>
+          <text x="572" y="308">Cerca</text><text x="603" y="308">Amigos</text>
+        </g>
+        <text x="638" y="290" fill="var(--green)" font-size="11.5" font-weight="700">1 toque</text>
+        <text x="638" y="306" fill="var(--ink2)" font-size="11">en la zona natural del pulgar</text>
+        <text x="638" y="54" fill="var(--ink2)" font-size="11">arriba solo queda lo</text>
+        <text x="638" y="70" fill="var(--ink2)" font-size="11">poco frecuente: marca,</text>
+        <text x="638" y="86" fill="var(--ink2)" font-size="11">campana, perfil / más</text>
+      </g>
+    </svg>
+    <figcaption>Los cinco destinos de <code>baseLinks</code> (Feed, Foros, Chat, Cerca, Amigos) coinciden exactamente con el máximo recomendado de <code>BottomNavigation</code> en Material Design. Moderación sale de la barra y pasa al menú de perfil: es una acción rara y de una minoría de cuentas.</figcaption>
+  </figure>
+
+  <h3>Las seis implicaciones que definen el esfuerzo real</h3>
+  <p>La barra en sí es media jornada de trabajo. El costo está en lo que la barra rompe en cada página.</p>
+
+  <details open>
+    <summary><span class="chip c-red">La más cara</span> &nbsp;Chat: colisión de barra + compositor + teclado</summary>
+    <div class="body">
+      <p><code>Chat.jsx</code> tiene su compositor abajo. Una barra fija encima de él le roba espacio, y al abrir el teclado virtual quedan compositor y barra apilados sobre un área visible ya mínima. <b>Es el punto donde este rediseño se gana o se pierde.</b></p>
+      <p>Solución: ocultar la barra inferior cuando hay una conversación abierta (o cuando el compositor tiene el foco), y dar a esa vista una flecha de regreso propia. Es coherente con el patrón "chat de una vista" que el README ya describe. Requiere que el layout sea consciente de la ruta, no un envoltorio global ciego — y eso es lo que convierte esta iniciativa de M a L.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-org">Alta</span> &nbsp;Cerca: el mapa de Leaflet a altura completa</summary>
+    <div class="body">
+      <p>Un contenedor Leaflet con <code>height:100%</code> bajo una barra fija queda recortado por abajo, y sus controles de zoom (que Leaflet ancla abajo a la izquierda) caen debajo de la barra. Hay que calcular altura explícita: <code>calc(100dvh - topbar - bottomnav - env(safe-area-inset-bottom))</code>. Nota: <code>100dvh</code> en vez de <code>100vh</code>, o la barra de direcciones de Safari móvil descuadra el layout al hacer scroll.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-amb">Media</span> &nbsp;Área segura de iOS</summary>
+    <div class="body">
+      <p>Sin <code>padding-bottom: env(safe-area-inset-bottom)</code>, en iPhone con indicador de inicio la última fila de la barra queda parcialmente tapada y los toques se los come el gesto del sistema. Es una línea de CSS y una fuente clásica de bugs reportados como "no me responde el botón".</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-amb">Media</span> &nbsp;Feed: dónde queda "publicar"</summary>
+    <div class="body">
+      <p>Hoy el compositor es inline en el feed. Si se opta por un FAB (que es lo natural en móvil), debe flotar <b>por encima</b> de la barra inferior (<code>bottom: calc(56px + env(...) + 16px)</code>), no debajo. Alternativa más barata: dejar el compositor inline y no meter FAB en esta iteración. <b>Recomiendo la segunda</b> — el FAB es alcance nuevo, no corrección de la navegación.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-blu">Baja</span> &nbsp;Dónde va lo que sale del cajón</summary>
+    <div class="body">
+      <p>El <code>Drawer</code> hoy también aloja tema claro/oscuro, Términos y cerrar sesión. Al eliminarlo, esos van al menú del avatar en la barra superior — junto con Moderación (para <code>MOD</code>/<code>ADMIN</code>) y Cuentas bloqueadas. El <code>Badge</code> de solicitudes de amistad sobrevive: <code>BottomNavigationAction</code> acepta un <code>Badge</code> dentro de <code>icon</code>.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="chip c-org">Alta</span> &nbsp;Pruebas: hoy no hay red de seguridad</summary>
+    <div class="body">
+      <p>Como se anotó en el diagnóstico, <b>Playwright no tiene proyecto móvil</b>: ninguna prueba ha ejercitado nunca el cajón ni el layout responsivo. Se va a reescribir a ciegas la superficie menos probada del producto. <b>Prerequisito bloqueante:</b> agregar un proyecto <code>Mobile Chrome</code> (<code>devices['Pixel 5']</code>) y al menos una spec que recorra los cinco destinos y verifique que la barra no tapa el compositor del chat. <i>Esto se hace antes de tocar el Navbar, no después.</i></p>
+    </div>
+  </details>
+
+  <h3>Disciplina de alcance — la advertencia principal</h3>
+  <div class="warn">
+    <span class="gotcha-t">⚠ Riesgo #1 de esta iniciativa: que se coma el ciclo entero</span>
+    <p>La relatoría acota bien: <i>"solo aplica a mobile"</i>, <i>"rediseñar solo la parte responsiva"</i>. <b>Hay que sostener esa línea por escrito.</b> Un rediseño de navegación es un imán para rediseñar tarjetas, tipografía, colores y espaciados de paso. Propongo <i>non-goals</i> explícitos en el ticket:</p>
+    <ul style="margin-bottom:0">
+      <li>No se cambia <b>nada</b> del layout de escritorio (breakpoint <code>md</code> hacia arriba queda idéntico).</li>
+      <li>No se rediseñan <code>PostCard</code>, <code>ForumPostCard</code> ni ningún componente de contenido.</li>
+      <li>No se toca <code>theme.js</code>.</li>
+      <li>No se agregan destinos de navegación nuevos.</li>
+      <li>Criterio de aceptación transversal: el <i>diff</i> de esta iniciativa toca navegación y layout — si toca lógica de negocio, se salió del carril.</li>
+    </ul>
+  </div>
+
+  <h3>Historias de usuario</h3>
+  <div class="hu">
+    <div class="id">HU-NAV-001</div>
+    <div class="t">Barra de navegación inferior en móvil</div>
+    <ul>
+      <li><b>Como</b> persona usando WeedTown en el celular con una mano, <b>quiero</b> cambiar entre Feed, Foros, Chat, Cerca y Amigos con un solo toque cómodo, <b>para</b> no tener que alcanzar la esquina superior.</li>
+      <li><b>CA1:</b> barra fija abajo con los cinco destinos, etiquetas siempre visibles, en viewport <code>&lt; md</code>.</li>
+      <li><b>CA2:</b> el destino activo se marca visualmente y con <code>aria-current="page"</code>.</li>
+      <li><b>CA3:</b> el badge de solicitudes de amistad aparece sobre el icono de Amigos.</li>
+      <li><b>CA4:</b> respeta <code>env(safe-area-inset-bottom)</code>; áreas táctiles ≥ 48 px.</li>
+      <li><b>CA5:</b> en <code>≥ md</code> la barra no se renderiza y el escritorio queda <b>pixel-idéntico</b> a hoy.</li>
+    </ul>
+  </div>
+  <div class="hu">
+    <div class="id">HU-NAV-002</div>
+    <div class="t">Retirar el cajón y reubicar lo secundario</div>
+    <ul>
+      <li><b>CA1:</b> desaparece la hamburguesa; el <code>Drawer</code> se elimina de <code>Navbar.jsx</code>.</li>
+      <li><b>CA2:</b> tema, Términos, cerrar sesión, cuentas bloqueadas y Moderación viven en el menú del avatar.</li>
+      <li><b>CA3:</b> Moderación sigue apareciendo solo con rol <code>MOD</code>/<code>ADMIN</code> (recordatorio: ocultarla es comodidad, la protección real es del servidor).</li>
+    </ul>
+  </div>
+  <div class="hu">
+    <div class="id">HU-NAV-003</div>
+    <div class="t">Adaptar las vistas que la barra rompe</div>
+    <ul>
+      <li><b>CA1:</b> con una conversación abierta en <code>/chat</code>, la barra se oculta y hay flecha de regreso a la lista.</li>
+      <li><b>CA2:</b> el compositor de chat nunca queda tapado por la barra ni por el teclado virtual.</li>
+      <li><b>CA3:</b> el mapa de <code>/cerca</code> se ve completo, con sus controles accesibles.</li>
+      <li><b>CA4:</b> ninguna página tiene contenido inalcanzable al final del scroll.</li>
+    </ul>
+  </div>
+  <div class="hu" style="border-left-color:var(--orange)">
+    <div class="id" style="color:var(--orange)">HU-QA-001 · prerequisito</div>
+    <div class="t">Proyecto móvil en Playwright</div>
+    <ul>
+      <li><b>CA1:</b> <code>playwright.config.js</code> define proyectos Desktop y Mobile Chrome.</li>
+      <li><b>CA2:</b> una spec recorre los cinco destinos en viewport móvil.</li>
+      <li><b>CA3:</b> una spec verifica que el compositor de chat es visible y usable con el teclado abierto.</li>
+      <li><b>Bloquea a HU-NAV-001.</b></li>
+    </ul>
+  </div>
+
+  <p><b>Estimación:</b> L — 1 ciclo completo. La barra es medio día; adaptar diez páginas, resolver Chat y Cerca, y construir la cobertura E2E que hoy no existe es el resto.</p>
+
+</section>
+
+<!-- ══════════════════ 05 DECISIÓN ══════════════════ -->
+<section class="panel" id="pe">
+
+  <h2>Priorización</h2>
+  <p>Criterio WSJF simplificado: <b>(valor de usuario + urgencia + reducción de riesgo) ÷ esfuerzo</b>. Escala 1–5, esfuerzo S=1 · M=2 · L=4.</p>
+  <div class="tw">
+  <table>
+    <thead><tr>
+      <th>Iniciativa</th><th class="mid">Valor</th><th class="mid">Urgencia</th><th class="mid">Reduce riesgo</th>
+      <th class="mid">Esfuerzo</th><th class="mid">WSJF</th><th class="mid">Orden</th><th>Razón</th>
+    </tr></thead>
+    <tbody>
+      <tr style="background:var(--green-soft)">
+        <td><b>B · Cámara</b></td><td class="mid">4</td><td class="mid">4</td><td class="mid">3</td><td class="mid">1</td>
+        <td class="mid"><b style="font-size:16px;color:var(--green)">11.0</b></td><td class="mid"><span class="chip c-grn">1º</span></td>
+        <td>Valor visible en días. Corrige dos defectos latentes de camino.</td>
+      </tr>
+      <tr>
+        <td><b>A · Acceso y alta</b></td><td class="mid">5</td><td class="mid">5</td><td class="mid">2</td><td class="mid">2</td>
+        <td class="mid"><b style="font-size:16px;color:var(--green)">6.0</b></td><td class="mid"><span class="chip c-grn">2º</span></td>
+        <td>Es el embudo: sin esto, nadie llega a beneficiarse del resto. Requiere decidir lo de la cuarentena.</td>
+      </tr>
+      <tr>
+        <td><b>D · Navegación móvil</b></td><td class="mid">5</td><td class="mid">4</td><td class="mid">3</td><td class="mid">4</td>
+        <td class="mid"><b style="font-size:16px;color:var(--amber)">3.0</b></td><td class="mid"><span class="chip c-amb">3º</span></td>
+        <td>El mayor impacto en uso diario, pero es un ciclo completo. Necesita el prerequisito de QA.</td>
+      </tr>
+      <tr style="opacity:.72">
+        <td><b>C · Pin 500 m</b></td><td class="mid">2</td><td class="mid">1</td><td class="mid" style="color:var(--red)">−3</td><td class="mid">4</td>
+        <td class="mid"><b style="font-size:16px;color:var(--red)">0.0</b></td><td class="mid"><span class="chip c-red">No</span></td>
+        <td><b>Aumenta</b> el riesgo en vez de reducirlo, sobre la hipótesis menos validada.</td>
+      </tr>
+      <tr style="background:var(--green-soft)">
+        <td><b>C′ · "Amigos cerca" (lista)</b></td><td class="mid">3</td><td class="mid">2</td><td class="mid">0</td><td class="mid">1.5</td>
+        <td class="mid"><b style="font-size:16px;color:var(--green)">3.3</b></td><td class="mid"><span class="chip c-blu">Opc.</span></td>
+        <td>Sustituto de C: casi todo el valor, cero riesgo nuevo, con la rejilla que ya existe.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Secuencia propuesta</h2>
+  <figure>
+    <svg viewBox="0 0 900 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cronograma de tres ciclos">
+      <g font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5">
+        <line x1="30" y1="42" x2="870" y2="42" stroke="var(--line)" stroke-width="2"/>
+        <g fill="var(--ink3)" font-size="11" font-weight="600">
+          <text x="30" y="30">Ciclo 1 · quick wins</text>
+          <text x="330" y="30">Ciclo 2 · embudo</text>
+          <text x="590" y="30">Ciclo 3 · rediseño móvil</text>
+        </g>
+        <g fill="var(--green)"><circle cx="30" cy="42" r="5"/><circle cx="330" cy="42" r="5"/><circle cx="590" cy="42" r="5"/><circle cx="870" cy="42" r="5"/></g>
+
+        <rect x="30" y="58" width="280" height="34" rx="7" fill="var(--green-soft)" stroke="var(--green)"/>
+        <text x="44" y="80" fill="var(--green-deep)" font-weight="700">B · Cámara + HU-IMG-003</text>
+        <rect x="30" y="98" width="280" height="34" rx="7" fill="var(--orange-soft)" stroke="var(--orange)"/>
+        <text x="44" y="120" fill="var(--orange)" font-weight="700">HU-QA-001 · proyecto móvil en Playwright</text>
+        <text x="44" y="150" fill="var(--ink3)" font-size="10.5">Se adelanta el prerequisito de QA</text>
+        <text x="44" y="165" fill="var(--ink3)" font-size="10.5">para que el ciclo 3 no arranque a ciegas.</text>
+
+        <rect x="330" y="58" width="240" height="34" rx="7" fill="var(--green-soft)" stroke="var(--green)"/>
+        <text x="344" y="80" fill="var(--green-deep)" font-weight="700">A · HU-ACC-001/002/003</text>
+        <rect x="330" y="98" width="240" height="34" rx="7" fill="var(--orange-soft)" stroke="var(--orange)"/>
+        <text x="344" y="120" fill="var(--orange)" font-weight="700">HU-SEG-007 · cuarentena legible</text>
+        <text x="344" y="150" fill="var(--red)" font-size="10.5" font-weight="700">⛔ Decisión previa requerida:</text>
+        <text x="344" y="165" fill="var(--ink3)" font-size="10.5">política de cuarentena tras el reordenamiento.</text>
+
+        <rect x="590" y="58" width="280" height="34" rx="7" fill="var(--green-soft)" stroke="var(--green)"/>
+        <text x="604" y="80" fill="var(--green-deep)" font-weight="700">D · HU-NAV-001/002/003</text>
+        <rect x="590" y="98" width="280" height="34" rx="7" fill="var(--blue-soft)" stroke="var(--blue)" stroke-dasharray="4 3"/>
+        <text x="604" y="120" fill="var(--blue)" font-weight="700">C′ · "Amigos cerca" (si sobra capacidad)</text>
+        <text x="604" y="150" fill="var(--ink3)" font-size="10.5">Alcance blindado con non-goals escritos.</text>
+
+        <rect x="30" y="192" width="840" height="40" rx="8" fill="var(--red-soft)" stroke="var(--red)" stroke-dasharray="5 4"/>
+        <text x="46" y="209" fill="var(--red)" font-weight="700" font-size="11.5">C · Pin de amigos 500 m — FUERA DE ALCANCE</text>
+        <text x="46" y="225" fill="var(--ink2)" font-size="11">Se documenta como RFC con la opción D (rejilla fija de 0.005°) como único diseño permitido. Se reevalúa cuando haya uso medible de Cerca.</text>
+      </g>
+    </svg>
+  </figure>
+
+  <h2>Registro de decisiones a tomar</h2>
+  <div class="tw">
+  <table>
+    <thead><tr><th style="width:5%">#</th><th style="width:34%">Decisión</th><th>Opciones</th><th class="mid" style="width:11%">Bloquea a</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>D1</b></td>
+        <td>Política de cuarentena tras poner el correo en primera posición</td>
+        <td>(a) Dejarla igual y reforzar moderación reactiva · (b) <b>Cuarentena diferenciada</b>: más corta para correo verificado que para llave anónima · (c) Subir <code>SIGNUP_QUARANTINE_HOURS</code> y asumir más fricción</td>
+        <td class="mid"><span class="chip c-red">A</span></td>
+      </tr>
+      <tr>
+        <td><b>D2</b></td>
+        <td>¿Separar Entrar de Crear cuenta, o solo reordenar?</td>
+        <td>(a) Solo reordenar (más barato, deja la causa raíz) · (b) <b>Pestañas Entrar / Crear cuenta</b> (resuelve la inconsistencia de los tres modelos)</td>
+        <td class="mid"><span class="chip c-amb">A</span></td>
+      </tr>
+      <tr>
+        <td><b>D3</b></td>
+        <td>Iniciativa C: ¿se acepta la recomendación de no construirla?</td>
+        <td>(a) <b>Aceptar</b>: RFC y reevaluar · (b) Construir opción D con opt-in por persona y TTL de 48 h · (c) Construir C′ como sustituto</td>
+        <td class="mid"><span class="chip c-red">C</span></td>
+      </tr>
+      <tr>
+        <td><b>D4</b></td>
+        <td>¿Entra un FAB de publicar en el rediseño móvil?</td>
+        <td>(a) <b>No</b> — compositor inline, alcance mínimo · (b) Sí, con offset sobre la barra</td>
+        <td class="mid"><span class="chip c-blu">D</span></td>
+      </tr>
+      <tr>
+        <td><b>D5</b></td>
+        <td>Qué es "Vlogging" en la relatoría (líneas 11–12, inaudibles)</td>
+        <td>Requiere aclaración — ver pestaña siguiente</td>
+        <td class="mid"><span class="chip c-org">?</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+</section>
+
+<!-- ══════════════════ 06 PREGUNTAS ══════════════════ -->
+<section class="panel" id="pf">
+
+  <h2>Ambigüedades que bloquean la estimación</h2>
+  <p>La transcripción tiene tramos inaudibles y errores de reconocimiento de voz. No las resuelvo por mi cuenta — las dejo anotadas, porque una de ellas podría ser una iniciativa del tamaño de una fase completa.</p>
+
+  <div class="warn">
+    <span class="gotcha-t">⚠ Q1 — "Habremos Vlogging" / "y tenemos eso el poseo" (líneas 11–12)</span>
+    <p>Estas dos líneas quedan entre tramos vacíos y no son interpretables con certeza. Si "vlogging" significa <b>video</b>, no es una iniciativa: es una fase. Implicaría almacenamiento y ancho de banda de otro orden de magnitud, transcodificación, reproductor, moderación de video (que no se puede revisar leyendo, hay que verlo), costos operativos recurrentes y un replanteo del driver de <code>storage.js</code>, hoy dimensionado para imágenes de ≤5 MB. No lo descarto ni lo asumo: <b>necesito saber qué se dijo ahí.</b> Si era una idea suelta, se archiva; si era una intención real, se planea aparte.</p>
+  </div>
+
+  <div class="note">
+    <span class="gotcha-t">ℹ Q2 — "Elementos de privacidad se mantienen"</span>
+    <p>Lo leo como: el reordenamiento del login <b>no relaja nada</b> — sigue sin contraseñas, el email sigue siendo opcional para quien entra por Mastodon o llave, la casilla de 18+/TyC sigue bloqueando los tres métodos, y <code>/auth/email/start</code> sigue respondiendo 200 uniforme sin revelar si el correo existe. Lo asumo así en todo el documento. <b>Confirmar.</b></p>
+  </div>
+
+  <div class="note">
+    <span class="gotcha-t">ℹ Q3 — Alcance de "reacomodo"</span>
+    <p>¿Es solo el orden visual de los tres bloques, o incluye separar login de sign up? Es la decisión D2 y cambia la estimación de A entre S y M.</p>
+  </div>
+
+  <div class="note">
+    <span class="gotcha-t">ℹ Q4 — "navegar entre foros, entre feeds, entre chats"</span>
+    <p>La barra inferior resuelve el nivel de arriba (moverse <b>entre secciones</b>). La frase podría además pedir navegación <b>dentro</b> de una sección: cambiar de subforo sin volver al índice, o de conversación sin volver a la lista. Eso es un patrón distinto (pestañas deslizables o un selector en el encabezado) y agregaría alcance a la iniciativa D. <b>Aclarar antes de estimar en firme.</b></p>
+  </div>
+
+  <h2>Qué necesito de ti para cerrar el plan</h2>
+  <ol>
+    <li><b>D1 — cuarentena.</b> Es la decisión con más consecuencias del lote y no es técnica: es de política de comunidad.</li>
+    <li><b>D3 — pin de 500 m.</b> ¿Aceptas la recomendación de no construirlo, lo cambias por la lista "Amigos cerca", o quieres que documente el RFC con la opción D?</li>
+    <li><b>Q1 — el tramo de "vlogging".</b> Sin esto puede estar faltando la iniciativa más grande de la relatoría.</li>
+    <li><b>Q4 — profundidad de la navegación móvil.</b> Define si D es un ciclo o dos.</li>
+  </ol>
+
+  <p>Con esas cuatro respuestas convierto esto en backlog priorizado con estimaciones firmes, y actualizo el README y el roadmap para que el registro histórico del proyecto refleje la decisión — incluyendo lo que se decidió <b>no</b> hacer y por qué, que suele ser lo que más se pierde.</p>
+
+  <hr>
+  <button class="copybtn" id="cp">Copiar resumen ejecutivo</button>
+  <span id="cpok" style="margin-left:10px;font-size:12.5px;color:var(--green);opacity:0">Copiado ✓</span>
+
+  <div class="foot">
+    <p><b>WeedTown · Planeación de mejoras — relatoría día 1.</b> Elaborado el 29 de julio de 2026 sobre <code>014ec93</code>. Documento de planeación: no contiene implementación ni cambios al código. Todas las afirmaciones sobre el estado actual están verificadas contra archivos del repositorio; las estimaciones son órdenes de magnitud, no compromisos.</p>
+  </div>
+
+</section>
+
+</div>
+
+<script>
+(function(){
+  var tabs=[].slice.call(document.querySelectorAll('.tab'));
+  var panels=[].slice.call(document.querySelectorAll('.panel'));
+  function show(id){
+    tabs.forEach(function(t){t.setAttribute('aria-selected', t.dataset.p===id?'true':'false');});
+    panels.forEach(function(p){p.classList.toggle('on', p.id===id);});
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  tabs.forEach(function(t){ t.addEventListener('click',function(){ show(t.dataset.p); }); });
+  document.querySelectorAll('[data-go]').forEach(function(a){
+    a.addEventListener('click',function(e){ e.preventDefault(); show(a.dataset.go); });
+  });
+
+  var resumen = [
+    'WeedTown — Plan de mejoras (relatoria dia 1) — 29 jul 2026',
+    '',
+    'ORDEN RECOMENDADO',
+    '1. B · Camara directa (S) — mejor valor/esfuerzo. Corrige 2 bugs latentes:',
+    '   el limite de 5 MB corre ANTES del reescalado (rechaza fotos de celular) y',
+    '   la validacion es por extension de nombre, no por MIME.',
+    '   Trampa: capture= SUSTITUYE la galeria, no la agrega -> hacen falta 2 entradas.',
+    '2. A · Reordenar login: correo -> llave -> Mastodon (M).',
+    '   IMPLICACION CLAVE: la cuarentena HU-SEG-006 aplica a cuentas SIN Mastodon.',
+    '   Al invertir el orden, la mayoria de altas legitimas queda mutilada 24 h y el',
+    '   costo de evadir una suspension se desploma. Requiere decision de politica.',
+    '3. D · Navegacion movil: BottomNavigation fija (L, 1 ciclo).',
+    '   Prerequisito bloqueante: Playwright no tiene proyecto movil — la superficie',
+    '   a reescribir nunca ha sido probada. Punto mas caro: colision barra/compositor',
+    '   /teclado en Chat. Blindar alcance con non-goals escritos.',
+    '',
+    'NO CONSTRUIR — C · Pin de amigos a 500 m',
+    '   Rompe un principio declarado del README ("nunca pins individuales").',
+    '   De 4 implementaciones posibles, 3 son inseguras: el ruido aleatorio cae como',
+    '   1/raiz(N) (25 muestras -> ~100 m); el offset fijo es invertible (un amigo que',
+    '   sepa una vez donde vives te sigue con precision GPS para siempre); el offset',
+    '   por par se trilatera con 3 amigos coludidos. Solo la rejilla fija de 0.005°',
+    '   es segura — y aun asi el servidor pasa a conocerte con 16x mas precision,',
+    '   incondicionalmente. Sin demanda validada.',
+    '   Sustituto: seccion "Amigos cerca" en lista con la banda gruesa que YA existe',
+    '   + boton "nos vemos?" que abre el chat. ~80% del valor, 0% del riesgo nuevo.',
+    '',
+    'DECISIONES PENDIENTES: D1 cuarentena · D2 separar login/signup · D3 destino de C',
+    '   D4 FAB en movil · Q1 que es el tramo de "vlogging" (podria ser una fase entera)'
+  ].join('\n');
+
+  document.getElementById('cp').addEventListener('click',function(){
+    navigator.clipboard.writeText(resumen).then(function(){
+      var ok=document.getElementById('cpok');
+      ok.style.opacity=1; setTimeout(function(){ok.style.opacity=0;},2200);
+    });
+  });
+})();
+</script>
+</body>
+</html>
