@@ -10,6 +10,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireNotSuspended, requireEstablished } = require('../middlewares/requireAuth');
 const { isValidCell, centroid, neighborsGrid, cellDistanceKm } = require('../lib/geogrid');
 const { blockedWith, isBlockedBetween } = require('../lib/blocks');
+const { friendIds } = require('../lib/friends');
 
 const CELL_TTL_DAYS = 7;
 const GRID_RINGS = 5; // 11×11 celdas de ~2 km ≈ radio efectivo ~11 km
@@ -108,22 +109,33 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
     const cells = neighborsGrid(me.nearbyCell, GRID_RINGS);
     // Quien está bloqueado (en cualquier dirección) desaparece del mapa para ambos
     const hidden = await blockedWith(req.user.id);
-    const users = await prisma.user.findMany({
-      where: {
-        id: { notIn: [req.user.id, ...hidden] },
-        nearbyCell: { in: cells },
-        nearbyUpdatedAt: { gte: cutoffDate() }
-      },
-      select: { ...participantSelect, nearbyCell: true }
-    });
+    const [users, amigos] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          id: { notIn: [req.user.id, ...hidden] },
+          nearbyCell: { in: cells },
+          nearbyUpdatedAt: { gte: cutoffDate() }
+        },
+        select: { ...participantSelect, nearbyCell: true }
+      }),
+      friendIds(req.user.id)
+    ]);
+    const amigosSet = new Set(amigos);
 
     const people = users
       .map(u => {
         const km = cellDistanceKm(me.nearbyCell, u.nearbyCell);
         const { nearbyCell, ...pub } = u;
-        return { ...pub, cell: nearbyCell, distanceKm: Math.round(km), band: bandLabel(km, nearbyCell === me.nearbyCell) };
+        return {
+          ...pub,
+          cell: nearbyCell,
+          distanceKm: Math.round(km),
+          band: bandLabel(km, nearbyCell === me.nearbyCell),
+          isFriend: amigosSet.has(u.id)
+        };
       })
-      .sort((a, b) => a.distanceKm - b.distanceKm);
+      // Amistades primero; dentro de cada grupo se conserva el orden por cercanía
+      .sort((a, b) => (b.isFriend - a.isFriend) || (a.distanceKm - b.distanceKm));
 
     // Zonas agregadas para el mapa (centroide + conteo por celda)
     const zoneMap = new Map();

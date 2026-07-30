@@ -39,7 +39,7 @@
 | Editar/eliminar contenido propio (feed y foro, con borrado suave en hilos) | ✅ Funcionando |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto, validación, sin PII pública) | ✅ Funcionando |
 | Chat 1 a 1 en tiempo real (Socket.IO + REST, búsqueda de personas, historial paginado) | ✅ Funcionando |
-| "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días) | ✅ Funcionando |
+| "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días); distingue amistades en la lista y permite filtrar solo por ellas | ✅ Funcionando |
 | Bloquear personas (efecto mutuo en feed, foros, chat y Cerca; silencioso y reversible) | ✅ Funcionando |
 | Amistad (solicitud + aceptación mutua), posteos "solo amigos", perfil ajeno con "sobre mí" y búsqueda de personas | ✅ Funcionando |
 | Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
@@ -508,9 +508,11 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | PUT | `/api/nearby/location` | 🔒 | Activar/actualizar mi zona (`cell`: celda de cuadrícula ~2 km; rechaza coordenadas) |
 | POST | `/api/nearby/poke` | 🔒 | Mandar un toque 👋 (`userId`); exige compartir zona y que la persona esté en tu cuadrícula; 1 por persona cada 12 h |
 | DELETE | `/api/nearby/location` | 🔒 | Dejar de compartir (borra la celda) |
-| GET | `/api/nearby` | 🔒 | Personas y zonas cercanas (requiere compartir: recíproco) |
+| GET | `/api/nearby` | 🔒 | Personas y zonas cercanas (requiere compartir: recíproco); cada persona trae `isFriend` |
 
 Diseño de privacidad: el navegador convierte el GPS a una **celda de cuadrícula fija de ~2 km (0.02°) antes de enviar nada** (el servidor nunca ve coordenadas; el endpoint las rechaza explícitamente). La cuadrícula es fija — todos los de una celda son indistinguibles, no hay nada que triangular. Solo ves a otros si compartes tu zona, la celda **caduca a los 7 días** y puede borrarse en un clic. El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, nunca pins individuales. La consulta busca en una cuadrícula 11×11 de celdas (~11 km de radio efectivo) y tiene rate limit propio anti-scraping.
+
+**Amigos cerca:** la lista distingue quién de tu zona ya es una amistad aceptada (`isFriend`, resuelto con `friendIds()` en una sola consulta) y las sube al principio, conservando el orden por cercanía dentro de cada grupo. En `/cerca` se puede filtrar para ver solo amistades — el filtro es del lado del cliente, sobre datos que la respuesta ya trae, para no abrir un parámetro nuevo en un endpoint con rate limit anti-scraping. Es deliberadamente lo único que se agrega: nada de "amigos en común" (revelaría el grafo social de terceros) ni notificación de "un amigo llegó a tu zona" (convertiría una consulta puntual e inocua en un flujo de avisos que reconstruye el patrón de movimientos de alguien). Bloquear rompe la amistad (`romperVinculo`) y desbloquear no la restaura sola, así que `isFriend` hereda esa semántica sin trabajo adicional.
 
 El **toque 👋** invita a interactuar sin abrir chat: llega como notificación in-app. Hereda las dos reglas de Cerca — solo lo manda quien comparte zona, y solo llega a quien cae dentro de esa cuadrícula — más el rate limit del mapa y un cooldown de 12 h por persona. Un destino inexistente, lejano, que no comparte zona o bloqueado devuelven **la misma respuesta (404)**: el resultado no debe permitir deducir dónde está alguien ni si su cuenta existe. Sin esas comprobaciones el endpoint era un "ping a cualquier `userId`" y, como los ids son enteros consecutivos, bastaba recorrerlos para notificar a toda la base.
 

@@ -3,13 +3,14 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container, Box, Paper, Typography, Button, Alert, Stack, List, ListItem,
   ListItemAvatar, ListItemText, Avatar, Chip, CircularProgress, Divider,
-  IconButton, Tooltip
+  IconButton, Tooltip, ToggleButtonGroup, ToggleButton
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import LocationOffIcon from '@mui/icons-material/LocationOff';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import WavingHandIcon from '@mui/icons-material/WavingHand';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import { MapContainer, TileLayer, Circle, Tooltip as LeafletTooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
@@ -27,6 +28,8 @@ const Nearby = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pokes, setPokes] = useState({}); // id -> 'sent' | 'cooldown'
+  // Preferencia del momento, no una configuración: nace en 'todas' cada vez que se abre la página
+  const [soloAmigos, setSoloAmigos] = useState(false);
 
   const loadNearby = useCallback(async () => {
     try {
@@ -95,6 +98,10 @@ const Nearby = () => {
   };
 
   const displayName = (p) => p.displayName || p.name;
+
+  // Filtro del lado del cliente sobre los datos que ya trajo /api/nearby — sin
+  // parámetro nuevo en el endpoint (tiene su propio rate limit anti-scraping).
+  const personasVisibles = data ? (soloAmigos ? data.people.filter(p => p.isFriend) : data.people) : [];
 
   return (
     <>
@@ -187,18 +194,40 @@ const Nearby = () => {
             </Paper>
 
             <Paper>
-              <Typography variant="subtitle1" fontWeight={700} sx={{ px: 2, pt: 2 }}>
-                {data.people.length === 0
-                  ? 'Aún no hay nadie más por tu zona'
-                  : `${data.people.length} ${data.people.length === 1 ? 'persona' : 'personas'} por tu zona`}
-              </Typography>
-              {data.people.length === 0 ? (
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                justifyContent="space-between"
+                spacing={1}
+                sx={{ px: 2, pt: 2 }}
+              >
+                <Typography variant="subtitle1" fontWeight={700}>
+                  {personasVisibles.length === 0
+                    ? (soloAmigos ? 'Ninguna amistad por tu zona ahora mismo' : 'Aún no hay nadie más por tu zona')
+                    : `${personasVisibles.length} ${personasVisibles.length === 1 ? 'persona' : 'personas'} por tu zona`}
+                </Typography>
+                {data.people.length > 0 && (
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={soloAmigos ? 'amigos' : 'todas'}
+                    onChange={(_e, val) => { if (val) setSoloAmigos(val === 'amigos'); }}
+                    aria-label="Filtrar personas por amistad"
+                  >
+                    <ToggleButton value="todas" aria-label="Ver todas las personas">Todas</ToggleButton>
+                    <ToggleButton value="amigos" aria-label="Ver solo mis amistades">Solo mis amistades</ToggleButton>
+                  </ToggleButtonGroup>
+                )}
+              </Stack>
+              {personasVisibles.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
-                  Sé la semilla de tu zona 🌱 — cuando alguien más comparta la suya, aparecerá aquí.
+                  {soloAmigos
+                    ? 'Ninguna de tus amistades está compartiendo su zona ahora mismo.'
+                    : 'Sé la semilla de tu zona 🌱 — cuando alguien más comparta la suya, aparecerá aquí.'}
                 </Typography>
               ) : (
                 <List>
-                  {data.people.map((p, i) => (
+                  {personasVisibles.map((p, i) => (
                     <React.Fragment key={p.id}>
                       {i > 0 && <Divider component="li" />}
                       <ListItem
@@ -241,8 +270,19 @@ const Nearby = () => {
                             </Typography>
                           }
                           secondary={
-                            <Stack direction="row" spacing={1} alignItems="center" component="span">
+                            <Stack direction="row" spacing={1} alignItems="center" component="span" flexWrap="wrap" useFlexGap>
                               <Chip label={p.band} size="small" color={p.band === 'En tu zona' ? 'primary' : 'default'} component="span" />
+                              {p.isFriend && (
+                                <Chip
+                                  icon={<PeopleAltIcon />}
+                                  label="Amistad"
+                                  size="small"
+                                  color="success"
+                                  variant="outlined"
+                                  component="span"
+                                  aria-label={`${displayName(p)} es tu amistad`}
+                                />
+                              )}
                               <Typography variant="caption" color="text.secondary" component="span">@{p.handle}</Typography>
                             </Stack>
                           }
