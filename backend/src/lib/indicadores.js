@@ -1,0 +1,523 @@
+// Agregados para el panóptico (HU-PAN-001/002/003/004).
+//
+// Principio rector, heredado de logger.js: el panóptico mide qué pasa en la
+// red, no qué hace cada persona. Todo lo de abajo son conteos, sumas y
+// percentiles sobre columnas que YA EXISTEN (createdAt, deletedAt, hiddenAt…)
+// — cero columnas, cero tablas, cero migraciones. Si algo aquí pareciera
+// necesitar guardar un dato nuevo sobre una persona, es que se salió del
+// alcance: no se hace, se avisa.
+//
+// Tres reglas que gobiernan cada función de este archivo:
+//   1. Una consulta agregada por métrica (agrupando en la base), nunca un
+//      ciclo con un conteo por día — ver `diaMx()` y las consultas UNION ALL.
+//   2. El día se trunca en America/Mexico_City, no en UTC (ver `diaMx`).
+//   3. Ningún desglose expone un segmento con menos de UMBRAL_SUPRESION
+//      elementos — se colapsa en "otros" (ver `suprimir`).
+const { Prisma } = require('@prisma/client');
+const prisma = require('./prisma');
+
+const DIAS_PERMITIDOS = [7, 30, 90];
+const TTL_CACHE_MS = 10 * 60 * 1000; // 10 min — dentro del rango 5-15 que pide el ciclo
+const UMBRAL_SUPRESION = 5;
+const CELL_TTL_DIAS = 7; // = CELL_TTL_DAYS en nearbyRoutes.js; mantener sincronizado si cambia ahí
+const QUARANTINE_HOURS = Number(process.env.SIGNUP_QUARANTINE_HOURS) || 24; // = requireAuth.js
+
+// ---------- Zona horaria (Trampa 2) ----------
+//
+// Verificado contra information_schema en la base real: TODAS las columnas de
+// fecha relevantes (createdAt, deletedAt, hiddenAt, resolvedAt…) son
+// TIMESTAMP(3) SIN zona en Postgres — el default de Prisma. Pero el valor
+// guardado SÍ es un instante UTC real: Prisma serializa los `Date` de Node así
+// al escribir. date_trunc('day', "createdAt") de cabeza agruparía en UTC, lo
+// que para México corta el día a las 18:00 hora local — justo antes del pico
+// de actividad nocturna — y nadie lo nota porque las gráficas igual se ven
+// razonables.
+//
+// El truco de doble AT TIME ZONE: el primero reinterpreta el valor naive como
+// el instante UTC que en realidad es (produce un timestamptz correcto); el
+// segundo convierte ese instante a hora de pared en America/Mexico_City
+// (vuelve a producir un timestamp naive, pero ahora en hora local). Recién
+// ahí se trunca el día. `col` nunca es entrada de usuario — es un nombre de
+// columna fijo que este mismo archivo elige, así que usar Prisma.raw() aquí
+// no abre ninguna superficie de inyección.
+function diaMx(col) {
+  return Prisma.raw(`date_trunc('day', "${col}" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date`);
+}
+
+// "Hoy" en hora de México, como 'YYYY-MM-DD' — independiente de en qué huso
+// corra el proceso de Node (en Render puede ser UTC).
+function hoyMexicoISO() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+}
+
+function sumarDiasISO(fechaISO, delta) {
+  const d = new Date(`${fechaISO}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+// Ventana de trabajo para un `dias` ya validado contra la lista blanca.
+// `desdeConsulta` lleva un margen de sobra (no es el corte exacto): el corte
+// FINO al día correcto lo hace el recorte en JS después de agrupar, con
+// `enRango()`. Así el filtro WHERE nunca corta a la mitad de un día en hora
+// de México — que es exactamente el bug de la Trampa 2, aplicado al límite de
+// la ventana en vez de al agrupado.
+function ventana(dias) {
+  const hasta = hoyMexicoISO();
+  const desdeActual = sumarDiasISO(hasta, -(dias - 1));
+  const desdeAnterior = sumarDiasISO(hasta, -(2 * dias - 1));
+  const desdeConsulta = new Date(Date.now() - (2 * dias + 2) * 24 * 60 * 60 * 1000);
+  return { hasta, desdeActual, desdeAnterior, desdeConsulta };
+}
+
+// ---------- Helpers de forma ----------
+
+const fmtDia = (d) => new Date(d).toISOString().slice(0, 10);
+const enRango = (diaISO, desdeISO, hastaISO) => diaISO >= desdeISO && diaISO <= hastaISO;
+
+// De filas {dia, valor} (ya agrupadas por Postgres) a una serie SIN huecos
+// entre dos fechas — un día sin actividad no debe desaparecer de la gráfica,
+// debe verse como 0.
+function serieCompleta(filas, desdeISO, hastaISO) {
+  const porDia = new Map();
+  for (const f of filas) {
+    const dia = fmtDia(f.dia);
+    if (!enRango(dia, desdeISO, hastaISO)) continue;
+    porDia.set(dia, (porDia.get(dia) || 0) + Number(f.valor));
+  }
+  const serie = [];
+  for (let iso = desdeISO; iso <= hastaISO; iso = sumarDiasISO(iso, 1)) {
+    serie.push({ dia: iso, valor: porDia.get(iso) || 0 });
+  }
+  return serie;
+}
+
+const suma = (serie) => serie.reduce((a, s) => a + s.valor, 0);
+
+// Serie actual + serie del periodo anterior (mismo largo) + tendencia. Es
+// "gratis": ya se consultó la ventana doble, esto solo reparte por fecha.
+function conTendencia(filas, v) {
+  const actual = serieCompleta(filas, v.desdeActual, v.hasta);
+  const anterior = serieCompleta(filas, v.desdeAnterior, sumarDiasISO(v.desdeActual, -1));
+  const totalActual = suma(actual);
+  const totalAnterior = suma(anterior);
+  return { serie: actual, total: totalActual, totalPeriodoAnterior: totalAnterior, tendencia: totalActual - totalAnterior };
+}
+
+// Divide filas con una subclave (proveedor, tipo, estado…) en sub-series con
+// tendencia, más un total por subclave. `filas` trae {dia, sub, valor}.
+function conTendenciaPorSubclave(filas, v) {
+  const subclaves = [...new Set(filas.map(f => f.sub))];
+  const porSubclave = {};
+  for (const sub of subclaves) {
+    porSubclave[sub] = conTendencia(filas.filter(f => f.sub === sub), v);
+  }
+  return porSubclave;
+}
+
+// Trampa 4: ningún desglose expone un segmento con menos de UMBRAL_SUPRESION.
+// Colapsa los chicos en un cubo "Otros" (suma), conserva el resto con nombre.
+function suprimir(filas, { clave = 'nombre', valor = 'valor' } = {}) {
+  const visibles = [];
+  let otros = 0;
+  let otrosCount = 0;
+  for (const f of filas) {
+    if (f[valor] < UMBRAL_SUPRESION) {
+      otros += f[valor];
+      otrosCount += 1;
+    } else {
+      visibles.push({ [clave]: f[clave], [valor]: f[valor] });
+    }
+  }
+  if (otrosCount > 0) visibles.push({ [clave]: 'Otros', [valor]: otros, agrupados: otrosCount });
+  return visibles;
+}
+
+// ---------- Consultas (una por métrica o grupo de métricas afines) ----------
+
+// A. Series de un solo conteo por día, de tablas distintas, en UNA consulta —
+// evita 9 viajes a la base para 9 métricas simples (Trampa 1).
+async function consultaSeriesSimples(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT 'altas' AS fuente, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
+      FROM "User" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'eliminaciones', ${diaMx('deletedAt')}, count(*)::int
+      FROM "User" WHERE "deletedAt" IS NOT NULL AND "deletedAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'exportaciones', ${diaMx('createdAt')}, count(*)::int
+      FROM "PrivacyAction" WHERE type = 'EXPORTAR_DATOS' AND "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'mensajes', ${diaMx('createdAt')}, count(*)::int
+      FROM "Message" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'imagenes', ${diaMx('createdAt')}, count(*)::int
+      FROM "Media" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'toques', ${diaMx('createdAt')}, count(*)::int
+      FROM "Notification" WHERE type = 'POKE' AND "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'bloqueos', ${diaMx('createdAt')}, count(*)::int
+      FROM "Block" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'suspensionesNuevas', ${diaMx('createdAt')}, count(*)::int
+      FROM "ModerationAction" WHERE type = 'SUSPENDER' AND "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'suspensionesLevantadas', ${diaMx('createdAt')}, count(*)::int
+      FROM "ModerationAction" WHERE type = 'LEVANTAR_SUSPENSION' AND "createdAt" >= ${desdeConsulta} GROUP BY 2
+  `;
+}
+
+// B. Altas por proveedor de identidad y día — mide el efecto del reordenamiento del login (ciclo 2)
+async function consultaAltasPorProveedor(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT provider AS sub, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
+    FROM "Identity" WHERE "createdAt" >= ${desdeConsulta}
+    GROUP BY provider, dia
+  `;
+}
+
+// C. Feed: posts + comentarios por día
+async function consultaFeedPorDia(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT 'post' AS sub, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
+      FROM "Post" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'comment', ${diaMx('createdAt')}, count(*)::int
+      FROM "Comment" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+  `;
+}
+
+// D. Reacciones por día y tipo (feed + foro juntos: son la misma tabla)
+async function consultaReaccionesPorDia(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT type AS sub, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
+    FROM "Reaction" WHERE "createdAt" >= ${desdeConsulta}
+    GROUP BY type, dia
+  `;
+}
+
+// E. Foro: posts + comentarios por día
+async function consultaForoPorDia(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT 'forumPost' AS sub, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
+      FROM "ForumPost" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+    UNION ALL
+    SELECT 'forumComment', ${diaMx('createdAt')}, count(*)::int
+      FROM "ForumComment" WHERE "createdAt" >= ${desdeConsulta} GROUP BY 2
+  `;
+}
+
+// F. Solicitudes de amistad por día y estado — la tasa de aceptación es lo interesante
+async function consultaAmistadPorDia(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT status AS sub, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
+    FROM "FriendRequest" WHERE "createdAt" >= ${desdeConsulta}
+    GROUP BY status, dia
+  `;
+}
+
+// G. Reportes por día, motivo y estado — nunca quién reportó, nunca el detalle
+// libre. `sub` combina motivo+estado como "MOTIVO::ESTADO" (los enums de
+// Postgres no concatenan con `||` sin castear a texto primero); el frontend
+// separa por ese delimitador.
+async function consultaReportesPorDia(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT reason::text || '::' || status::text AS sub, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
+    FROM "Report" WHERE "createdAt" >= ${desdeConsulta}
+    GROUP BY reason, status, dia
+  `;
+}
+
+// H. Instantáneas de "ahora mismo" que no son series de tiempo — combinadas en
+// una sola consulta con subconsultas escalares.
+async function consultaInstantaneas() {
+  const cuarentenaCutoff = new Date(Date.now() - QUARANTINE_HOURS * 60 * 60 * 1000);
+  const cercaCutoff = new Date(Date.now() - CELL_TTL_DIAS * 24 * 60 * 60 * 1000);
+  const filas = await prisma.$queryRaw`
+    SELECT
+      (SELECT count(*)::int FROM "User" u
+        WHERE u."deletedAt" IS NULL AND u."createdAt" >= ${cuarentenaCutoff}
+          AND NOT EXISTS (SELECT 1 FROM "Identity" idm WHERE idm."userId" = u.id AND idm.provider = 'MASTODON')
+      ) AS cuarentena,
+      (SELECT count(*)::int FROM "User" WHERE "nearbyCell" IS NOT NULL AND "nearbyUpdatedAt" >= ${cercaCutoff}) AS "compartiendoZona",
+      (SELECT count(*)::int FROM (SELECT "userId" FROM "Identity" GROUP BY "userId" HAVING count(*) > 1) x) AS "metodosMultiples",
+      (SELECT count(*)::int FROM "Post" WHERE "hiddenAt" IS NOT NULL) AS "ocultoFeed",
+      (SELECT count(*)::int FROM "ForumPost" WHERE "hiddenAt" IS NOT NULL) AS "ocultoForo"
+  `;
+  const fila = filas[0];
+  return {
+    cuentasEnCuarentena: fila.cuarentena,
+    personasCompartiendoZona: fila.compartiendoZona,
+    cuentasConMetodosMultiples: fila.metodosMultiples,
+    contenidoOcultoVigente: { feed: fila.ocultoFeed, foro: fila.ocultoForo }
+  };
+}
+
+// I. Subforos vivos (post en los últimos 30 días) contra muertos. Fijo en 30
+// días — es una definición de producto, no depende del selector de ventana.
+async function consultaSubforosVivos() {
+  const filas = await prisma.$queryRaw`
+    SELECT
+      count(*) FILTER (WHERE ultimo >= now() - interval '30 days')::int AS vivos,
+      count(*) FILTER (WHERE ultimo IS NULL OR ultimo < now() - interval '30 days')::int AS muertos
+    FROM (
+      SELECT s.id, MAX(fp."createdAt") AS ultimo
+      FROM "SubForum" s
+      LEFT JOIN "ForumPost" fp ON fp."subforumId" = s.id
+      WHERE s."archivedAt" IS NULL
+      GROUP BY s.id
+    ) t
+  `;
+  return { vivos: filas[0].vivos, muertos: filas[0].muertos };
+}
+
+// J. Seguidores por subforo (desglose con supresión — Trampa 4)
+async function consultaSeguidoresPorSubforo() {
+  const filas = await prisma.$queryRaw`
+    SELECT s.name AS nombre, count(f."userId")::int AS valor
+    FROM "SubForum" s
+    LEFT JOIN "SubForumFollow" f ON f."subforumId" = s.id
+    WHERE s."archivedAt" IS NULL
+    GROUP BY s.id, s.name
+    ORDER BY valor DESC
+  `;
+  return suprimir(filas);
+}
+
+// K. Concentración de actividad: % de posts de foro (del periodo) en los 3
+// subforos más activos. Solo se expone el ratio, no el desglose por nombre —
+// no hace falta nombrar subforos chicos para responder "¿está muy concentrado?".
+async function consultaConcentracion(desdeActualISO, hastaISO) {
+  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
+  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
+  const filas = await prisma.$queryRaw`
+    SELECT count(fp.id)::int AS valor
+    FROM "SubForum" s
+    LEFT JOIN "ForumPost" fp ON fp."subforumId" = s.id AND fp."createdAt" BETWEEN ${desde} AND ${hasta}
+    WHERE s."archivedAt" IS NULL
+    GROUP BY s.id
+    ORDER BY valor DESC
+  `;
+  const total = filas.reduce((a, f) => a + f.valor, 0);
+  const top3 = filas.slice(0, 3).reduce((a, f) => a + f.valor, 0);
+  return { top3Pct: total > 0 ? Math.round((top3 / total) * 1000) / 10 : null, totalPosts: total };
+}
+
+// L. Tiempo de respuesta a un reporte: mediana y p90, NUNCA promedio — un solo
+// caso olvidado semanas distorsiona el promedio y esconde que el resto va bien.
+async function consultaTiempoRespuesta(desdeActualISO, hastaISO) {
+  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
+  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
+  const filas = await prisma.$queryRaw`
+    SELECT
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("resolvedAt" - "createdAt"))) AS mediana_seg,
+      percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("resolvedAt" - "createdAt"))) AS p90_seg,
+      count(*)::int AS muestra
+    FROM "Report"
+    WHERE "resolvedAt" IS NOT NULL AND "createdAt" BETWEEN ${desde} AND ${hasta}
+  `;
+  const f = filas[0];
+  const aHoras = (seg) => (seg === null ? null : Math.round((Number(seg) / 3600) * 10) / 10);
+  return { medianaHoras: aHoras(f.mediana_seg), p90Horas: aHoras(f.p90_seg), muestra: f.muestra };
+}
+
+// M. Reincidencia: cuentas con más de un reporte ACCIONADO en el periodo,
+// atadas al autor real del contenido (o a la cuenta, si el reporte es sobre
+// la cuenta misma). Nunca se listan los nombres, solo el conteo.
+async function consultaReincidencia(desdeActualISO, hastaISO) {
+  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
+  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
+  const filas = await prisma.$queryRaw`
+    WITH autores AS (
+      SELECT p."authorId" AS "userId" FROM "Report" r JOIN "Post" p ON p.id = r."postId"
+        WHERE r.status = 'ACCIONADO' AND r."postId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+      UNION ALL
+      SELECT c."authorId" FROM "Report" r JOIN "Comment" c ON c.id = r."commentId"
+        WHERE r.status = 'ACCIONADO' AND r."commentId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+      UNION ALL
+      SELECT fp."authorId" FROM "Report" r JOIN "ForumPost" fp ON fp.id = r."forumPostId"
+        WHERE r.status = 'ACCIONADO' AND r."forumPostId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+      UNION ALL
+      SELECT fc."authorId" FROM "Report" r JOIN "ForumComment" fc ON fc.id = r."forumCommentId"
+        WHERE r.status = 'ACCIONADO' AND r."forumCommentId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+      UNION ALL
+      SELECT r."targetUserId" FROM "Report" r
+        WHERE r.status = 'ACCIONADO' AND r."targetUserId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+    )
+    SELECT count(*)::int AS cuentas FROM (
+      SELECT "userId" FROM autores GROUP BY "userId" HAVING count(*) > 1
+    ) t
+  `;
+  return { cuentas: filas[0].cuentas };
+}
+
+// N. Carga por moderador — vive aparte porque su visibilidad depende del rol
+// de quien pregunta (HU-PAN-004 CA5), a diferencia del resto de la ruta, que
+// es ADMIN estricto.
+async function consultaCargaPorModerador(desdeActualISO, hastaISO) {
+  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
+  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
+  const filas = await prisma.$queryRaw`
+    SELECT "moderatorId", count(*)::int AS valor
+    FROM "ModerationAction"
+    WHERE "createdAt" BETWEEN ${desde} AND ${hasta}
+    GROUP BY "moderatorId"
+    ORDER BY valor DESC
+  `;
+  if (filas.length === 0) return [];
+  const moderadores = await prisma.user.findMany({
+    where: { id: { in: filas.map(f => f.moderatorId) } },
+    select: { id: true, name: true, displayName: true, handle: true }
+  });
+  const porId = new Map(moderadores.map(m => [m.id, m]));
+  return filas.map(f => ({
+    moderatorId: f.moderatorId,
+    nombre: porId.get(f.moderatorId)?.displayName || porId.get(f.moderatorId)?.name || `#${f.moderatorId}`,
+    handle: porId.get(f.moderatorId)?.handle,
+    valor: f.valor
+  }));
+}
+
+// ---------- Cálculo del catálogo completo (sin caché) ----------
+
+async function calcularCatalogo(dias) {
+  const v = ventana(dias);
+
+  const [
+    simples, altasProveedor, feed, reacciones, foro, amistad, reportes,
+    instantaneas, subforosVivos, seguidores, concentracion, tiempoRespuesta, reincidencia
+  ] = await Promise.all([
+    consultaSeriesSimples(v.desdeConsulta),
+    consultaAltasPorProveedor(v.desdeConsulta),
+    consultaFeedPorDia(v.desdeConsulta),
+    consultaReaccionesPorDia(v.desdeConsulta),
+    consultaForoPorDia(v.desdeConsulta),
+    consultaAmistadPorDia(v.desdeConsulta),
+    consultaReportesPorDia(v.desdeConsulta),
+    consultaInstantaneas(),
+    consultaSubforosVivos(),
+    consultaSeguidoresPorSubforo(),
+    consultaConcentracion(v.desdeActual, v.hasta),
+    consultaTiempoRespuesta(v.desdeActual, v.hasta),
+    consultaReincidencia(v.desdeActual, v.hasta)
+  ]);
+
+  const porFuente = (fuente) => simples.filter(f => f.fuente === fuente);
+
+  // Amistad: tasa de aceptación del periodo actual (aproximada: de las
+  // solicitudes CREADAS en la ventana, cuántas están ACEPTADAS ahora mismo —
+  // no espera a que se resuelvan las de los últimos días, así que subestima
+  // un poco las más recientes; es la misma limitación que cualquier tasa de
+  // conversión medida antes de que termine la cohorte).
+  const amistadFilas = amistad.filter(f => enRango(fmtDia(f.dia), v.desdeActual, v.hasta));
+  const enviadasPeriodo = amistadFilas.reduce((a, f) => a + Number(f.valor), 0);
+  const aceptadasPeriodo = amistadFilas.filter(f => f.sub === 'ACCEPTED').reduce((a, f) => a + Number(f.valor), 0);
+
+  // Bloqueos: el mejor indicador temprano de acoso silencioso — ratio contra altas del mismo periodo
+  const bloqueosTendencia = conTendencia(porFuente('bloqueos'), v);
+  const altasTendencia = conTendencia(porFuente('altas'), v);
+
+  return {
+    dias,
+    periodo: { desde: v.desdeActual, hasta: v.hasta },
+    crecimiento: {
+      altasPorDia: altasTendencia,
+      altasPorProveedor: conTendenciaPorSubclave(altasProveedor, v),
+      cuentasConMetodosMultiples: instantaneas.cuentasConMetodosMultiples,
+      eliminacionesPorDia: conTendencia(porFuente('eliminaciones'), v),
+      exportacionesPorDia: conTendencia(porFuente('exportaciones'), v),
+      cuentasEnCuarentena: instantaneas.cuentasEnCuarentena
+    },
+    actividad: {
+      postsPorDia: conTendencia(feed.filter(f => f.sub === 'post'), v),
+      comentariosPorDia: conTendencia(feed.filter(f => f.sub === 'comment'), v),
+      reaccionesPorDiaYTipo: conTendenciaPorSubclave(reacciones, v),
+      foro: {
+        postsPorDia: conTendencia(foro.filter(f => f.sub === 'forumPost'), v),
+        comentariosPorDia: conTendencia(foro.filter(f => f.sub === 'forumComment'), v)
+      },
+      mensajesPorDia: conTendencia(porFuente('mensajes'), v),
+      personasCompartiendoZona: instantaneas.personasCompartiendoZona,
+      imagenesPorDia: conTendencia(porFuente('imagenes'), v),
+      toquesPorDia: conTendencia(porFuente('toques'), v)
+    },
+    saludSocial: {
+      amistad: {
+        porDiaYEstado: conTendenciaPorSubclave(amistad, v),
+        tasaAceptacionPeriodo: enviadasPeriodo > 0 ? Math.round((aceptadasPeriodo / enviadasPeriodo) * 1000) / 10 : null
+      },
+      bloqueosPorDia: bloqueosTendencia,
+      ratioBloqueosAltas: altasTendencia.total > 0 ? Math.round((bloqueosTendencia.total / altasTendencia.total) * 1000) / 10 : null,
+      contenidoOcultoVigente: instantaneas.contenidoOcultoVigente
+    },
+    foros: {
+      subforosVivosVsMuertos: subforosVivos,
+      seguidoresPorSubforo: seguidores,
+      concentracionActividad: concentracion
+    },
+    moderacion: {
+      reportesPorDiaMotivoEstado: conTendenciaPorSubclave(reportes, v),
+      tiempoRespuesta,
+      reincidencia,
+      suspensionesNuevasPorDia: conTendencia(porFuente('suspensionesNuevas'), v),
+      suspensionesLevantadasPorDia: conTendencia(porFuente('suspensionesLevantadas'), v)
+    }
+  };
+}
+
+// ---------- Caché en memoria del proceso (5-15 min) ----------
+//
+// Nadie decide distinto porque el conteo de posteos esté 10 minutos
+// desactualizado. Un objeto con marca de tiempo por `dias` alcanza — nada de
+// Redis, coherente con la aversión del proyecto a dependencias nuevas.
+const cache = new Map(); // dias -> { calculadoEn: Date, datos }
+
+async function obtenerIndicadores(dias) {
+  const previo = cache.get(dias);
+  if (previo && Date.now() - previo.calculadoEn.getTime() < TTL_CACHE_MS) {
+    return { ...previo.datos, calculadoEn: previo.calculadoEn };
+  }
+  const datos = await calcularCatalogo(dias);
+  const calculadoEn = new Date();
+  cache.set(dias, { calculadoEn, datos });
+  return { ...datos, calculadoEn };
+}
+
+// Carga por moderador — caché propia porque se sirve desde una ruta aparte
+// (MOD y ADMIN, con recorte).
+const cacheCarga = new Map(); // dias -> { calculadoEn, filas }
+
+async function obtenerCargaModeracion(dias) {
+  const previo = cacheCarga.get(dias);
+  if (previo && Date.now() - previo.calculadoEn.getTime() < TTL_CACHE_MS) {
+    return { filas: previo.filas, calculadoEn: previo.calculadoEn };
+  }
+  const v = ventana(dias);
+  const filas = await consultaCargaPorModerador(v.desdeActual, v.hasta);
+  const calculadoEn = new Date();
+  cacheCarga.set(dias, { calculadoEn, filas });
+  return { filas, calculadoEn };
+}
+
+// Recorte por rol (HU-PAN-004 CA5): el servidor decide qué se ve, nunca el
+// cliente. MOD ve su propio número y el promedio del equipo; ADMIN ve el
+// desglose completo por persona.
+function recortarCargaPorRol({ filas, calculadoEn }, viewer) {
+  if (viewer.role === 'ADMIN') {
+    return { calculadoEn, desglose: filas };
+  }
+  const propio = filas.find(f => f.moderatorId === viewer.id)?.valor || 0;
+  const promedioEquipo = filas.length > 0
+    ? Math.round((filas.reduce((a, f) => a + f.valor, 0) / filas.length) * 10) / 10
+    : 0;
+  return { calculadoEn, propio, promedioEquipo };
+}
+
+module.exports = {
+  DIAS_PERMITIDOS,
+  UMBRAL_SUPRESION,
+  obtenerIndicadores,
+  obtenerCargaModeracion,
+  recortarCargaPorRol
+};

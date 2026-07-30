@@ -2,15 +2,22 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container, Typography, Box, Paper, Stack, Tabs, Tab, Chip, Button, Alert,
   CircularProgress, Divider, Avatar, TextField, Dialog, DialogTitle, DialogContent,
-  DialogContentText, DialogActions, Pagination, Tooltip, MenuItem
+  DialogContentText, DialogActions, Pagination, Tooltip, MenuItem, ToggleButtonGroup, ToggleButton, Link
 } from '@mui/material';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import GavelIcon from '@mui/icons-material/Gavel';
 import DoNotDisturbOnIcon from '@mui/icons-material/DoNotDisturbOn';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import InsightsIcon from '@mui/icons-material/Insights';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
+import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 const MOTIVOS = [
   { valor: 'ACOSO', texto: 'Acoso o ataque personal' },
@@ -353,6 +360,299 @@ const Bitacora = () => {
   );
 };
 
+// ---------- Panóptico (HU-PAN-002/003/004) ----------
+//
+// Sin dependencias nuevas de graficación (recharts no está en el proyecto):
+// las series se dibujan con barras de CSS, igual criterio que ya usa el
+// proyecto en avatares generados y storage.js sin dependencias.
+//
+// Accesibilidad: cada gráfica lleva `role="img"` con un resumen en
+// `aria-label` (día por día no cabe ahí) MÁS una tabla equivalente presente
+// en el árbol de accesibilidad pero oculta visualmente — no `display:none`,
+// que la sacaría también de ahí. Es el mismo patrón "oculto visualmente pero
+// no del lector de pantalla" que ya se verificó como gotcha real con el
+// Badge de Amigos en el navbar.
+const srOnlySx = {
+  position: 'absolute', width: 1, height: 1, overflow: 'hidden',
+  clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap'
+};
+
+const fechaCorta = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+
+const IconoTendencia = ({ valor }) => {
+  if (valor > 0) return <TrendingUpIcon fontSize="inherit" sx={{ verticalAlign: 'middle', color: 'success.main' }} />;
+  if (valor < 0) return <TrendingDownIcon fontSize="inherit" sx={{ verticalAlign: 'middle', color: 'error.main' }} />;
+  return <TrendingFlatIcon fontSize="inherit" sx={{ verticalAlign: 'middle', color: 'text.secondary' }} />;
+};
+
+// Serie diaria con tendencia contra el periodo anterior (CA4). `datos` es la
+// forma que arma `conTendencia()` en el backend: { serie, total, totalPeriodoAnterior, tendencia }
+const MiniSerie = ({ titulo, datos }) => {
+  if (!datos) return null;
+  const max = Math.max(1, ...datos.serie.map(d => d.valor));
+  const resumen = `Serie diaria de ${titulo}, ${datos.serie.length} días, total ${datos.total}, ` +
+    `${datos.tendencia > 0 ? 'subió' : datos.tendencia < 0 ? 'bajó' : 'se mantuvo igual'} ` +
+    `${Math.abs(datos.tendencia)} respecto al periodo anterior (${datos.totalPeriodoAnterior})`;
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="baseline" spacing={1}>
+        <Typography variant="body2" noWrap title={titulo}>{titulo}</Typography>
+        <Typography variant="body2" fontWeight={700} sx={{ fontVariantNumeric: 'tabular-nums' }}>{datos.total}</Typography>
+      </Stack>
+      <Box
+        role="img"
+        aria-label={resumen}
+        sx={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: 32, mt: 0.5 }}
+      >
+        {datos.serie.map(d => (
+          <Box
+            key={d.dia}
+            title={`${fechaCorta(d.dia)}: ${d.valor}`}
+            sx={{
+              flex: 1, height: `${Math.max(2, (d.valor / max) * 32)}px`,
+              bgcolor: 'primary.main', opacity: d.valor ? 0.75 : 0.2, borderRadius: '1px'
+            }}
+          />
+        ))}
+      </Box>
+      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}
+        color={datos.tendencia > 0 ? 'success.main' : datos.tendencia < 0 ? 'error.main' : 'text.secondary'}>
+        <IconoTendencia valor={datos.tendencia} />
+        {Math.abs(datos.tendencia)} vs. periodo anterior ({datos.totalPeriodoAnterior})
+      </Typography>
+      {/* Tabla equivalente para lectores de pantalla — mismos datos que las barras */}
+      <Box component="table" sx={srOnlySx}>
+        <caption>{titulo} por día</caption>
+        <tbody>
+          {datos.serie.map(d => (
+            <tr key={d.dia}><th scope="row">{d.dia}</th><td>{d.valor}</td></tr>
+          ))}
+        </tbody>
+      </Box>
+    </Box>
+  );
+};
+
+// Varias sub-series (proveedor, tipo, estado…) del mismo indicador
+const MiniSeriesPorSubclave = ({ titulo, porSubclave, etiquetas = {} }) => {
+  const claves = Object.keys(porSubclave || {});
+  if (claves.length === 0) return <Typography variant="body2" color="text.secondary">{titulo}: sin datos en este periodo.</Typography>;
+  return (
+    <Box>
+      <Typography variant="body2" fontWeight={700} sx={{ mb: 1 }}>{titulo}</Typography>
+      <Stack spacing={1.5}>
+        {claves.map(clave => (
+          <MiniSerie key={clave} titulo={etiquetas[clave] || clave} datos={porSubclave[clave]} />
+        ))}
+      </Stack>
+    </Box>
+  );
+};
+
+// Un número suelto, sin serie — para instantáneas ("ahora mismo")
+const Tile = ({ label, valor, ayuda }) => (
+  <Paper variant="outlined" sx={{ p: 1.5 }}>
+    <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
+    <Typography variant="h6" sx={{ fontVariantNumeric: 'tabular-nums' }}>{valor ?? '—'}</Typography>
+    {ayuda && <Typography variant="caption" color="text.secondary">{ayuda}</Typography>}
+  </Paper>
+);
+
+const Bloque = ({ titulo, children }) => (
+  <Paper sx={{ p: 2 }}>
+    <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>{titulo}</Typography>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+      {children}
+    </Box>
+  </Paper>
+);
+
+const ETIQUETAS_PROVEEDOR = { MASTODON: 'Mastodon', PASSKEY: 'Llave de acceso', EMAIL: 'Correo' };
+const ETIQUETAS_REACCION = { LIKE: 'Me prende', ROLA: 'Rola', INTERESA: 'Interesa', MOLESTA: 'Molesta' };
+const ETIQUETAS_AMISTAD = { PENDING: 'Pendientes', ACCEPTED: 'Aceptadas', REJECTED: 'Rechazadas' };
+
+// Card visible a MOD y ADMIN (a diferencia del resto del panóptico): la carga
+// propia es una herramienta de trabajo; el desglose por compañero, que sí ve
+// un ADMIN dentro de "Indicadores", desmoralizaría al equipo si todos lo vieran.
+const MiCargaModeracion = () => {
+  const [datos, setDatos] = useState(null);
+  useEffect(() => {
+    api.get('/admin/indicadores/carga-moderacion?dias=30').then(r => setDatos(r.data)).catch(() => {});
+  }, []);
+  if (!datos || datos.desglose) return null; // ADMIN ya lo ve completo abajo, en Indicadores
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5, mb: 2, display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'baseline' }}>
+      <Typography variant="body2" color="text.secondary">Tu carga de moderación (30 días)</Typography>
+      <Typography variant="body2"><strong>{datos.propio}</strong> acciones tuyas</Typography>
+      <Typography variant="body2" color="text.secondary">promedio del equipo: {datos.promedioEquipo}</Typography>
+    </Paper>
+  );
+};
+
+const SaludTecnica = () => {
+  const [salud, setSalud] = useState(null);
+  useEffect(() => {
+    api.get('/admin/salud-tecnica').then(r => setSalud(r.data)).catch(() => setSalud(false));
+  }, []);
+  if (salud === null) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>;
+  if (salud === false) return null;
+  const horas = Math.floor(salud.uptimeSegundos / 3600);
+  const minutos = Math.floor((salud.uptimeSegundos % 3600) / 60);
+  return (
+    <Paper sx={{ p: 2 }}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <MonitorHeartIcon color={salud.db === 'ok' ? 'success' : 'error'} />
+        <Typography variant="subtitle1" fontWeight={700}>Estado técnico</Typography>
+      </Stack>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 2 }}>
+        <Tile label="Base de datos" valor={salud.db === 'ok' ? 'Conectada' : 'Error'} />
+        <Tile label="Almacenamiento" valor={salud.storage} />
+        <Tile label="Correo" valor={salud.mailer} />
+        <Tile label="Uptime del proceso" valor={`${horas}h ${minutos}m`} />
+      </Box>
+      <Box sx={{ mt: 1.5 }}>
+        {salud.observabilityUrl ? (
+          <Link href={salud.observabilityUrl} target="_blank" rel="noopener noreferrer"
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+            Abrir observabilidad externa <OpenInNewIcon fontSize="inherit" />
+          </Link>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            No hay observabilidad conectada (falta OBSERVABILITY_URL en el entorno del backend).
+          </Typography>
+        )}
+      </Box>
+    </Paper>
+  );
+};
+
+// Pantalla completa de indicadores (HU-PAN-002). Solo se monta si el rol es
+// ADMIN — ver el `tab` condicional más abajo. La protección real es del
+// servidor (cada ruta exige requireRole('ADMIN')); esto es comodidad.
+const Indicadores = () => {
+  const [dias, setDias] = useState(30);
+  const [datos, setDatos] = useState(null);
+  const [carga, setCarga] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setError('');
+    Promise.all([
+      api.get(`/admin/indicadores?dias=${dias}`),
+      api.get(`/admin/indicadores/carga-moderacion?dias=${dias}`)
+    ])
+      .then(([i, c]) => { setDatos(i.data); setCarga(c.data); })
+      .catch(e => setError(e.response?.data?.error || 'No se pudieron cargar los indicadores.'));
+  }, [dias]);
+
+  return (
+    <Stack spacing={2}>
+      <SaludTecnica />
+
+      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1}>
+        <ToggleButtonGroup size="small" exclusive value={dias} onChange={(_, v) => v && setDias(v)} aria-label="Ventana de tiempo">
+          <ToggleButton value={7} aria-label="Últimos 7 días">7 días</ToggleButton>
+          <ToggleButton value={30} aria-label="Últimos 30 días">30 días</ToggleButton>
+          <ToggleButton value={90} aria-label="Últimos 90 días">90 días</ToggleButton>
+        </ToggleButtonGroup>
+        {datos && (
+          <Typography variant="caption" color="text.secondary">
+            Calculado el {new Date(datos.calculadoEn).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}
+            {' '}· datos del {fechaCorta(datos.periodo.desde)} al {fechaCorta(datos.periodo.hasta)}
+          </Typography>
+        )}
+      </Stack>
+
+      {error && <Alert severity="error" role="alert">{error}</Alert>}
+
+      {!datos ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+      ) : (
+        <>
+          <Bloque titulo="Crecimiento e identidad">
+            <MiniSerie titulo="Altas por día" datos={datos.crecimiento.altasPorDia} />
+            <MiniSeriesPorSubclave titulo="Altas por proveedor" porSubclave={datos.crecimiento.altasPorProveedor} etiquetas={ETIQUETAS_PROVEEDOR} />
+            <MiniSerie titulo="Eliminaciones de cuenta" datos={datos.crecimiento.eliminacionesPorDia} />
+            <MiniSerie titulo="Exportaciones de datos" datos={datos.crecimiento.exportacionesPorDia} />
+            <Tile label="Cuentas con +1 método de acceso" valor={datos.crecimiento.cuentasConMetodosMultiples} />
+            <Tile label="Cuentas en cuarentena ahora" valor={datos.crecimiento.cuentasEnCuarentena} />
+          </Bloque>
+
+          <Bloque titulo="Actividad por superficie">
+            <MiniSerie titulo="Posteos (feed)" datos={datos.actividad.postsPorDia} />
+            <MiniSerie titulo="Comentarios (feed)" datos={datos.actividad.comentariosPorDia} />
+            <MiniSeriesPorSubclave titulo="Reacciones por tipo" porSubclave={datos.actividad.reaccionesPorDiaYTipo} etiquetas={ETIQUETAS_REACCION} />
+            <MiniSerie titulo="Posts de foro" datos={datos.actividad.foro.postsPorDia} />
+            <MiniSerie titulo="Comentarios de foro" datos={datos.actividad.foro.comentariosPorDia} />
+            <MiniSerie titulo="Mensajes de chat" datos={datos.actividad.mensajesPorDia} />
+            <MiniSerie titulo="Imágenes subidas" datos={datos.actividad.imagenesPorDia} />
+            <MiniSerie titulo="Toques en Cerca" datos={datos.actividad.toquesPorDia} />
+            <Tile label="Compartiendo zona en Cerca ahora" valor={datos.actividad.personasCompartiendoZona} />
+          </Bloque>
+
+          <Bloque titulo="Salud social">
+            <MiniSeriesPorSubclave titulo="Solicitudes de amistad" porSubclave={datos.saludSocial.amistad.porDiaYEstado} etiquetas={ETIQUETAS_AMISTAD} />
+            <Tile label="Tasa de aceptación del periodo" valor={datos.saludSocial.amistad.tasaAceptacionPeriodo != null ? `${datos.saludSocial.amistad.tasaAceptacionPeriodo}%` : '—'} />
+            <MiniSerie titulo="Bloqueos por día" datos={datos.saludSocial.bloqueosPorDia} />
+            <Tile label="Ratio bloqueos / altas" valor={datos.saludSocial.ratioBloqueosAltas != null ? `${datos.saludSocial.ratioBloqueosAltas}%` : '—'}
+              ayuda="El bloqueo es silencioso y no genera reporte: es la alarma temprana de acoso" />
+            <Tile label="Contenido oculto vigente (feed)" valor={datos.saludSocial.contenidoOcultoVigente.feed} />
+            <Tile label="Contenido oculto vigente (foro)" valor={datos.saludSocial.contenidoOcultoVigente.foro} />
+          </Bloque>
+
+          <Bloque titulo="Vitalidad de foros">
+            <Tile label="Subforos vivos (post en 30 días)" valor={datos.foros.subforosVivosVsMuertos.vivos} />
+            <Tile label="Subforos muertos" valor={datos.foros.subforosVivosVsMuertos.muertos} />
+            <Tile label="Concentración en top 3 subforos" valor={datos.foros.concentracionActividad.top3Pct != null ? `${datos.foros.concentracionActividad.top3Pct}%` : '—'}
+              ayuda={`sobre ${datos.foros.concentracionActividad.totalPosts} posts del periodo`} />
+            <Box sx={{ gridColumn: '1 / -1' }}>
+              <Typography variant="body2" fontWeight={700} sx={{ mb: 1 }}>Seguidores por subforo</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                Los subforos con menos de {5} seguidores se agrupan en "Otros" — un desglose así de chico identifica a quien los sigue.
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {datos.foros.seguidoresPorSubforo.map(s => (
+                  <Chip key={s.nombre} label={`${s.nombre}: ${s.valor}${s.agrupados ? ` (${s.agrupados} subforos)` : ''}`} size="small" variant="outlined" />
+                ))}
+              </Stack>
+            </Box>
+          </Bloque>
+
+          <Bloque titulo="Salud de moderación">
+            <MiniSeriesPorSubclave
+              titulo="Reportes por motivo y estado"
+              porSubclave={datos.moderacion.reportesPorDiaMotivoEstado}
+              etiquetas={Object.fromEntries(Object.keys(datos.moderacion.reportesPorDiaMotivoEstado || {}).map(k => [k, k.replace('::', ' · ')]))}
+            />
+            <Tile
+              label="Tiempo de respuesta a reportes"
+              valor={datos.moderacion.tiempoRespuesta.medianaHoras != null ? `${datos.moderacion.tiempoRespuesta.medianaHoras}h mediana` : 'Sin datos'}
+              ayuda={datos.moderacion.tiempoRespuesta.p90Horas != null ? `p90: ${datos.moderacion.tiempoRespuesta.p90Horas}h · muestra: ${datos.moderacion.tiempoRespuesta.muestra}` : undefined}
+            />
+            <Tile label="Cuentas reincidentes" valor={datos.moderacion.reincidencia.cuentas} ayuda="Más de un reporte accionado en el periodo" />
+            <MiniSerie titulo="Suspensiones nuevas por día" datos={datos.moderacion.suspensionesNuevasPorDia} />
+            <MiniSerie titulo="Suspensiones levantadas por día" datos={datos.moderacion.suspensionesLevantadasPorDia} />
+            {carga?.desglose && (
+              <Box sx={{ gridColumn: '1 / -1' }}>
+                <Typography variant="body2" fontWeight={700} sx={{ mb: 1 }}>Carga por moderador</Typography>
+                {carga.desglose.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">Sin acciones registradas en este periodo.</Typography>
+                ) : (
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {carga.desglose.map(m => (
+                      <Chip key={m.moderatorId} label={`${m.nombre}: ${m.valor}`} size="small" variant="outlined" />
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            )}
+          </Bloque>
+        </>
+      )}
+    </Stack>
+  );
+};
+
 // ---------- Página ----------
 
 // Fuera del componente: si viviera dentro, cambiaría de identidad en cada
@@ -360,6 +660,8 @@ const Bitacora = () => {
 const ESTADOS = ['PENDIENTE', 'ACCIONADO', 'DESCARTADO'];
 
 const Admin = () => {
+  const { user } = useAuth();
+  const esAdmin = user?.role === 'ADMIN';
   const [tab, setTab] = useState(0);
   const [stats, setStats] = useState(null);
   const [cola, setCola] = useState(null);
@@ -399,15 +701,19 @@ const Admin = () => {
         {error && <Alert severity="error" role="alert" sx={{ mb: 2 }}>{error}</Alert>}
 
         <Panorama stats={stats} />
+        <MiCargaModeracion />
 
         <Tabs value={tab} onChange={(_, v) => { setTab(v); setPage(1); }} sx={{ mb: 2 }}>
           <Tab label={`Sin revisar${stats ? ` (${stats.reportes.pendientes})` : ''}`} />
           <Tab label="Accionados" />
           <Tab label="Descartados" />
           <Tab label="Bitácora" />
+          {esAdmin && <Tab label="Indicadores" icon={<InsightsIcon fontSize="small" />} iconPosition="start" />}
         </Tabs>
 
-        {tab === 3 ? (
+        {tab === 4 && esAdmin ? (
+          <Indicadores />
+        ) : tab === 3 ? (
           <Bitacora />
         ) : !cola ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>

@@ -1,0 +1,166 @@
+// Panóptico: indicadores agregados (HU-PAN-001/002/003/004), ciclo 6.
+//
+// Cubre lo mínimo que pidió el ciclo: la ruta rechaza a MOD y a anónimo,
+// `dias` inválido da 400, el truncado de día cae en el día correcto para un
+// registro creado a las 23:00 hora de México (la prueba que atrapa la Trampa
+// 2 — zona horaria), y un desglose con pocos elementos no expone el detalle
+// (Trampa 4). También cubre el recorte por rol de la carga de moderación
+// (HU-PAN-004 CA5) y que ningún campo nuevo se cuele fuera de lo agregado.
+//
+// Orden deliberado: TODOS los datos de prueba se siembran ANTES de la
+// primera consulta a /api/admin/indicadores. Los indicadores se cachean en
+// memoria del proceso por `dias` (5-15 min, a propósito — es la Trampa que el
+// propio ciclo pide respetar); sembrar datos después de la primera lectura de
+// un `dias` dado consultaría la respuesta vieja, no un bug del backend.
+const { suite } = require('./lib');
+
+// 23:00 hora de México (UTC-6 fijo, sin horario de verano desde 2022 —
+// verificado contra la base real antes de escribir esta prueba) cae a las
+// 05:00 UTC del día calendario SIGUIENTE. Si el backend truncara en UTC
+// ingenuo, este registro aparecería un día después del que le toca.
+function las2300MexicoDe(fechaISO) {
+  const d = new Date(`${fechaISO}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCHours(5, 0, 0, 0);
+  return d;
+}
+
+function hoyMexicoISO() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+}
+
+function sumarDiasISO(fechaISO, delta) {
+  const d = new Date(`${fechaISO}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+module.exports = async function run() {
+  const { results, check, call, token, mkUser, cleanup, prisma } = suite('Panóptico', 'wtpan');
+
+  await cleanup();
+  try {
+    console.log('\n  — Siembra: todos los datos de prueba ANTES de tocar la ruta (ver nota de caché arriba) —');
+    const user = await mkUser('user');
+    const mod = await mkUser('mod', { role: 'MOD' });
+    const admin = await mkUser('admin', { role: 'ADMIN' });
+    const tUser = token(user.id);
+    const tMod = token(mod.id);
+    const tAdmin = token(admin.id);
+
+    // Trampa 2: un bloqueo a las 23:00 hora de México de "ayer"
+    const hoy = hoyMexicoISO();
+    const ayer = sumarDiasISO(hoy, -1);
+    const instante2300 = las2300MexicoDe(ayer);
+    const otro = await mkUser('bloqueado');
+    await prisma.block.create({ data: { blockerId: user.id, blockedId: otro.id, createdAt: instante2300 } });
+
+    // Trampa 4: dos subforos con menos de 5 seguidores cada uno
+    const sub1 = await prisma.subForum.create({ data: { name: 'wtpan sub uno', slug: 'wtpan-sub-uno', creatorId: admin.id } });
+    const sub2 = await prisma.subForum.create({ data: { name: 'wtpan sub dos', slug: 'wtpan-sub-dos', creatorId: admin.id } });
+    const seguidorA = await mkUser('seg_a');
+    const seguidorB = await mkUser('seg_b');
+    await prisma.subForumFollow.create({ data: { userId: seguidorA.id, subforumId: sub1.id } });
+    await prisma.subForumFollow.create({ data: { userId: seguidorB.id, subforumId: sub1.id } });
+    await prisma.subForumFollow.create({ data: { userId: seguidorA.id, subforumId: sub2.id } });
+
+    // Carga por moderador: una acción del MOD
+    const sub3 = await prisma.subForum.create({ data: { name: 'wtpan mod', slug: 'wtpan-mod-target', creatorId: admin.id } });
+    await prisma.moderationAction.create({
+      data: { moderatorId: mod.id, type: 'ARCHIVAR_SUBFORO', targetType: 'SUBFORUM', targetId: sub3.id }
+    });
+
+    console.log('\n  — Permisos: solo ADMIN en la ruta principal —');
+    let r = await call('GET', '/api/admin/indicadores?dias=30');
+    check('anónimo → 401', r.status === 401, `(fue ${r.status})`);
+
+    r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tUser });
+    check('un USER → 403 (ni siquiera pasa del portón de /admin)', r.status === 403, `(fue ${r.status})`);
+
+    r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tMod });
+    check('un MOD → 403 (los indicadores son ADMIN, no MOD — CA1)', r.status === 403, `(fue ${r.status})`);
+
+    r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
+    check('un ADMIN → 200', r.status === 200, `(fue ${r.status})`);
+
+    console.log('\n  — `dias` validado contra lista blanca —');
+    r = await call('GET', '/api/admin/indicadores?dias=15', { tok: tAdmin });
+    check('dias=15 (fuera de la lista) → 400', r.status === 400, `(fue ${r.status})`);
+    r = await call('GET', '/api/admin/indicadores?dias=99999', { tok: tAdmin });
+    check('dias absurdo → 400', r.status === 400, `(fue ${r.status})`);
+    r = await call('GET', '/api/admin/indicadores?dias=DROP+TABLE', { tok: tAdmin });
+    check('dias no numérico → 400, no cae en el default en silencio', r.status === 400, `(fue ${r.status})`);
+    r = await call('GET', '/api/admin/indicadores?dias=30.5', { tok: tAdmin });
+    check('dias con decimales (no está en la lista exacta) → 400', r.status === 400, `(fue ${r.status})`);
+
+    console.log('\n  — Caché: incluye calculadoEn y no recalcula en la siguiente consulta —');
+    r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
+    check('trae calculadoEn', Boolean(r.data.calculadoEn));
+    const primeraVez = r.data.calculadoEn;
+    r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
+    check('segunda consulta seguida devuelve el mismo calculadoEn (caché)', r.data.calculadoEn === primeraVez);
+
+    console.log('\n  — dias=7/90 también responden 200 (primera consulta a cada uno, ya con los datos sembrados) —');
+    let r7, r90;
+    for (const d of [7, 90]) {
+      const resp = await call('GET', `/api/admin/indicadores?dias=${d}`, { tok: tAdmin });
+      check(`dias=${d} → 200`, resp.status === 200, `(fue ${resp.status})`);
+      if (d === 7) r7 = resp;
+      if (d === 90) r90 = resp;
+    }
+
+    console.log('\n  — Trampa 2: la zona horaria, verificada con el bloqueo de las 23:00 hora de México —');
+    const serieBloqueos = r7.data.saludSocial.bloqueosPorDia.serie;
+    const filaAyer = serieBloqueos.find(f => f.dia === ayer);
+    const filaHoy = serieBloqueos.find(f => f.dia === hoy);
+    check(
+      `el bloqueo de las 23:00 hora de México cae en "${ayer}" (día correcto), no en "${hoy}" (lo que daría un truncado en UTC puro)`,
+      filaAyer?.valor >= 1,
+      `(serie: ${JSON.stringify(serieBloqueos)})`
+    );
+    check('no se coló en el día calendario UTC siguiente', (filaHoy?.valor || 0) === 0, `(hoy=${filaHoy?.valor})`);
+
+    console.log('\n  — Trampa 4: ningún desglose expone segmentos con menos de 5 elementos —');
+    const desglose = r90.data.foros.seguidoresPorSubforo;
+    const nombres = desglose.map(d => d.nombre);
+    check('el subforo con 2 seguidores NO aparece por su nombre', !nombres.includes('wtpan sub uno'), `(nombres: ${JSON.stringify(nombres)})`);
+    check('el otro subforo con 1 seguidor tampoco', !nombres.includes('wtpan sub dos'), `(nombres: ${JSON.stringify(nombres)})`);
+    check(
+      'todo lo que se muestra individualmente tiene 5+ (o es el cubo "Otros")',
+      desglose.every(d => d.valor >= 5 || d.nombre === 'Otros'),
+      `(desglose: ${JSON.stringify(desglose)})`
+    );
+    check('aparece el cubo "Otros" agrupando los chicos', desglose.some(d => d.nombre === 'Otros' && d.agrupados >= 2), `(desglose: ${JSON.stringify(desglose)})`);
+
+    console.log('\n  — Ningún campo devuelve contenido de posts/comentarios/mensajes —');
+    const plano = JSON.stringify(r90.data);
+    check('no aparece la palabra "content" en la respuesta', !plano.includes('"content"'));
+    check('no aparece "reporterId" (quién reportó) en la respuesta', !plano.includes('reporterId'));
+
+    console.log('\n  — Carga por moderador: recorte por rol (HU-PAN-004 CA5) —');
+    r = await call('GET', '/api/admin/indicadores/carga-moderacion?dias=30', { tok: tMod });
+    check('un MOD SÍ puede consultar esta ruta aparte (a diferencia de /indicadores)', r.status === 200, `(fue ${r.status})`);
+    check('un MOD ve su propio número', typeof r.data.propio === 'number' && r.data.propio >= 1, `(propio=${r.data.propio})`);
+    check('un MOD ve el promedio del equipo', typeof r.data.promedioEquipo === 'number');
+    check('un MOD NO ve el desglose por persona', r.data.desglose === undefined, `(trae: ${Object.keys(r.data)})`);
+
+    r = await call('GET', '/api/admin/indicadores/carga-moderacion?dias=30', { tok: tAdmin });
+    check('un ADMIN sí ve el desglose por persona', Array.isArray(r.data.desglose));
+    check('el desglose incluye al MOD que actuó', r.data.desglose.some(m => m.moderatorId === mod.id));
+
+    r = await call('GET', '/api/admin/indicadores/carga-moderacion?dias=30');
+    check('anónimo → 401 también en la ruta de carga', r.status === 401, `(fue ${r.status})`);
+
+    console.log('\n  — Estado técnico (HU-PAN-003) —');
+    r = await call('GET', '/api/admin/salud-tecnica', { tok: tMod });
+    check('un MOD no puede ver la salud técnica → 403 (es ADMIN)', r.status === 403, `(fue ${r.status})`);
+    r = await call('GET', '/api/admin/salud-tecnica', { tok: tAdmin });
+    check('un ADMIN sí → 200', r.status === 200, `(fue ${r.status})`);
+    check('trae db/storage/mailer/uptimeSegundos', ['db', 'storage', 'mailer', 'uptimeSegundos'].every(k => k in r.data));
+    check('observabilityUrl es null sin OBSERVABILITY_URL configurada', r.data.observabilityUrl === null || typeof r.data.observabilityUrl === 'string');
+  } finally {
+    await cleanup();
+  }
+
+  return results;
+};

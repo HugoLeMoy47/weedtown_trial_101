@@ -11,11 +11,16 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
+const storage = require('../lib/storage');
+const mailer = require('../lib/mailer');
 const { requireAuth, requireRole } = require('../middlewares/requireAuth');
 const {
   MOTIVOS, MOTIVO_TEXTO, OBJETIVOS, OCULTABLES,
   esMotivoValido, registrar, avisar
 } = require('../lib/moderation');
+const {
+  DIAS_PERMITIDOS, obtenerIndicadores, obtenerCargaModeracion, recortarCargaPorRol
+} = require('../lib/indicadores');
 
 // Sesión válida + rol de moderación para TODA la superficie de admin
 router.use(requireAuth, requireRole('MOD', 'ADMIN'));
@@ -411,6 +416,76 @@ router.get('/stats', async (req, res) => {
     console.error('Error al obtener las estadísticas:', e);
     res.status(500).json({ error: 'Error al obtener las estadísticas' });
   }
+});
+
+// `req.query.dias` contra la lista blanca. Sin valor → default 30. Con
+// cualquier valor presente que no sea EXACTAMENTE uno de los permitidos →
+// inválido — incluida entrada no numérica ("DROP TABLE...", etc.), que
+// `Number()` convierte a NaN y que un `Number(x) || 30` de un solo paso
+// dejaría pasar en silencio como si fuera el default, en vez de rechazarla.
+function diasValidados(query) {
+  if (query === undefined) return 30;
+  const n = Number(query);
+  return DIAS_PERMITIDOS.includes(n) ? n : null;
+}
+
+// GET /api/admin/indicadores?dias=30 — panóptico (HU-PAN-001/004).
+//
+// Solo ADMIN, a propósito (Trampa 4 del ciclo 6): esto no va en /stats, que es
+// MOD y hoy es rápido — meter aquí diez consultas agregadas lo volvería lento
+// y expondría tendencias de toda la red a todo el equipo de moderación.
+router.get('/indicadores', requireRole('ADMIN'), async (req, res) => {
+  const dias = diasValidados(req.query.dias);
+  if (dias === null) {
+    return res.status(400).json({ error: `dias debe ser uno de: ${DIAS_PERMITIDOS.join(', ')}` });
+  }
+  try {
+    const datos = await obtenerIndicadores(dias);
+    res.json(datos);
+  } catch (e) {
+    console.error('Error al calcular los indicadores:', e);
+    res.status(500).json({ error: 'No se pudieron calcular los indicadores' });
+  }
+});
+
+// GET /api/admin/indicadores/carga-moderacion?dias=30 — la única pieza del
+// panóptico que SÍ ve un MOD (hereda el requireRole('MOD','ADMIN') del
+// router, arriba). El recorte por rol pasa en el servidor (recortarCargaPorRol),
+// nunca ocultando en el cliente: un MOD solo recibe su propio número y el
+// promedio del equipo, nunca el desglose por persona — eso es ADMIN.
+router.get('/indicadores/carga-moderacion', async (req, res) => {
+  const dias = diasValidados(req.query.dias);
+  if (dias === null) {
+    return res.status(400).json({ error: `dias debe ser uno de: ${DIAS_PERMITIDOS.join(', ')}` });
+  }
+  try {
+    const carga = await obtenerCargaModeracion(dias);
+    res.json(recortarCargaPorRol(carga, req.user));
+  } catch (e) {
+    console.error('Error al calcular la carga de moderación:', e);
+    res.status(500).json({ error: 'No se pudo calcular la carga de moderación' });
+  }
+});
+
+// GET /api/admin/salud-tecnica — HU-PAN-003: lo que /health YA reporta,
+// re-expuesto dentro de /admin (ADMIN, a diferencia de /health que es
+// público) más el enlace a observabilidad externa. No persiste nada en
+// Postgres — historial de errores/latencia/uptime es infraestructura, se
+// resuelve conectando un log drain al servicio externo, no aquí.
+router.get('/salud-tecnica', requireRole('ADMIN'), async (req, res) => {
+  const estado = {
+    db: 'ok',
+    storage: storage.driver,
+    mailer: mailer.driver,
+    uptimeSegundos: Math.round(process.uptime()),
+    observabilityUrl: process.env.OBSERVABILITY_URL || null
+  };
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (e) {
+    estado.db = 'error';
+  }
+  res.json(estado);
 });
 
 // GET /api/admin/log?page=1 — bitácora. Es lo que hace auditable al panel:

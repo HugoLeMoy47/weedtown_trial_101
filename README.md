@@ -43,6 +43,7 @@
 | Bloquear personas (efecto mutuo en feed, foros, chat y Cerca; silencioso y reversible) | ✅ Funcionando |
 | Amistad (solicitud + aceptación mutua), posteos "solo amigos", perfil ajeno con "sobre mí" y búsqueda de personas | ✅ Funcionando |
 | Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
+| Panóptico: indicadores agregados de crecimiento, actividad, salud social, foros y moderación dentro de `/admin` (solo `ADMIN`), sobre columnas ya existentes — cero migraciones | ✅ Funcionando |
 | Almacenamiento de imágenes intercambiable (disco local en dev, Supabase Storage en prod) con borrado real al eliminar contenido | ✅ Funcionando |
 | Web responsiva para móvil (menú hamburguesa, chat de una vista, mapa adaptable) | ✅ Funcionando |
 | Reportar contenido, cuentas y subforos (motivos tipificados, sin revelar quién reporta) | ✅ Funcionando |
@@ -491,6 +492,9 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/admin/users?q=` | Buscar cuentas; sin `q`, las suspendidas ahora mismo |
 | PUT | `/api/admin/users/:id/rol` | Cambiar rol — **solo `ADMIN`** |
 | GET | `/api/admin/stats` · `/api/admin/log` | Panorama y bitácora de acciones |
+| GET | `/api/admin/indicadores?dias=7\|30\|90` | Panóptico: catálogo de indicadores agregados — **solo `ADMIN`** |
+| GET | `/api/admin/indicadores/carga-moderacion?dias=` | Carga de moderación — accesible a `MOD`, recortada por rol (ver abajo) |
+| GET | `/api/admin/salud-tecnica` | Lo que `/health` ya reporta, re-expuesto dentro de `/admin` — **solo `ADMIN`** |
 
 | GET | `/api/chat/users?q=` | 🔒 | Buscar personas para chatear (datos públicos) |
 | GET | `/api/chat/conversations` | 🔒 | Mis conversaciones (con último mensaje) |
@@ -499,6 +503,15 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | POST | `/api/chat/conversations/:id/messages` | 🔒 | Enviar mensaje (≤1000 caracteres; entrega en vivo por socket) |
 
 🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de mercado y admin existen como stubs y responden mensajes fijos hasta su implementación.
+
+### Panóptico: indicadores, no vigilancia
+
+La moderación (`/api/admin`) ya existía; lo que faltaba eran indicadores y tendencias sobre la red. La regla que gobierna todo esto, heredada de `src/lib/logger.js`: **el panóptico mide qué pasa en la red, no qué hace cada persona.** Cuenta mensajes, jamás los muestra. Cuenta reportes, nunca revela quién reportó. Todo sale de columnas que **ya existen** (`createdAt`, `deletedAt`, `hiddenAt`…) — **cero columnas, cero tablas, cero migraciones nuevas**.
+
+- **Por qué no hay DAU/MAU, retención por cohorte ni embudos de conversión.** Esas métricas exigen saber cuándo entró cada persona por última vez o seguir su recorrido — es decir, tracking por individuo, y esa es exactamente la línea que este proyecto decidió no cruzar. Es un intercambio consciente, no una limitación técnica que se vaya a resolver después: para un README que abre con "la privacidad no es una feature, es la base", medir solo con agregados de lo que ya se guarda es la postura coherente.
+- **Cuatro trampas técnicas evitadas a propósito** (documentadas en `.planeacion/2026-07-30_panoptico_plan.html`, pestaña 02): (1) una consulta agregada por métrica — 13 consultas cubren el catálogo completo, constantes sin importar la ventana de 7/30/90 días, nunca un ciclo con un conteo por día; (2) el día se trunca en `America/Mexico_City`, no en UTC — `date_trunc` ingenuo corta la noche (el pico de actividad) al día siguiente, y las gráficas se ven igual de razonables estando mal; (3) ningún desglose (por subforo, por segmento) expone un grupo con menos de 5 elementos — se colapsa en un cubo "Otros"; (4) la carga por moderador es la única pieza visible a `MOD`, y solo como número propio + promedio del equipo — el desglose por persona es `ADMIN`, para no convertir una herramienta de trabajo en un tablero de comparación entre compañeros.
+- **Caché en memoria del proceso, 10 minutos.** Nadie decide distinto porque un conteo esté unos minutos desactualizado; la respuesta siempre trae `calculadoEn` para que la pantalla no invite a malinterpretar datos viejos como si fueran en vivo.
+- **Salud técnica sin infraestructura nueva.** La tarjeta de estado técnico re-expone lo que `/health` ya calculaba (base, storage, mailer, uptime) más un enlace a observabilidad externa configurable por `OBSERVABILITY_URL`. Historial de errores/latencia en el tiempo es trabajo de despliegue (conectar un log drain al `logger.js` que ya emite JSON estructurado), no una tabla nueva en Postgres.
 
 ### "Cerca": descubrimiento por zonas con privacidad
 
