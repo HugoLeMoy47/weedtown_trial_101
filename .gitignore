@@ -33,3 +33,10 @@ Thumbs.db
 
 # Instrucciones personales de Claude (no versionar)
 CLAUDE.md
+
+# Planeacion, analisis y prompts de trabajo (no versionar)
+.planeacion/
+
+# Salida de graphify: cache regenerable + rutas absolutas de la maquina local
+# (.graphify_python, .graphify_root) que no tiene sentido versionar
+graphify-out/
