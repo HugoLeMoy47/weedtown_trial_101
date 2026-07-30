@@ -33,7 +33,7 @@
 | Base de datos PostgreSQL en Supabase (Prisma ORM) | ✅ Funcionando |
 | Reacciones cannábicas en posts y comentarios (👍 Me gusta, 🌿 Me rola, 👀 Me interesa, 😒 Me molesta) | ✅ Funcionando |
 | Comentarios en posteos | ✅ Funcionando |
-| Imagen opcional en posts y comentarios (≤5 MB, anonimizada sin EXIF/GPS en el cliente) | ✅ Funcionando |
+| Imagen opcional en posts y comentarios (≤5 MB, anonimizada sin EXIF/GPS en el cliente); en táctil, tomar la foto directo con la cámara o elegirla de galería | ✅ Funcionando |
 | Foros estilo Reddit: subforos comunitarios, hilos a 3 niveles, órdenes Relevante/Nuevo/Top | ✅ Funcionando |
 | Seguir subforos + notificaciones in-app (campana con contador): respuestas y reacciones en el feed, mensajes de chat (colapsados), toques, amistad y foro | ✅ Funcionando |
 | Editar/eliminar contenido propio (feed y foro, con borrado suave en hilos) | ✅ Funcionando |
@@ -50,7 +50,7 @@
 | Exportar mis datos y eliminar (anonimizar) mi cuenta, con bitácora propia | ✅ Funcionando |
 | Cuarentena de altas nuevas para contacto directo (toque, chat) — HU-SEG-006 | ✅ Funcionando |
 | Control de spam: contenido repetido en ráfaga y exceso de enlaces por posteo | ✅ Funcionando |
-| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos | ✅ Funcionando |
+| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -364,11 +364,13 @@ npm test
 
 Un ciclo aparte de la suite de integración: en vez de hablar con la API por HTTP, un Chromium real (Playwright) navega la app compilada — prueba que el frontend y el backend interoperan de verdad, no solo que cada endpoint responde por su cuenta. `e2e/run.js` reinicia el mismo schema de pruebas, levanta backend y frontend apuntando ahí (puertos 4020/3021, para no chocar con nada más que tengas corriendo) y apaga todo al terminar.
 
-Cubre hoy: alta y login con llave de acceso (con un autenticador WebAuthn virtual vía Chrome DevTools Protocol — sin hardware ni perfil de navegador), enlace mágico (seguir el enlace y pedirlo desde `/login`), y crear un posteo y comentarlo.
+Cubre hoy: alta y login con llave de acceso (con un autenticador WebAuthn virtual vía Chrome DevTools Protocol — sin hardware ni perfil de navegador), enlace mágico (seguir el enlace y pedirlo desde `/login`), crear un posteo y comentarlo, y navegación móvil por el menú hamburguesa.
 
 **Lo que falta, dicho sin rodeos**: login con Mastodon (necesitaría una cuenta de prueba desechable en una instancia real), bloqueo mutuo, chat 1 a 1 y "Cerca" (piden verificar entrega en vivo por Socket.IO entre dos sesiones a la vez) y el flujo de moderación (necesita una cuenta con rol `MOD` ya asignada). El molde ya está — agregar cada uno es una spec más en `e2e/tests/`, siguiendo `_helpers.js`.
 
 > Las specs corren en serie (`workers: 1`) a propósito: todas comparten el mismo backend y la misma base, así que en paralelo una ve el feed de otra. Y los timeouts son generosos (90 s por prueba): la base de pruebas vive en Supabase, no en Postgres local, y cada pantalla hace varias peticiones en cadena con latencia real de red.
+
+**Dos proyectos de Playwright** (`e2e/playwright.config.js`): `Desktop` corre las specs de siempre sin cambios, y `Mobile Chrome` (`devices['Pixel 5']`) corre solo `mobile-nav.spec.js` — antes de esto ninguna prueba automatizada había ejercitado el menú hamburguesa ni el layout responsivo. Es a propósito una prueba del estado *actual* del menú (recorre Feed/Foros/Chat/Cerca/Amigos y confirma que cada uno carga), no una validación de que el diseño móvil sea bueno: sirve de línea base para detectar qué rompe un futuro rediseño de navegación móvil.
 
 ### Despliegue
 

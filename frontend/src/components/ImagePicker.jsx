@@ -1,16 +1,34 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Box, IconButton, Tooltip, Typography, CircularProgress } from '@mui/material';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { Box, IconButton, Tooltip, Typography, CircularProgress, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import CollectionsIcon from '@mui/icons-material/Collections';
 import CloseIcon from '@mui/icons-material/Close';
 import { validateImage, sanitizeImage, ALLOWED_EXTENSIONS } from '../lib/imageProcessing';
+
+const ACCEPT = ALLOWED_EXTENSIONS.map(e => '.' + e).join(',');
+const TOOLTIP_TEXT = 'Adjuntar imagen (JPG, PNG o WebP, máx. 5 MB). Se eliminan los metadatos (EXIF/GPS) antes de enviarla.';
 
 // Selector de UNA imagen con validación, anonimizado y preview (HU-WT-IMG-001)
 // onChange recibe el File ya procesado (sin metadatos) o null al quitarla.
 const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
-  const inputRef = useRef(null);
+  const inputRef = useRef(null);       // Elegir de galería (o único input en escritorio)
+  const cameraInputRef = useRef(null); // Tomar foto — solo se monta en dispositivos táctiles
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+
+  // `capture="environment"` en un <input type="file"> no AGREGA la cámara,
+  // la SUSTITUYE: en iOS Safari y Chrome/Android abre la cámara directo y
+  // elimina la opción de galería del selector del sistema. Por eso son dos
+  // inputs separados que comparten el mismo handler, no uno con el atributo
+  // agregado. En escritorio `capture` se ignora silenciosamente, así que ahí
+  // no tiene caso ofrecer un menú — una sola acción, igual que hoy.
+  const esTactil = useMemo(
+    () => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(pointer: coarse)').matches),
+    []
+  );
 
   useEffect(() => {
     if (!file) { setPreviewUrl(null); return; }
@@ -19,10 +37,7 @@ const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const handleSelect = async (e) => {
-    const raw = e.target.files?.[0];
-    e.target.value = ''; // permite volver a elegir el mismo archivo
-    if (!raw) return;
+  const procesar = async (raw) => {
     setError('');
     const validationError = validateImage(raw);
     if (validationError) {
@@ -42,6 +57,26 @@ const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
     }
   };
 
+  const handleSelect = (e) => {
+    const raw = e.target.files?.[0];
+    e.target.value = ''; // permite volver a elegir el mismo archivo
+    if (!raw) return;
+    procesar(raw);
+  };
+
+  const abrirSelector = (e) => {
+    if (!esTactil) {
+      inputRef.current?.click();
+      return;
+    }
+    setMenuAnchor(e.currentTarget);
+  };
+
+  const elegirDelMenu = (ref) => {
+    setMenuAnchor(null);
+    ref.current?.click();
+  };
+
   const handleClear = () => {
     setError('');
     onChange(null);
@@ -52,17 +87,31 @@ const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
       <input
         ref={inputRef}
         type="file"
-        accept={ALLOWED_EXTENSIONS.map(e => '.' + e).join(',')}
+        accept={ACCEPT}
         onChange={handleSelect}
         style={{ display: 'none' }}
         aria-hidden="true"
         tabIndex={-1}
       />
+      {esTactil && (
+        <input
+          ref={cameraInputRef}
+          type="file"
+          // image/* (no la allowlist de extensiones): algunos navegadores solo
+          // invocan la cámara del sistema si el accept es un tipo amplio.
+          accept="image/*"
+          capture="environment"
+          onChange={handleSelect}
+          style={{ display: 'none' }}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+      )}
       {!file && (
-        <Tooltip title="Adjuntar imagen (JPG, PNG o WebP, máx. 5 MB). Se eliminan los metadatos antes de enviarla.">
+        <Tooltip title={TOOLTIP_TEXT}>
           <span>
             <IconButton
-              onClick={() => inputRef.current?.click()}
+              onClick={abrirSelector}
               disabled={disabled || processing}
               color="secondary"
               size={size}
@@ -73,6 +122,16 @@ const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
           </span>
         </Tooltip>
       )}
+      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
+        <MenuItem onClick={() => elegirDelMenu(cameraInputRef)} aria-label="Tomar foto con la cámara">
+          <ListItemIcon><PhotoCameraIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Tomar foto" secondary="Se eliminan los metadatos antes de enviarla" />
+        </MenuItem>
+        <MenuItem onClick={() => elegirDelMenu(inputRef)} aria-label="Elegir imagen de la galería">
+          <ListItemIcon><CollectionsIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Elegir de galería" />
+        </MenuItem>
+      </Menu>
       {file && previewUrl && (
         <Box sx={{ position: 'relative', display: 'inline-block', mt: 1 }}>
           <Box
