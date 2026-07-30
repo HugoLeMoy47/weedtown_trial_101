@@ -25,13 +25,16 @@ async function aceptarTerminos(page) {
 }
 
 /** Da de alta una cuenta nueva con llave de acceso desde /login y espera a
- * llegar a /feed. Requiere que agregarPasskeyVirtual ya haya corrido. */
+ * llegar a /feed. Requiere que agregarPasskeyVirtual ya haya corrido.
+ * Selectores por rol/nombre accesible (no texto literal ni placeholder): el
+ * ciclo 2 reordenó /login en pestañas "Entrar"/"Crear cuenta", y el copy de
+ * esta pantalla ya rompió estos helpers una vez por depender de texto exacto. */
 async function crearCuentaConPasskey(page, handle) {
   await page.goto('/login', { waitUntil: 'load' });
   await aceptarTerminos(page);
-  await page.click('text=¿Primera vez? Crear cuenta con llave de acceso');
-  await page.fill('input[placeholder="como quieres llamarte"]', handle);
-  await page.click('button:has-text("Crear cuenta con llave de acceso")');
+  await page.getByRole('tab', { name: 'Crear cuenta' }).click();
+  await page.getByRole('textbox', { name: 'Handle (opcional)' }).fill(handle);
+  await page.getByRole('button', { name: 'Crear cuenta con llave de acceso' }).click();
   await page.waitForURL('**/feed', { timeout: 15000 });
 }
 

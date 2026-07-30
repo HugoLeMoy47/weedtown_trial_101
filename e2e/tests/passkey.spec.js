@@ -22,7 +22,8 @@ test('alta con llave de acceso y reingreso con la misma llave', async ({ page, c
   await page.evaluate(() => localStorage.removeItem('weedtown_token'));
   await page.goto('/login', { waitUntil: 'load' });
   await aceptarTerminos(page);
-  await page.click('button:has-text("Entrar con llave de acceso")');
+  // Pestaña "Entrar" (default): el botón de llave aquí es login, no alta.
+  await page.getByRole('button', { name: 'Entrar con llave de acceso' }).click();
   await page.waitForURL('**/feed', { timeout: 15000 });
   await expect(page).toHaveURL(/\/feed$/);
 });

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate, useSearchParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Stack, IconButton, Tooltip,
-  CircularProgress, Divider, Collapse, Checkbox, FormControlLabel, Link
+  CircularProgress, Divider, Collapse, Checkbox, FormControlLabel, Link, Tabs, Tab
 } from '@mui/material';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { BrandMark, BrandWordmark } from '../components/BrandLogo';
@@ -11,6 +11,9 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
 import api, { API_ORIGIN } from '../services/api';
@@ -26,25 +29,48 @@ const ERROR_MESSAGES = {
   'magiclink-en-uso': 'Ese correo ya es el método de acceso de otra cuenta.'
 };
 
+// Errores que solo pueden venir del flujo de Mastodon: si llegan por la URL,
+// conviene abrir su panel de una vez en vez de dejar el error escondido
+// detrás de un colapsable cerrado.
+const ERRORES_DE_MASTODON = new Set(['instance', 'denied', 'state', 'oauth']);
+
+// Instancias curadas para quien ya sabe que tiene cuenta pero no recuerda
+// el dominio exacto — llevan fuera de WeedTown, por eso van con aviso.
+const INSTANCIAS_SUGERIDAS = ['mstdn.mx', 'mastodon.social'];
+
 const Login = () => {
-  const [instance, setInstance] = useState('');
   const [searchParams] = useSearchParams();
   const { user, loading, loginWithToken } = useAuth();
   const { mode, toggle } = useColorMode();
-  const error = ERROR_MESSAGES[searchParams.get('error')] || '';
+  const errorParam = searchParams.get('error');
+  const error = ERROR_MESSAGES[errorParam] || '';
+
+  // 0 = Entrar, 1 = Crear cuenta. Los tres métodos viven debajo, en el mismo
+  // orden, en ambas pestañas — lo que cambia es la intención declarada
+  // (HU-ACC-002): desde "Entrar" ningún método invita a darse de alta.
+  const [tab, setTab] = useState(0);
+  const esAlta = tab === 1;
 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsErr, setTermsErr] = useState('');
 
+  const [instance, setInstance] = useState('');
+  const [mastodonOpen, setMastodonOpen] = useState(false);
+
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyError, setPasskeyError] = useState('');
-  const [altaPasskey, setAltaPasskey] = useState(false);
   const [handlePropuesto, setHandlePropuesto] = useState('');
 
   const [email, setEmail] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailMsg, setEmailMsg] = useState('');
   const [emailErr, setEmailErr] = useState('');
+
+  // Un error de OAuth que vuelve por la URL pertenece al panel de Mastodon:
+  // ábrelo de una vez, no lo dejes escondido tras el colapsable.
+  useEffect(() => {
+    if (ERRORES_DE_MASTODON.has(errorParam)) setMastodonOpen(true);
+  }, [errorParam]);
 
   const validarTerminos = () => {
     if (!termsAccepted) {
@@ -102,6 +128,9 @@ const Login = () => {
     if (!email.trim()) return;
     setEmailBusy(true);
     try {
+      // La respuesta es SIEMPRE la misma (200 con el mismo mensaje), exista o
+      // no una cuenta con ese correo — nunca se muestra un texto distinto
+      // según el caso, para no filtrar por la UI lo que el backend protege.
       const { data } = await api.post('/auth/email/start', { email: email.trim() });
       setEmailMsg(data.message);
     } catch (e) {
@@ -151,10 +180,10 @@ const Login = () => {
                 <BrandWordmark variant="h4" component="h1" />
               </Stack>
               <Typography variant="body1" color="text.secondary" textAlign="center">
-                La red de la comunidad cannábica mexicana. Un espacio seguro y con respeto — inicia sesión con tu cuenta del fediverso.
+                La red de la comunidad cannábica mexicana. Un espacio seguro y con respeto.
               </Typography>
 
-              {/* Casilla obligatoria de 18+ y TyCyP */}
+              {/* Casilla obligatoria de 18+ y TyCyP — bloquea los seis caminos (3 métodos × 2 pestañas) */}
               <Box sx={{ width: '100%', bgcolor: 'action.hover', p: 1.5, borderRadius: 1 }}>
                 <FormControlLabel
                   control={
@@ -180,59 +209,14 @@ const Login = () => {
               </Box>
               {termsErr && <Alert severity="error" role="alert" sx={{ width: '100%' }}>{termsErr}</Alert>}
 
-              <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-                <Stack spacing={2}>
-                  <TextField
-                    id="mastodon-instance"
-                    label="Tu instancia de Mastodon"
-                    placeholder="mastodon.social"
-                    value={instance}
-                    onChange={e => setInstance(e.target.value)}
-                    required
-                    fullWidth
-                    autoFocus
-                    helperText="Ejemplo: mastodon.social, mstdn.mx, hachyderm.io"
-                  />
-                  {error && <Alert severity="error" role="alert">{error}</Alert>}
-                  <Button type="submit" variant="contained" size="large" fullWidth disabled={!termsAccepted}>
-                    Entrar con Mastodon
-                  </Button>
-                </Stack>
-              </Box>
+              <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="fullWidth" sx={{ width: '100%', minHeight: 40 }}>
+                <Tab label="Entrar" sx={{ minHeight: 40 }} />
+                <Tab label="Crear cuenta" sx={{ minHeight: 40 }} />
+              </Tabs>
 
-              <Divider flexItem>o</Divider>
+              {error && <Alert severity="error" role="alert" sx={{ width: '100%' }}>{error}</Alert>}
 
-              <Stack spacing={1.5} sx={{ width: '100%' }}>
-                <Button
-                  variant="outlined" size="large" fullWidth startIcon={<VpnKeyIcon />}
-                  onClick={entrarConPasskey} disabled={passkeyBusy || !termsAccepted}
-                >
-                  {passkeyBusy ? 'Conectando…' : 'Entrar con llave de acceso'}
-                </Button>
-                <Button size="small" onClick={() => setAltaPasskey(v => !v)} disabled={passkeyBusy || !termsAccepted}>
-                  {altaPasskey ? 'Cancelar' : '¿Primera vez? Crear cuenta con llave de acceso'}
-                </Button>
-                <Collapse in={altaPasskey}>
-                  <Stack spacing={1.5}>
-                    <TextField
-                      label="Handle (opcional)"
-                      placeholder="como quieres llamarte"
-                      value={handlePropuesto}
-                      onChange={e => setHandlePropuesto(e.target.value)}
-                      fullWidth
-                      size="small"
-                      inputProps={{ maxLength: 20, autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
-                    />
-                    <Button variant="contained" fullWidth onClick={crearCuentaConPasskey} disabled={passkeyBusy || !termsAccepted}>
-                      {passkeyBusy ? 'Creando…' : 'Crear cuenta con llave de acceso'}
-                    </Button>
-                  </Stack>
-                </Collapse>
-                {passkeyError && <Alert severity="error" role="alert">{passkeyError}</Alert>}
-              </Stack>
-
-              <Divider flexItem>o</Divider>
-
+              {/* Correo — primero: es el método que cualquiera entiende */}
               <Box component="form" onSubmit={pedirEnlaceMagico} sx={{ width: '100%' }}>
                 <Stack spacing={1.5}>
                   <TextField
@@ -242,19 +226,121 @@ const Login = () => {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     fullWidth
-                    size="small"
+                    autoFocus
                     InputProps={{ startAdornment: <MailOutlineIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1 }} /> }}
                   />
-                  <Button type="submit" variant="outlined" fullWidth disabled={emailBusy || !termsAccepted}>
-                    {emailBusy ? 'Enviando…' : 'Entrar con enlace por correo'}
+                  <Button type="submit" variant="contained" size="large" fullWidth disabled={emailBusy || !termsAccepted}>
+                    {emailBusy ? 'Enviando…' : esAlta ? 'Crear cuenta con correo' : 'Entrar con enlace por correo'}
                   </Button>
+                  {esAlta && (
+                    <Typography variant="caption" color="text.secondary">
+                      Te mandamos un enlace para confirmar tu correo y crear tu cuenta.
+                    </Typography>
+                  )}
                   {emailErr && <Alert severity="error" role="alert">{emailErr}</Alert>}
                   {emailMsg && <Alert severity="success" role="status">{emailMsg}</Alert>}
                 </Stack>
               </Box>
 
+              <Divider flexItem>o</Divider>
+
+              {/* Llave de acceso — segundo */}
+              <Stack spacing={1.5} sx={{ width: '100%' }}>
+                {esAlta ? (
+                  <>
+                    <TextField
+                      label="Handle (opcional)"
+                      placeholder="como quieres llamarte"
+                      value={handlePropuesto}
+                      onChange={e => setHandlePropuesto(e.target.value)}
+                      fullWidth
+                      size="small"
+                      inputProps={{ maxLength: 20, autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
+                    />
+                    <Button
+                      variant="contained" size="large" fullWidth startIcon={<VpnKeyIcon />}
+                      onClick={crearCuentaConPasskey} disabled={passkeyBusy || !termsAccepted}
+                    >
+                      {passkeyBusy ? 'Creando…' : 'Crear cuenta con llave de acceso'}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outlined" size="large" fullWidth startIcon={<VpnKeyIcon />}
+                    onClick={entrarConPasskey} disabled={passkeyBusy || !termsAccepted}
+                  >
+                    {passkeyBusy ? 'Conectando…' : 'Entrar con llave de acceso'}
+                  </Button>
+                )}
+                {passkeyError && <Alert severity="error" role="alert">{passkeyError}</Alert>}
+              </Stack>
+
+              <Divider flexItem>o</Divider>
+
+              {/* Mastodon — tercero y colapsado: es el método que menos gente
+                  entiende, así que el trabajo del panel es descalificar rápido,
+                  no convertir a nadie. */}
+              <Box sx={{ width: '100%' }}>
+                <Button
+                  fullWidth
+                  onClick={() => setMastodonOpen(v => !v)}
+                  endIcon={mastodonOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  sx={{ justifyContent: 'space-between', color: 'text.secondary', textTransform: 'none' }}
+                  aria-expanded={mastodonOpen}
+                >
+                  ¿Qué es Mastodon? — solo si ya tienes cuenta
+                </Button>
+                <Collapse in={mastodonOpen}>
+                  <Stack spacing={1.5} sx={{ pt: 1.5 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Mastodon es una red social federada: tu cuenta vive en un servidor independiente (una
+                      "instancia"), no en WeedTown. Si ya tienes una cuenta ahí, puedes usarla para entrar.
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      ¿No sabes si tienes? Entonces no tienes — entra con tu correo, arriba.
+                    </Typography>
+                    <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                      {INSTANCIAS_SUGERIDAS.map(host => (
+                        <Link
+                          key={host}
+                          href={`https://${host}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          variant="body2"
+                          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                        >
+                          {host} <OpenInNewIcon sx={{ fontSize: 14 }} />
+                        </Link>
+                      ))}
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      Estos enlaces te llevan fuera de WeedTown.
+                    </Typography>
+
+                    <Box component="form" onSubmit={handleSubmit}>
+                      <Stack spacing={1.5}>
+                        <TextField
+                          id="mastodon-instance"
+                          label="Tu instancia de Mastodon"
+                          placeholder="mastodon.social"
+                          value={instance}
+                          onChange={e => setInstance(e.target.value)}
+                          required
+                          fullWidth
+                          size="small"
+                          helperText="Ejemplo: mastodon.social, mstdn.mx, hachyderm.io"
+                        />
+                        <Button type="submit" variant="outlined" fullWidth disabled={!termsAccepted}>
+                          {esAlta ? 'Crear cuenta con Mastodon' : 'Entrar con Mastodon'}
+                        </Button>
+                      </Stack>
+                    </Box>
+                  </Stack>
+                </Collapse>
+              </Box>
+
               <Typography variant="caption" color="text.secondary" textAlign="center">
-                No creamos contraseñas: entra con Mastodon, una llave de acceso o un enlace por correo.
+                No creamos contraseñas: entra con un enlace por correo, una llave de acceso o Mastodon.
               </Typography>
             </Stack>
           </CardContent>

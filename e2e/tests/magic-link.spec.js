@@ -19,7 +19,7 @@ test('seguir el enlace mágico abre sesión y llega al feed', async ({ page }) =
 test('pedir el enlace desde /login responde sin revelar si el correo ya tenía cuenta', async ({ page }) => {
   await page.goto('/login', { waitUntil: 'load' });
   await aceptarTerminos(page);
-  await page.fill('input[type="email"]', `e2e_start_${Date.now()}@example.com`);
-  await page.click('button:has-text("Entrar con enlace por correo")');
+  await page.getByRole('textbox', { name: 'Tu correo' }).fill(`e2e_start_${Date.now()}@example.com`);
+  await page.getByRole('button', { name: 'Entrar con enlace por correo' }).click();
   await expect(page.getByText('Si el correo es válido')).toBeVisible({ timeout: 10000 });
 });
