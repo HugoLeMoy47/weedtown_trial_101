@@ -11,7 +11,7 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import WavingHandIcon from '@mui/icons-material/WavingHand';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
-import { MapContainer, TileLayer, Circle, Tooltip as LeafletTooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
@@ -21,6 +21,24 @@ import { mensajeCuarentena } from '../lib/cuarentena';
 
 // Radio visual de una celda de la cuadrícula (~2.2 km de lado) en metros
 const ZONE_RADIUS_M = 1100;
+
+// Sin esto, Leaflet no se entera cuando su contenedor cambia de alto — al
+// girar el teléfono, o al aparecer/ocultarse la barra de direcciones móvil —
+// y pinta cuadros grises o deja los círculos de zona descolocados. No tiene
+// nada que ver con la barra de navegación del ciclo 3; es un bug de Leaflet
+// que ya existía y que un layout más dinámico vuelve más frecuente. Debe
+// vivir DENTRO de <MapContainer> — react-leaflet solo expone la instancia del
+// mapa a componentes hijos, vía useMap().
+function InvalidarAlRedimensionar() {
+  const map = useMap();
+  useEffect(() => {
+    const contenedor = map.getContainer();
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(contenedor);
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
+}
 
 const Nearby = () => {
   const navigate = useNavigate();
@@ -165,9 +183,13 @@ const Nearby = () => {
               <MapContainer
                 center={[data.myZone.lat, data.myZone.lon]}
                 zoom={11}
-                style={{ height: 'clamp(260px, 45vh, 420px)', width: '100%' }}
+                // dvh, no vh: en iOS Safari `vh` se calcula contra el viewport
+                // GRANDE (el que existe con la barra de direcciones oculta),
+                // así que el mapa saldría más alto de lo esperado.
+                style={{ height: 'clamp(260px, 45dvh, 420px)', width: '100%' }}
                 scrollWheelZoom
               >
+                <InvalidarAlRedimensionar />
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

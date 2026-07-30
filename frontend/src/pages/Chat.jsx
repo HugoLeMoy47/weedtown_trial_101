@@ -13,6 +13,7 @@ import ContentActions from '../components/ContentActions';
 import api, { API_ORIGIN } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { mensajeCuarentena } from '../lib/cuarentena';
+import { avisarChatAbierto, BOTTOM_DOCK_RESERVED_HEIGHT } from '../lib/mobileNav';
 
 const SOCKET_URL = API_ORIGIN;
 
@@ -30,6 +31,11 @@ const Chat = () => {
   const messagesEndRef = useRef(null);
   const selectedIdRef = useRef(null);
   selectedIdRef.current = selected?.id ?? null;
+
+  // Avisa a Navbar cuándo hay una conversación abierta, para que la barra
+  // flotante se repliegue en móvil (Tarea 3 del ciclo 3 — ver mobileNav.js).
+  useEffect(() => { avisarChatAbierto(Boolean(selected)); }, [selected]);
+  useEffect(() => () => avisarChatAbierto(false), []); // al salir de /chat
 
   // Actualiza la lista de conversaciones con el último mensaje y la reordena
   const bumpConversation = useCallback((chatId, message) => {
@@ -157,7 +163,21 @@ const Chat = () => {
         <Typography variant="h5" component="h1" gutterBottom>Chat</Typography>
         {error && <Alert severity="error" role="alert" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-        <Paper sx={{ display: 'flex', height: { xs: 'calc(100dvh - 170px)', sm: '70vh' }, overflow: 'hidden' }}>
+        {/* Alto consciente del estado (Tarea 3): con la lista visible, la barra
+            flotante sigue ahí abajo y hay que restarle su espacio; con una
+            conversación abierta la barra se repliega (avisarChatAbierto) y
+            ese espacio se le devuelve al hilo — nunca queda una franja fija
+            reservada de más para una barra que no está. */}
+        <Paper
+          sx={{
+            display: 'flex',
+            height: {
+              xs: selected ? 'calc(100dvh - 170px)' : `calc(100dvh - 170px - ${BOTTOM_DOCK_RESERVED_HEIGHT})`,
+              sm: '70vh'
+            },
+            overflow: 'hidden'
+          }}
+        >
           {/* Columna izquierda: buscador + conversaciones (en móvil, solo cuando no hay hilo abierto) */}
           <Box
             sx={{
