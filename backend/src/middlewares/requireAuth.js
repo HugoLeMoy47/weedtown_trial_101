@@ -108,10 +108,23 @@ async function requireNotSuspended(req, res, next) {
 // cuenta, y gatear la escritura entera penalizaría a cualquier persona nueva
 // legítima, no solo a quien evade.
 //
-// Por qué no aplica a cuentas con una identidad de Mastodon: esas ya pagan un
-// costo real de origen. La cuarentena es sobre el ALTA barata, no sobre la
-// antigüedad en general.
-const QUARANTINE_HOURS = Number(process.env.SIGNUP_QUARANTINE_HOURS) || 24;
+// Por qué no aplica igual a cada proveedor: la cuarentena se gradúa según el
+// costo REAL de conseguir cada identidad (HU-SEG-007, decisión D1) — antes
+// era binaria ("¿tiene Mastodon?"), y eso castigaba con las mismas 24h a
+// cualquier alta legítima por correo o llave, sin distinguir entre las dos.
+//   · Mastodon: cuenta en una instancia del fediverso — costo de origen real.
+//     Cuarentena 0.
+//   · Correo verificado: un buzón bajo control, comprobado por el enlace
+//     mágico — señal intermedia, hoy sin aprovechar.
+//   · Solo llave de acceso: registro instantáneo y gratuito, sin ninguna
+//     señal. La ventana más larga.
+// Costo aceptado, no un bug: una cuenta con llave + correo de respaldo toma
+// la ventana CORTA (la más permisiva de sus identidades) — es la conducta que
+// el README quiere fomentar para recuperación de cuenta, aunque signifique
+// que alguien puede quemar un correo desechable para bajar de 24h a unas pocas.
+const QUARANTINE_HOURS_EMAIL = Number(process.env.SIGNUP_QUARANTINE_HOURS_EMAIL) || 3;
+const QUARANTINE_HOURS_PASSKEY = Number(process.env.SIGNUP_QUARANTINE_HOURS_PASSKEY) || 24;
+const VENTANA_POR_PROVEEDOR = { MASTODON: 0, EMAIL: QUARANTINE_HOURS_EMAIL, PASSKEY: QUARANTINE_HOURS_PASSKEY };
 
 // Función pura (sin req/res) para que rutas que solo cuarentenan una RAMA de
 // su lógica —como abrir chat, que ya sabe distinguir "conversación nueva" de
@@ -123,14 +136,17 @@ async function estaEstablecida(userId) {
     where: { id: userId },
     select: { createdAt: true, identities: { select: { provider: true } } }
   });
-  if (!user) return { ok: true };
-  if (user.identities.some(i => i.provider === 'MASTODON')) return { ok: true };
+  if (!user || !user.identities.length) return { ok: true };
+
+  // La ventana aplicable es la MÁS CORTA entre las identidades de la cuenta.
+  const horas = Math.min(...user.identities.map(i => VENTANA_POR_PROVEEDOR[i.provider]));
+  if (horas <= 0) return { ok: true };
 
   const antiguedadHoras = (Date.now() - new Date(user.createdAt).getTime()) / 3_600_000;
-  if (antiguedadHoras >= QUARANTINE_HOURS) return { ok: true };
+  if (antiguedadHoras >= horas) return { ok: true };
 
-  const disponibleEn = new Date(new Date(user.createdAt).getTime() + QUARANTINE_HOURS * 3_600_000);
-  return { ok: false, disponibleEn };
+  const disponibleEn = new Date(new Date(user.createdAt).getTime() + horas * 3_600_000);
+  return { ok: false, disponibleEn, horas };
 }
 
 async function requireEstablished(req, res, next) {
@@ -139,7 +155,7 @@ async function requireEstablished(req, res, next) {
     const estado = await estaEstablecida(req.user.id);
     if (!estado.ok) {
       return res.status(403).json({
-        error: `Tu cuenta es muy nueva para esta acción. Estará disponible ${QUARANTINE_HOURS}h después de darte de alta.`,
+        error: 'Tu cuenta es muy nueva para esta acción. Es una protección de la comunidad, no un castigo.',
         disponibleEn: estado.disponibleEn
       });
     }

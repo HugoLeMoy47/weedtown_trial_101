@@ -12,6 +12,7 @@ import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
 import api, { API_ORIGIN } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { mensajeCuarentena } from '../lib/cuarentena';
 
 const SOCKET_URL = API_ORIGIN;
 
@@ -62,7 +63,7 @@ const Chat = () => {
         setConversations(prev => (prev.some(c => c.id === res.data.id) ? prev : [res.data, ...prev]));
         setSelected(res.data);
       })
-      .catch(() => setError('No se pudo abrir la conversación.'));
+      .catch(e => setError(mensajeCuarentena(e) || 'No se pudo abrir la conversación.'));
   }, [routedUser?.id]);
 
   // Socket autenticado: recibe mensajes en vivo de todas mis conversaciones
@@ -118,8 +119,8 @@ const Chat = () => {
       setSelected(res.data);
       setSearch('');
       setSearchResults([]);
-    } catch {
-      setError('No se pudo abrir la conversación.');
+    } catch (e) {
+      setError(mensajeCuarentena(e) || 'No se pudo abrir la conversación.');
     }
   };
 

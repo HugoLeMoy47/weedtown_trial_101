@@ -135,7 +135,7 @@ router.post('/conversations', requireAuth, requireNotSuspended, async (req, res)
       const estado = await estaEstablecida(req.user.id);
       if (!estado.ok) {
         return res.status(403).json({
-          error: 'Tu cuenta es muy nueva para abrir conversaciones nuevas. Intenta de nuevo más tarde.',
+          error: 'Tu cuenta es muy nueva para abrir conversaciones nuevas. Es una protección de la comunidad, no un castigo.',
           disponibleEn: estado.disponibleEn
         });
       }

@@ -17,6 +17,7 @@ import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
 import api from '../services/api';
 import { getMyCell } from '../lib/geo';
+import { mensajeCuarentena } from '../lib/cuarentena';
 
 // Radio visual de una celda de la cuadrícula (~2.2 km de lado) en metros
 const ZONE_RADIUS_M = 1100;
@@ -88,7 +89,7 @@ const Nearby = () => {
       if (e.response?.status === 429) {
         setPokes(prev => ({ ...prev, [person.id]: 'cooldown' }));
       } else {
-        setError(e.response?.data?.error || 'No se pudo mandar el toque.');
+        setError(mensajeCuarentena(e) || e.response?.data?.error || 'No se pudo mandar el toque.');
       }
     }
   };
