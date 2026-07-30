@@ -49,7 +49,7 @@
 | Reportar contenido, cuentas y subforos (motivos tipificados, sin revelar quién reporta) | ✅ Funcionando |
 | Panel de moderación en `/admin`: cola de revisión, ocultar contenido, suspender cuentas, gestionar subforos y bitácora | ✅ Funcionando |
 | Exportar mis datos y eliminar (anonimizar) mi cuenta, con bitácora propia | ✅ Funcionando |
-| Cuarentena de altas nuevas para contacto directo (toque, chat) — HU-SEG-006 | ✅ Funcionando |
+| Cuarentena de altas nuevas para contacto directo (toque, chat), diferenciada por método de acceso — HU-SEG-006/007 | ✅ Funcionando |
 | Control de spam: contenido repetido en ráfaga y exceso de enlaces por posteo | ✅ Funcionando |
 | Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
@@ -137,14 +137,31 @@ Etapa 2 del plan de autenticación: dos métodos más hacia la misma cuenta, sin
 
 **Quitar un método** es una sola ruta genérica para los tres proveedores — `DELETE /api/auth/identities/:id` — porque a todos los describe la misma fila de `Identity`. Rechaza quitar el último método de una cuenta: eso la dejaría sin forma de entrar.
 
-### Cuarentena de cuentas nuevas (HU-SEG-006)
+### `/login`: correo primero, y separar entrar de crear cuenta (HU-ACC-001/002/003)
+
+La jerarquía visual original ponía Mastodon primero (`autoFocus` en el campo de instancia, único botón sólido de la pantalla) — el método que menos gente entiende, con la máxima prioridad. El correo, que cualquiera entiende, estaba hasta abajo. El ciclo 2 lo reordenó: **correo → llave de acceso → Mastodon (colapsado)**, con `autoFocus` en el correo.
+
+- **Dos pestañas, *Entrar* / *Crear cuenta***, con los tres métodos debajo en ese orden en ambas. Antes convivían tres modelos mentales en una sola pantalla: la llave pedía un clic explícito para dar de alta, correo y Mastodon la creaban en silencio. Las pestañas separan la intención sin tocar el backend — `POST /api/auth/passkey/register/options` ya distinguía alta de "agregar método" por la sesión, y correo/Mastodon ya creaban cuenta si no existía.
+- **Es una garantía de interfaz, no del servidor.** Desde "Entrar", correo y Mastodon siguen creando la cuenta si no existía — el backend no gana ningún parámetro de intención nuevo. Es claridad, no una barrera de seguridad, y está documentado así a propósito: no se debe tratar como si fuera una comprobación real.
+- **`POST /api/auth/email/start` sigue respondiendo 200 con el mismo mensaje exista o no la cuenta**, y ninguna pestaña lo filtra: el texto que ve la persona es idéntico en los dos casos.
+- **Mastodon vive en un panel colapsado**, cerrado por defecto ("¿Qué es Mastodon? — solo si ya tienes cuenta"), con 2-3 frases de qué es, una línea de cierre ("¿no sabes si tienes? entonces no tienes — entra con tu correo") y una lista curada de instancias (`mstdn.mx`, `mastodon.social`) marcadas como que llevan fuera de WeedTown. El objetivo no es convertir a nadie a Mastodon: es descalificar rápido para no fugar el embudo mandando a alguien a registrarse en un tercero a mitad del alta.
+
+### Cuarentena de cuentas nuevas, diferenciada por método (HU-SEG-006/007)
 
 Abrir el alta trajo un problema que la etapa 1 ya dejó anotado: **cada método nuevo abarata evadir una suspensión**. Con Mastodon, volver cuesta conseguir otra cuenta en una instancia. Con llave de acceso o correo, cuesta un registro instantáneo y gratuito — y el sistema de moderación no tenía ninguna defensa contra eso.
 
-Lo que se agregó:
+La regla **era binaria** ("¿tiene Mastodon o no?") hasta el ciclo 2, que reordenó `/login` para poner el correo primero — el método que cualquier persona entiende. Eso cambia por completo la *población* sobre la que cae la cuarentena: de golpe, la mayoría de las altas legítimas pasa a ser correo o llave en vez de Mastodon, y una regla de 24 h parejas para las dos les cobraba el mismo precio a un correo verificado (que ya demuestra control de un buzón) que a una llave anónima (que no demuestra nada). La cuarentena se gradúa ahora según el **costo real de conseguir cada método**:
 
-- Una cuenta **sin ninguna identidad de Mastodon** y con menos de 24 h desde su alta (`SIGNUP_QUARANTINE_HOURS`) no puede mandar un toque de Cerca ni abrir una conversación de chat **nueva**. Sí puede seguir leyendo, publicar, comentar y responder en un chat que alguien más haya abierto con ella — la cuarentena es sobre *contactar por primera vez*, no sobre escribir.
-- Una cuenta con una identidad de Mastodon nunca pasa por esto, sin importar su antigüedad: ya paga un costo real de origen.
+| Identidad de la cuenta | Qué cuesta conseguirla | Cuarentena (default) |
+|---|---|---|
+| Mastodon | Cuenta en una instancia del fediverso — costo de origen real | Ninguna |
+| Correo verificado | Un buzón bajo control, comprobado por el enlace mágico | `SIGNUP_QUARANTINE_HOURS_EMAIL` (3 h) |
+| Solo llave de acceso | Registro instantáneo y gratuito, sin ninguna señal | `SIGNUP_QUARANTINE_HOURS_PASSKEY` (24 h) |
+
+- Una cuenta con **varias identidades toma la ventana MÁS CORTA** de las que tenga. Es un costo aceptado a propósito, no un descuido: una llave de acceso más un correo de respaldo baja la espera a la ventana corta, que es justo la conducta que este README quiere fomentar para recuperación de cuenta (ver más abajo) — aunque signifique que alguien puede quemar un correo desechable para bajar de 24 h a unas pocas.
+- Aplica a las mismas dos acciones de siempre: mandar un toque de Cerca y abrir una conversación de chat **nueva**. Sí se puede seguir leyendo, publicar, comentar y responder en un chat que alguien más haya abierto — la cuarentena es sobre *contactar por primera vez*, no sobre escribir.
+- La función que resuelve la ventana (`estaEstablecida()` en `requireAuth.js`) sigue siendo pura, sin `req`/`res`: `chatRoutes` la llama directo para cuarentenar solo la rama de "conversación nueva", no la de "recuperar una que ya existía".
+- El error 403 trae `disponibleEn`; el cliente arma con eso un aviso legible ("puedes hacerlo en unas N horas — es una protección de la comunidad, no un castigo") en vez de mostrar el error genérico.
 - Rate limits dedicados en `/api/auth/passkey` y `/api/auth/email` (aparte del general de la API), más un enfriamiento de 60 s por correo destino en `/api/auth/email/start` para que no sirva para mandar spam a un buzón ajeno.
 
 **Lo que esto NO resuelve**, dicho sin rodeos: una cuenta evasora sigue pudiendo publicar y comentar en público desde el minuto uno con una cuenta nueva — igual que cualquier persona nueva legítima. Gatear toda la escritura penalizaría el alta de quien no hizo nada malo, así que ese caso se dejó en manos de la moderación reactiva que ya existe (reportes + ocultar + suspender), no de una regla de antigüedad. Si el volumen de evasión lo justifica, ahí es donde seguiría esta tarea.
@@ -420,7 +437,7 @@ Después, desde cualquier equipo de la red: `http://<IP-LAN>:3000`.
 | `SUPABASE_URL` · `SUPABASE_SERVICE_KEY` · `SUPABASE_BUCKET` | Solo con el driver `supabase`. La service key es secreta y nunca debe llegar al frontend |
 | `MAIL_DRIVER` | `log` (default, imprime el enlace mágico en la consola) o `resend` (envío real). **En producción tiene que ser `resend`** |
 | `RESEND_API_KEY` · `RESEND_FROM` | Solo con el driver `resend`. `RESEND_FROM` necesita un dominio propio verificado en Resend |
-| `SIGNUP_QUARANTINE_HOURS` | Horas que una cuenta sin identidad de Mastodon debe esperar antes de mandar un toque o abrir un chat nuevo (default 24). Ver [Cuarentena de cuentas nuevas](#cuarentena-de-cuentas-nuevas-hu-seg-006) |
+| `SIGNUP_QUARANTINE_HOURS_EMAIL` · `SIGNUP_QUARANTINE_HOURS_PASSKEY` | Horas que una cuenta dada de alta por correo (default 3) o por llave de acceso (default 24) debe esperar antes de mandar un toque o abrir un chat nuevo — Mastodon no tiene variable, su cuarentena es 0h. Una cuenta con varias identidades toma la más corta. Ver [Cuarentena de cuentas nuevas](#cuarentena-de-cuentas-nuevas-diferenciada-por-método-hu-seg-006007) |
 
 > ⚠️ `.env` está en `.gitignore` y nunca debe commitearse. Si el `redirect_uri` cambia (p. ej. al desplegar), borra las filas de `MastodonApp` para que las apps se re-registren con la nueva URL.
 
