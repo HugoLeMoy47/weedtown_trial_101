@@ -1,0 +1,17 @@
+# Normaliza finales de línea a LF para todo lo que Git detecte como texto,
+# sin importar con qué final de línea lo haya dejado el checkout de cada
+# máquina (Windows deja CRLF si no hay esto ni core.autocrlf explícito). Sin
+# esta regla versionada, el resultado depende de la configuración global de
+# git de quien clona — hoy mismo este repo lo hereda de un core.autocrlf=true
+# a nivel sistema (Program Files\Git\etc\gitconfig), no de nada propio del
+# repo, así que en otra máquina (o si alguien cambia esa config global)
+# vuelve el mismo problema: decenas de archivos "modificados" que nadie tocó.
+* text=auto eol=lf
+
+# Binarios explícitos: nunca deben pasar por conversión de fin de línea.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.pdf binary
