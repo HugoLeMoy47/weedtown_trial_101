@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
-  Card, CardHeader, CardContent, CardMedia, CardActions, Avatar, Typography, Chip, Stack, Button, Collapse,
+  Box, Card, CardHeader, CardContent, CardMedia, CardActions, Avatar, Typography, Chip, Stack, Button, Collapse,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert
 } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import ShareIcon from '@mui/icons-material/Share';
 import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import CommentSection from './CommentSection';
@@ -12,7 +13,7 @@ import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 
-const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
+const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = false, commentCount: externalCommentCount }) => {
   const { user } = useAuth();
   const author = typeof post.author === 'string' ? { name: post.author } : (post.author || {});
   const isMine = user && author.id === user.id;
@@ -27,11 +28,18 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
   const [myReaction, setMyReaction] = useState(post.myReaction || null);
   const [commentCount, setCommentCount] = useState(post.commentCount || 0);
   const [showComments, setShowComments] = useState(false);
+  const [shareStatus, setShareStatus] = useState('');
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
   const [editHashtags, setEditHashtags] = useState(tags.join(' '));
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (typeof externalCommentCount === 'number') {
+      setCommentCount(externalCommentCount);
+    }
+  }, [externalCommentCount]);
 
   const handleEditSave = async (e) => {
     e.preventDefault();
@@ -50,6 +58,7 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
   };
 
   const handleReact = async (type) => {
+    if (disableReactions) return;
     const prev = { reactions, myReaction };
     const next = applyReaction(reactions, myReaction, type);
     setReactions(next.counts);
@@ -62,6 +71,27 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
       setReactions(prev.reactions);
       setMyReaction(prev.myReaction);
     }
+  };
+
+  const shareUrl = `${window.location.origin}/p/${post.id}`;
+
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Ver post en WeedTown', text: post.content.slice(0, 120), url: shareUrl });
+        setShareStatus('Compartido.');
+        return;
+      }
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareStatus('Enlace copiado al portapapeles.');
+        setTimeout(() => setShareStatus(''), 3000);
+        return;
+      }
+    } catch (e) {
+      // Ignorar, usaremos el prompt como respaldo.
+    }
+    window.prompt('Copia este enlace para compartirlo:', shareUrl);
   };
 
   return (
@@ -132,7 +162,23 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked }) => {
         >
           {commentCount > 0 ? commentCount : 'Comentar'}
         </Button>
+        {post.visibility === 'PUBLIC' && (
+          <Button
+            size="small"
+            color="secondary"
+            startIcon={<ShareIcon />}
+            onClick={handleShare}
+            aria-label="Compartir publicación"
+          >
+            Compartir
+          </Button>
+        )}
       </CardActions>
+      {shareStatus && (
+        <Box sx={{ px: 2, pb: 1 }}>
+          <Typography variant="caption" color="text.secondary">{shareStatus}</Typography>
+        </Box>
+      )}
       <Collapse in={showComments} timeout="auto" unmountOnExit>
         <CommentSection postId={post.id} onCountChange={setCommentCount} />
       </Collapse>

@@ -10,7 +10,7 @@ import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 
-const CommentItem = ({ comment, onEdited, onDeleted, onBlocked }) => {
+const CommentItem = ({ comment, onEdited, onDeleted, onBlocked, disabled = false }) => {
   const { user } = useAuth();
   const [reactions, setReactions] = useState(comment.reactions || EMPTY_COUNTS);
   const [myReaction, setMyReaction] = useState(comment.myReaction || null);
@@ -20,6 +20,7 @@ const CommentItem = ({ comment, onEdited, onDeleted, onBlocked }) => {
   const isMine = user && comment.author?.id === user.id;
 
   const handleReact = async (type) => {
+    if (disabled) return;
     const prev = { reactions, myReaction };
     const next = applyReaction(reactions, myReaction, type);
     setReactions(next.counts);
@@ -99,7 +100,8 @@ const CommentItem = ({ comment, onEdited, onDeleted, onBlocked }) => {
   );
 };
 
-const CommentSection = ({ postId, onCountChange }) => {
+const CommentSection = ({ postId, onCountChange, readOnly = false }) => {
+  const { user } = useAuth();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -168,27 +170,34 @@ const CommentSection = ({ postId, onCountChange }) => {
                 return next;
               })}
               onBlocked={load}
+              disabled={readOnly || !user}
             />
           ))}
         </Stack>
       )}
-      <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1.5 }}>
-        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="Escribe un comentario…"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            inputProps={{ 'aria-label': 'Escribir comentario' }}
-            disabled={sending}
-          />
-          <ImagePicker file={imageFile} onChange={setImageFile} disabled={sending} size="small" />
-          <IconButton type="submit" color="primary" aria-label="Publicar comentario" disabled={sending || !input.trim()}>
-            <SendIcon />
-          </IconButton>
+      {readOnly || !user ? (
+        <Alert severity="info" sx={{ mt: 1 }}>
+          Inicia sesión o regístrate para comentar.
+        </Alert>
+      ) : (
+        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1.5 }}>
+          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Escribe un comentario…"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              inputProps={{ 'aria-label': 'Escribir comentario' }}
+              disabled={sending}
+            />
+            <ImagePicker file={imageFile} onChange={setImageFile} disabled={sending} size="small" />
+            <IconButton type="submit" color="primary" aria-label="Publicar comentario" disabled={sending || !input.trim()}>
+              <SendIcon />
+            </IconButton>
+          </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   );
 };

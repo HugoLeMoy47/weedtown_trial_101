@@ -10,6 +10,7 @@ import Chat from './pages/Chat';
 import Nearby from './pages/Nearby';
 import Profile from './pages/Profile';
 import PublicProfile from './pages/PublicProfile';
+import PublicPost from './pages/PublicPost';
 import Friends from './pages/Friends';
 import Admin from './pages/Admin';
 import Terms from './pages/Terms';
@@ -40,6 +41,7 @@ function App() {
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
             <Route path="/amigos" element={<RequireAuth><Friends /></RequireAuth>} />
             <Route path="/perfil/:id" element={<RequireAuth><PublicProfile /></RequireAuth>} />
+            <Route path="/p/:id" element={<PublicPost />} />
             {/* Misma URL que el resto de la app: el panel no es otro despliegue,
                 es una sección más protegida por rol */}
             <Route path="/admin" element={<RequireRole><Admin /></RequireRole>} />

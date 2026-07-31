@@ -172,6 +172,34 @@ router.get('/search', optionalAuth, async (req, res) => {
   }
 });
 
+async function puedeVerPost(post, viewerId) {
+  if (!post) return false;
+  if (await isBlockedBetween(viewerId, post.authorId)) return false;
+  if (post.visibility === 'FRIENDS' && post.authorId !== viewerId && !(await areFriends(viewerId, post.authorId))) {
+    return false;
+  }
+  return true;
+}
+
+// Obtener un post por ID. Funciona sin sesión para publicaciones públicas.
+router.get('/:id', optionalAuth, async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
+  try {
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      include: postInclude
+    });
+    if (!post || !await puedeVerPost(post, req.user?.id)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
+    res.json(serializePost(post, req.user?.id));
+  } catch (e) {
+    console.error('Error al obtener el post:', e);
+    res.status(500).json({ error: 'Error al obtener el post' });
+  }
+});
+
 // Editar post propio (contenido y hashtags)
 router.put('/:id', requireAuth, requireNotSuspended, async (req, res) => {
   const id = Number(req.params.id);
@@ -342,6 +370,10 @@ router.get('/:id/comments', optionalAuth, async (req, res) => {
   const postId = Number(req.params.id);
   if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
   try {
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true, visibility: true } });
+    if (!post || !await puedeVerPost(post, req.user?.id)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
     const comments = await prisma.comment.findMany({
       where: { postId, ...soloVisible, ...excludeBlocked(await blockedWith(req.user?.id)) },
       orderBy: { createdAt: 'asc' },
