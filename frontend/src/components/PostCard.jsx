@@ -132,10 +132,16 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
               await api.delete(`/posts/${post.id}`);
               onDeleted?.(post.id);
             }}
-          />
-        ) : (user && author.id ? (
-          <ContentActions user={author} report={{ targetType: 'POST', targetId: post.id }} onBlocked={onBlocked} />
-        ) : undefined)}
+              onShare={post.visibility === 'PUBLIC' ? handleShare : undefined}
+            />
+          ) : (user && author.id ? (
+            <ContentActions
+              user={author}
+              report={{ targetType: 'POST', targetId: post.id }}
+              onBlocked={onBlocked}
+              onShare={post.visibility === 'PUBLIC' ? handleShare : undefined}
+            />
+          ) : undefined)}
       />
       {post.image && (
         <CardMedia component="img" image={post.image} alt="" sx={{ maxHeight: 420, objectFit: 'cover' }} />

@@ -6,9 +6,10 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ShareIcon from '@mui/icons-material/Share';
 
-// Menú ⋮ para contenido propio: Editar / Eliminar (con confirmación)
-const OwnerActions = ({ onEdit, onDelete, deleteLabel = 'esta publicación', size = 'small' }) => {
+// Menú ⋮ para contenido propio: Editar / Eliminar / Compartir (con confirmación)
+const OwnerActions = ({ onEdit, onDelete, onShare, deleteLabel = 'esta publicación', size = 'small' }) => {
   const [anchor, setAnchor] = useState(null);
   const [confirming, setConfirming] = useState(false);
 
@@ -24,6 +25,12 @@ const OwnerActions = ({ onEdit, onDelete, deleteLabel = 'esta publicación', siz
           <MenuItem onClick={() => { close(); onEdit(); }}>
             <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
             <ListItemText>Editar</ListItemText>
+          </MenuItem>
+        )}
+        {onShare && (
+          <MenuItem onClick={() => { close(); onShare(); }}>
+            <ListItemIcon><ShareIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Compartir enlace</ListItemText>
           </MenuItem>
         )}
         <MenuItem onClick={() => { close(); setConfirming(true); }}>

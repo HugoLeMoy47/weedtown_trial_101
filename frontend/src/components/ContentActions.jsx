@@ -7,6 +7,7 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import BlockIcon from '@mui/icons-material/Block';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
+import ShareIcon from '@mui/icons-material/Share';
 import api from '../services/api';
 
 // Menú ⋮ sobre el contenido de otras personas: Reportar y Bloquear.
@@ -26,7 +27,7 @@ const MOTIVOS = [
   { valor: 'OTRO', texto: 'Otro motivo' }
 ];
 
-const ContentActions = ({ user, report, onBlocked, onReported, size = 'small' }) => {
+const ContentActions = ({ user, report, onBlocked, onReported, onShare, size = 'small' }) => {
   const [anchor, setAnchor] = useState(null);
   const [confirmandoBloqueo, setConfirmandoBloqueo] = useState(false);
   const [reportando, setReportando] = useState(false);
@@ -96,6 +97,12 @@ const ContentActions = ({ user, report, onBlocked, onReported, size = 'small' })
       </IconButton>
 
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={cerrar}>
+        {onShare && (
+          <MenuItem onClick={() => { cerrar(); onShare(); }}>
+            <ListItemIcon><ShareIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Compartir enlace</ListItemText>
+          </MenuItem>
+        )}
         {report && (
           <MenuItem onClick={() => { cerrar(); setError(''); setReportando(true); }}>
             <ListItemIcon><FlagOutlinedIcon fontSize="small" /></ListItemIcon>
