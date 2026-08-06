@@ -44,7 +44,10 @@ module.exports = async function run() {
       check(`orden "${sort}" oculta el post de Beto`, !ids.includes(postBeto.id));
       check(`orden "${sort}" conserva el post propio`, ids.includes(postAna.id));
     }
-    check('sin sesión el orden "hot" sigue mostrando todo', (await listar('hot')).includes(postBeto.id));
+    // HU-FOR-012: el contenido del foro (a diferencia del directorio) exige
+    // sesión — antes de este ciclo, este mismo GET sin token respondía 200.
+    r = await call('GET', `/api/forum/subforums/${sub.slug}/posts?sort=hot`);
+    check('sin sesión, listar posts del subforo → 401', r.status === 401, `(fue ${r.status})`);
 
     r = await call('GET', `/api/forum/posts/${postBeto.id}`, { tok: tAna });
     check('el detalle del post de Beto es 404 para Ana', r.status === 404, `(fue ${r.status})`);

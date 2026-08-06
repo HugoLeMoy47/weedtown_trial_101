@@ -6,6 +6,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireNotSuspended } = require('../middlewares/requireAuth');
 const { REACTION_TYPES, toggleReaction, reactionCounts } = require('../lib/reactions');
 const { isBlockedBetween } = require('../lib/blocks');
+const { soloVisible } = require('../lib/moderation');
 const storage = require('../lib/storage');
 
 // Reaccionar a un comentario: misma reacción = quitar, distinta = reemplazar
@@ -17,7 +18,8 @@ router.post('/:id/reaction', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const comment = await prisma.comment.findUnique({ where: { id: commentId }, select: { id: true, authorId: true } });
+    // HU-MOD-001: reaccionar a un comentario ya oculto por moderación no se permite.
+    const comment = await prisma.comment.findUnique({ where: { id: commentId, ...soloVisible }, select: { id: true, authorId: true } });
     if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
     if (await isBlockedBetween(req.user.id, comment.authorId)) {
       return res.status(404).json({ error: 'Comentario no encontrado' });

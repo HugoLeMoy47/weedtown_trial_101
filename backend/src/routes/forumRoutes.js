@@ -20,9 +20,14 @@ const MAX_POST_LENGTH = 10000;
 const MAX_COMMENT_LENGTH = 2000;
 const IMAGE_URL_RE = /^https?:\/\/\S{1,500}$/;
 
+// HU-FOR-012: `creator` NO va en el select base — el directorio de subforos
+// (GET /subforums, GET /subforums/:slug) queda abierto sin sesión a
+// propósito (son nombres y descripciones institucionales, no contenido de
+// la comunidad), pero no debe exponer de quién fue la idea a nadie sin
+// cuenta. Cada ruta agrega `creator` por su cuenta, condicionado a `req.user`
+// donde aplica — mismo patrón que ya usa `followers` aquí abajo.
 const subforumSelect = {
   id: true, name: true, slug: true, description: true, createdAt: true,
-  creator: { select: { id: true, name: true } },
   _count: { select: { posts: true, followers: true } }
 };
 
@@ -41,6 +46,11 @@ function serializeForumPost(post, currentUserId) {
 
 // ---------- Subforos ----------
 
+// creator solo viaja con sesión — anónimo ve de qué se habla, no quién lo creó.
+function creatorSelect(req) {
+  return req.user ? { select: { id: true, name: true } } : false;
+}
+
 // GET /api/forum/subforums — directorio
 router.get('/subforums', optionalAuth, async (req, res) => {
   try {
@@ -51,6 +61,7 @@ router.get('/subforums', optionalAuth, async (req, res) => {
       orderBy: [{ posts: { _count: 'desc' } }, { createdAt: 'asc' }],
       select: {
         ...subforumSelect,
+        creator: creatorSelect(req),
         followers: req.user ? { where: { userId: req.user.id }, select: { userId: true } } : false
       }
     });
@@ -92,7 +103,9 @@ router.post('/subforums', requireAuth, requireNotSuspended, async (req, res) => 
         // El creador sigue su propio subforo automáticamente
         followers: { create: { userId: req.user.id } }
       },
-      select: subforumSelect
+      // Quien crea el subforo siempre tiene sesión (requireAuth): mostrarle
+      // el creador (a sí mismo) en la respuesta no expone nada.
+      select: { ...subforumSelect, creator: { select: { id: true, name: true } } }
     });
     res.json({ ...subforum, following: true });
   } catch (e) {
@@ -108,6 +121,7 @@ router.get('/subforums/:slug', optionalAuth, async (req, res) => {
       where: { slug: req.params.slug },
       select: {
         ...subforumSelect,
+        creator: creatorSelect(req),
         archivedAt: true,
         followers: req.user ? { where: { userId: req.user.id }, select: { userId: true } } : false
       }
@@ -158,7 +172,9 @@ router.delete('/subforums/:slug/follow', requireAuth, async (req, res) => {
 const PERIOD_HOURS = { day: 24, week: 24 * 7, month: 24 * 30 };
 
 // GET /api/forum/subforums/:slug/posts?sort=hot|new|top&period=day|week|month|all&page=1
-router.get('/subforums/:slug/posts', optionalAuth, async (req, res) => {
+// HU-FOR-012: contenido del foro, exige sesión — el directorio (arriba) es
+// lo único que queda abierto.
+router.get('/subforums/:slug/posts', requireAuth, async (req, res) => {
   const sort = ['hot', 'new', 'top'].includes(req.query.sort) ? req.query.sort : 'hot';
   const period = ['day', 'week', 'month', 'all'].includes(req.query.period) ? req.query.period : 'all';
   const page = parseInt(req.query.page) || 1;
@@ -274,7 +290,8 @@ router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (r
 });
 
 // GET /api/forum/posts/:id — detalle
-router.get('/posts/:id', optionalAuth, async (req, res) => {
+// HU-FOR-012: contenido del foro, exige sesión.
+router.get('/posts/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   try {
@@ -299,7 +316,8 @@ router.post('/posts/:id/reaction', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const post = await prisma.forumPost.findUnique({ where: { id: forumPostId }, select: { id: true, authorId: true } });
+    // HU-MOD-001: reaccionar a un post del foro ya oculto por moderación no se permite.
+    const post = await prisma.forumPost.findUnique({ where: { id: forumPostId, ...soloVisible }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     // La reacción puntúa (±1): quien está bloqueado no vota el contenido del otro
     if (await isBlockedBetween(req.user.id, post.authorId)) {
@@ -355,16 +373,27 @@ function serializeForumComment(comment, currentUserId) {
 }
 
 // GET /api/forum/posts/:id/comments — todos los comentarios del post (el árbol se arma en el cliente)
-router.get('/posts/:id/comments', optionalAuth, async (req, res) => {
+// HU-FOR-012: contenido del foro, exige sesión.
+//
+// Hallazgo del barrido de HU-MOD-001: esta ruta filtraba los comentarios por
+// su propio hiddenAt/bloqueo pero nunca verificaba si el POST padre era
+// accesible (oculto, o de una cuenta bloqueada) — mismo bug que H1, en una
+// ruta que ninguna otra tarea tocaba. Mismo criterio que GET /posts/:id.
+router.get('/posts/:id/comments', requireAuth, async (req, res) => {
   const postId = Number(req.params.id);
   if (!postId) return res.status(400).json({ error: 'ID inválido' });
   try {
+    const post = await prisma.forumPost.findUnique({ where: { id: postId, ...soloVisible }, select: { id: true, authorId: true } });
+    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+    if (await isBlockedBetween(req.user.id, post.authorId)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
     const comments = await prisma.forumComment.findMany({
-      where: { postId, ...soloVisible, ...excludeBlocked(await blockedWith(req.user?.id)) },
+      where: { postId, ...soloVisible, ...excludeBlocked(await blockedWith(req.user.id)) },
       orderBy: { createdAt: 'asc' },
       include: forumCommentInclude
     });
-    res.json({ comments: comments.map(c => serializeForumComment(c, req.user?.id)) });
+    res.json({ comments: comments.map(c => serializeForumComment(c, req.user.id)) });
   } catch (e) {
     console.error('Error al listar comentarios del foro:', e);
     res.status(500).json({ error: 'Error al obtener los comentarios' });
@@ -389,7 +418,11 @@ router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req,
     return res.status(400).json({ error: `Un comentario no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
   }
   try {
-    const post = await prisma.forumPost.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
+    // HU-MOD-001: comentar (o responder dentro) un post del foro ya oculto
+    // por moderación no se permite — cubre tanto la raíz como cualquier
+    // respuesta, porque toda creación de comentario pasa por este mismo
+    // lookup del post, sin importar si trae parentId.
+    const post = await prisma.forumPost.findUnique({ where: { id: postId, ...soloVisible }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     // Comentar es contactar: con un bloqueo de por medio el post no existe
     if (await isBlockedBetween(req.user.id, post.authorId)) {
@@ -402,8 +435,10 @@ router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req,
     let depth = 0;
     let parentAuthorId = null;
     if (parentId) {
+      // También oculto por su cuenta si el comentario padre mismo (no solo
+      // el post) fue retirado por moderación.
       const parent = await prisma.forumComment.findUnique({
-        where: { id: parentId },
+        where: { id: parentId, ...soloVisible },
         select: { id: true, postId: true, depth: true, authorId: true, deletedAt: true }
       });
       if (!parent || parent.postId !== postId) {
@@ -448,7 +483,9 @@ router.post('/comments/:id/reaction', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const comment = await prisma.forumComment.findUnique({ where: { id: forumCommentId }, select: { id: true, deletedAt: true, authorId: true } });
+    // HU-MOD-001: además del borrado suave propio (deletedAt), tampoco se
+    // puede reaccionar a un comentario oculto por moderación (hiddenAt).
+    const comment = await prisma.forumComment.findUnique({ where: { id: forumCommentId, ...soloVisible }, select: { id: true, deletedAt: true, authorId: true } });
     if (!comment || comment.deletedAt) return res.status(404).json({ error: 'Comentario no encontrado' });
     if (await isBlockedBetween(req.user.id, comment.authorId)) {
       return res.status(404).json({ error: 'Comentario no encontrado' });

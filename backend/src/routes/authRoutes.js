@@ -263,18 +263,23 @@ const REF_WHITELIST = ['post', 'perfil', 'directo'];
 // sobre una cuenta vieja, no el mecanismo principal.
 const ATRIBUCION_VENTANA_MS = 10 * 60 * 1000;
 
-// POST /api/auth/attribution { ref, pid? } — requiere sesión (la cuenta que
-// se acaba de crear) porque la atribución es "esta alta vino de tal CTA", y
+// POST /api/auth/attribution { ref } — requiere sesión (la cuenta que se
+// acaba de crear) porque la atribución es "esta alta vino de tal CTA", y
 // solo tiene sentido para la cuenta que la propia sesión ya identifica.
+//
+// HU-ATR-001: el evento cuenta y nada más. `userId` y `pid` cruzados en la
+// misma línea reconstruirían "esta persona se registró desde el post de
+// aquella" — un grafo de reclutamiento que la red no expone en ninguna otra
+// superficie, y choca con la regla del panóptico (mide qué pasa en la red,
+// no qué hace cada persona). `pid` se quitó del todo, no solo del log: no
+// tenía otro uso que terminar aquí.
 router.post('/attribution', requireAuth, async (req, res) => {
   const ref = REF_WHITELIST.includes(req.body?.ref) ? req.body.ref : null;
-  const pidRaw = req.body?.pid;
-  const pid = Number.isInteger(pidRaw) && pidRaw > 0 ? pidRaw : null;
   if (!ref) return res.status(204).end();
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { createdAt: true } });
     if (user && Date.now() - new Date(user.createdAt).getTime() < ATRIBUCION_VENTANA_MS) {
-      log('alta_atribuida', { ref, pid, userId: req.user.id, requestId: req.id });
+      log('alta_atribuida', { ref, requestId: req.id });
     }
   } catch (e) {
     console.error('Error registrando atribución de alta:', e);

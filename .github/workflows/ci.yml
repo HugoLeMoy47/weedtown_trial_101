@@ -40,6 +40,10 @@ jobs:
       PORT: 4010
       BACKEND_URL: http://localhost:4010
       FRONTEND_URL: http://localhost:3000
+      # apiLimiter (app.js) es 300/15min en producción — el presupuesto de UNA
+      # persona usuaria. Acá es el presupuesto de la suite entera contra un solo
+      # proceso del backend, y ya no alcanza. No afecta producción.
+      API_LIMITER_MAX: 5000
 
     steps:
       - uses: actions/checkout@v4

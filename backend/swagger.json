@@ -684,7 +684,7 @@
           "Auth"
         ],
         "summary": "Registra el origen de una alta reciente (HU-CTA-002)",
-        "description": "Puramente observacional: escribe una línea en el log estructurado (evento `alta_atribuida`), no guarda nada en la base — cero migraciones. `ref` fuera de la lista blanca se descarta en silencio. Solo deja rastro si la cuenta se creó hace pocos minutos; nunca decide autorización.",
+        "description": "Puramente observacional: escribe una línea en el log estructurado (evento `alta_atribuida`, solo con `ref` — HU-ATR-001 le quitó `userId` y `pid` para no reconstruir un grafo de reclutamiento), no guarda nada en la base — cero migraciones. `ref` fuera de la lista blanca se descarta en silencio. Solo deja rastro si la cuenta se creó hace pocos minutos; nunca decide autorización. Limitador propio: 5 peticiones / 15 min.",
         "security": [
           { "bearerAuth": [] }
         ],
@@ -694,8 +694,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "ref": { "type": "string", "enum": ["post", "perfil", "directo"] },
-                  "pid": { "type": "integer", "description": "Entero positivo opcional (p. ej. el id del posteo que originó el alta)" }
+                  "ref": { "type": "string", "enum": ["post", "perfil", "directo"] }
                 }
               }
             }
@@ -703,7 +702,8 @@
         },
         "responses": {
           "204": { "description": "Siempre, incluso si el ref no era válido o no se registró nada" },
-          "401": { "description": "Sin token o token inválido" }
+          "401": { "description": "Sin token o token inválido" },
+          "429": { "description": "Límite propio del endpoint (5/15min) excedido" }
         }
       }
     },
@@ -1447,6 +1447,7 @@
           "Foros"
         ],
         "summary": "Directorio de subforos con conteos y bandera following",
+        "description": "HU-FOR-012: abierto sin sesión a propósito (nombres y descripciones institucionales, no contenido de la comunidad). `creator` solo viaja con sesión — anónimo no ve quién creó cada subforo.",
         "responses": {
           "200": {
             "description": "Lista de subforos"
@@ -1557,6 +1558,12 @@
           "Foros"
         ],
         "summary": "Posts del subforo con orden estilo Reddit",
+        "description": "HU-FOR-012: exige sesión — es contenido de la comunidad, no el directorio.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "slug",
@@ -1607,6 +1614,9 @@
         "responses": {
           "200": {
             "description": "Posts con score, reacciones, myReaction y commentCount"
+          },
+          "401": {
+            "description": "Sin sesión"
           }
         }
       },
@@ -1668,6 +1678,12 @@
           "Foros"
         ],
         "summary": "Detalle de un post del foro",
+        "description": "HU-FOR-012: exige sesión.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -1681,6 +1697,9 @@
         "responses": {
           "200": {
             "description": "Post con score y reacciones"
+          },
+          "401": {
+            "description": "Sin sesión"
           },
           "404": {
             "description": "No encontrado"
@@ -1752,6 +1771,12 @@
           "Foros"
         ],
         "summary": "Hilo completo del post (el árbol se arma en el cliente)",
+        "description": "HU-FOR-012: exige sesión. También verifica que el post padre sea accesible (no oculto, autor no bloqueado) antes de listar sus comentarios.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -1765,6 +1790,12 @@
         "responses": {
           "200": {
             "description": "Comentarios con depth (0-2), parent.author, reacciones y deleted"
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "404": {
+            "description": "Post no encontrado, oculto por moderación, o de un autor bloqueado"
           }
         }
       },

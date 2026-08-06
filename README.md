@@ -35,6 +35,7 @@
 | Comentarios en posteos | ✅ Funcionando |
 | Imagen opcional en posts y comentarios (≤5 MB, anonimizada sin EXIF/GPS en el cliente); en táctil, tomar la foto directo con la cámara o elegirla de galería | ✅ Funcionando |
 | Foros estilo Reddit: subforos comunitarios, hilos a 3 niveles, órdenes Relevante/Nuevo/Top | ✅ Funcionando |
+| Foros: el directorio (nombres/descripciones) es público; el contenido (posts y comentarios) exige sesión — ver nota en la sección de API | ✅ Funcionando |
 | Seguir subforos + notificaciones in-app (campana con contador): respuestas y reacciones en el feed, mensajes de chat (colapsados), toques, amistad y foro | ✅ Funcionando |
 | Editar/eliminar contenido propio (feed y foro, con borrado suave en hilos) | ✅ Funcionando |
 | Endurecimiento de seguridad (helmet, rate limit, CORS estricto, validación, sin PII pública) | ✅ Funcionando |
@@ -357,13 +358,15 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 346 y cubren trece áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 465 y cubren estas áreas:
 
 | Suite | Qué cubre |
 |---|---|
 | **Seguridad** | Rutas de admin por rol, reciprocidad y cercanía del toque, y el bloqueo en feed, búsqueda, chat, Cerca, notificaciones y perfil |
 | **Moderación** | Reportes idempotentes, que el chat no sea reportable, que ocultar sea reversible y no borre, el aviso con motivo sin revelar al moderador, y que suspender frene escribir pero no leer |
 | **Foros** | El bloqueo en los tres órdenes, incluido *Relevante* con su SQL cruda, más comentarios y votos |
+| **ForumPrivacidad** | HU-FOR-012: el directorio (`GET /subforums`, `/subforums/:slug`) sin sesión no expone `creator`; el contenido (posts, comentarios) exige sesión; los comentarios de un post oculto o de un autor bloqueado no se listan |
+| **ModeracionEscritura** | HU-MOD-001: reaccionar, comentar y responder sobre contenido oculto por moderación → 404, en las cuatro superficies (post/comentario de feed y de foro), incluida la respuesta dentro de un post oculto; editar contenido propio oculto sigue permitido |
 | **Almacenamiento** | Subida por la API, y que borrar contenido borre de verdad el archivo del disco — incluido el borrado suave del foro |
 | **Identidad** | Reglas del handle, generación única, varias identidades por cuenta, y que el perfil público ya no exponga la instancia |
 | **Avatares** | Determinismo del dibujo, endpoint cacheable, el default generado y que el avatar no acepte URLs externas |
@@ -372,8 +375,11 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
 | **Acceso** | Alta y login con llave de acceso (con un autenticador de software real, no un mock — ver `tests/webauthnAuthenticator.js`), agregar/quitar métodos, enlace mágico (alta, reingreso, respaldo, un solo uso) y la cuarentena de cuentas nuevas en toque y chat |
 | **Privacidad** | Exportar datos, anonimizar cuenta (handle, PII, identidades, bloqueos), que el contenido se quede pero muestre "Cuenta eliminada", y que un JWT emitido antes de eliminar deje de servir |
+| **PublicShare** | `/p/:id`: un posteo `PUBLIC` se ve sin sesión; uno `FRIENDS` da 404; un posteo oculto por moderación da 404 incluso a su propia autora (H1); los comentarios solo se listan con sesión (HU-PRV-001) |
+| **Subforos** | `slugify` para los 10 nombres del catálogo institucional (con aserción sobre los casos límite #9 y #10); el script `subforos.js` es idempotente y no crea usuarios |
+| **Atribucion** | HU-CTA-002/HU-ATR-001: `ref` fuera de la lista blanca se descarta en silencio, exige sesión, y el limitador propio (5/15min) corta antes que el general |
 | **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
-| **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las otras 320 |
+| **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las demás |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
 
@@ -383,7 +389,7 @@ Sin Docker ni Postgres local, la forma más simple de tener una base separada es
 
 | Script | Qué hace |
 |---|---|
-| `npm test` | Las 346 pruebas de integración |
+| `npm test` | Las 465 pruebas de integración |
 | `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
 | `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las 292 |
 | `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
@@ -475,7 +481,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/auth/email/callback?token=` | — | Canjea el enlace (uso interno del flujo) |
 | DELETE | `/api/auth/identities/:id` | 🔒 | Quita un método de acceso propio (rechaza el último) |
 | GET | `/api/auth/me` | 🔒 | Usuario de la sesión actual |
-| POST | `/api/auth/attribution` | 🔒 | Atribución de altas sin migración (`ref`: post\|perfil\|directo, `pid?`); solo deja rastro en el log si la cuenta se acaba de crear |
+| POST | `/api/auth/attribution` | 🔒 | Atribución de altas sin migración (`ref`: post\|perfil\|directo); el log solo lleva `ref`, sin `userId` ni `pid` (HU-ATR-001); limitador propio 5/15min; solo deja rastro si la cuenta se acaba de crear |
 | GET | `/api/posts?page=` | — | Feed paginado (20 por página) |
 | POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`, `visibility?`: PUBLIC\|FRIENDS, default PUBLIC) |
 | GET | `/api/posts/:id` | opcional | Un posteo por id; funciona sin sesión si es `PUBLIC` (base de `/p/:id`). 404 si está oculto por moderación, es de amistades sin ser amiga, o hay bloqueo de por medio |
@@ -483,18 +489,18 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | POST | `/api/posts/:id/reaction` | 🔒 | Reaccionar (`type`: LIKE/ROLA/INTERESA/MOLESTA; misma = quitar, distinta = reemplazar) |
 | DELETE | `/api/posts/:id/reaction` | 🔒 | Quitar la reacción propia |
 | POST | `/api/posts/:id/like` | 🔒 | Alias de compatibilidad → reacción LIKE |
-| POST | `/api/posts/:id/comment` | 🔒 | Comentar un posteo |
+| POST | `/api/posts/:id/comment` | 🔒 | Comentar un posteo; 404 si está oculto por moderación (HU-MOD-001) |
 | GET | `/api/posts/:id/comments` | opcional | Comentarios con conteos de reacciones; sin sesión, `comments` vuelve vacío con `restricted: true` (el conteo real ya viaja en el posteo) |
-| POST/DELETE | `/api/comments/:id/reaction` | 🔒 | Reaccionar / quitar reacción en un comentario |
+| POST/DELETE | `/api/comments/:id/reaction` | 🔒 | Reaccionar / quitar reacción en un comentario; reaccionar a uno oculto → 404 (HU-MOD-001) |
 | POST | `/api/media/upload` | 🔒 | Subir imagen (multipart, ≤5 MB, JPG/PNG/WebP) → devuelve URL |
-| GET/POST | `/api/forum/subforums` | —/🔒 | Directorio de subforos / crear (máx. 3 por usuario) |
+| GET/POST | `/api/forum/subforums` | —/🔒 | Directorio de subforos / crear (máx. 3 por usuario). El GET es abierto a propósito (HU-FOR-012): `creator` solo viaja con sesión |
 | POST/DELETE | `/api/forum/subforums/:slug/follow` | 🔒 | Seguir / dejar de seguir un subforo |
-| GET/POST | `/api/forum/subforums/:slug/posts` | —/🔒 | Posts del subforo (`?sort=hot\|new\|top&period=`) / publicar |
-| GET/PUT/DELETE | `/api/forum/posts/:id` | —/🔒 | Detalle / editar / eliminar post propio |
-| GET/POST | `/api/forum/posts/:id/comments` | —/🔒 | Hilo de comentarios / comentar o responder (`parentId?`) |
-| POST/DELETE | `/api/forum/posts/:id/reaction` | 🔒 | Reaccionar al post del foro (puntúa ±1) |
+| GET/POST | `/api/forum/subforums/:slug/posts` | 🔒 | Posts del subforo (`?sort=hot\|new\|top&period=`) / publicar. Contenido de la comunidad: exige sesión (HU-FOR-012) |
+| GET/PUT/DELETE | `/api/forum/posts/:id` | 🔒 | Detalle / editar / eliminar post propio. El GET exige sesión (HU-FOR-012); 404 si además está oculto por moderación (HU-MOD-001) |
+| GET/POST | `/api/forum/posts/:id/comments` | 🔒 | Hilo de comentarios / comentar o responder (`parentId?`). El GET exige sesión y verifica que el post padre sea accesible; comentar o responder sobre contenido oculto → 404 (HU-MOD-001) |
+| POST/DELETE | `/api/forum/posts/:id/reaction` | 🔒 | Reaccionar al post del foro (puntúa ±1); 404 si el post está oculto por moderación (HU-MOD-001) |
 | PUT/DELETE | `/api/forum/comments/:id` | 🔒 | Editar / eliminar comentario propio (suave si tiene respuestas) |
-| POST | `/api/forum/comments/:id/reaction` | 🔒 | Reaccionar a comentario del foro (puntúa ±1) |
+| POST | `/api/forum/comments/:id/reaction` | 🔒 | Reaccionar a comentario del foro (puntúa ±1); 404 si está oculto por moderación (HU-MOD-001) |
 | GET | `/api/notifications` (+`/unread-count`, `POST /read-all`) | 🔒 | Centro de notificaciones in-app (`REPLY_POST`, `REACTION`, `CHAT_MESSAGE`, `POKE`, `FRIEND_REQUEST`/`FRIEND_ACCEPTED`, foro, moderación) |
 | GET | `/api/profile/me` | 🔒 | Perfil propio, con sus métodos de acceso (`identities`) |
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio (incluye `aboutMe`, hasta 1000 caracteres) |
@@ -615,7 +621,7 @@ Cambiar de Feed a Chat —la acción más frecuente del producto— costaba esti
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 346 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 465 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 

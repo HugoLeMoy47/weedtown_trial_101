@@ -289,7 +289,9 @@ async function reactToPost(req, res, type) {
     return res.status(400).json({ error: `Reacción inválida. Usa: ${REACTION_TYPES.join(', ')}` });
   }
   try {
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
+    // HU-MOD-001: reaccionar a un post ya oculto por moderación no se
+    // permite — mismo criterio de indistinción que el resto (404, no 403).
+    const post = await prisma.post.findUnique({ where: { id: postId, ...soloVisible }, select: { id: true, authorId: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     const { myReaction } = await toggleReaction(req.user.id, { postId }, type);
     // Solo al AGREGAR o CAMBIAR reacción (myReaction truthy) — quitarla
@@ -344,7 +346,9 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
     return res.status(400).json({ error: `Un comentario no puede traer más de ${MAX_LINKS_PER_CONTENT} enlaces` });
   }
   try {
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true, visibility: true } });
+    // HU-MOD-001: comentar un post ya oculto por moderación no se permite —
+    // la conversación no puede seguir creciendo debajo de algo retirado.
+    const post = await prisma.post.findUnique({ where: { id: postId, ...soloVisible }, select: { id: true, authorId: true, visibility: true } });
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
     // Comentar es contactar: con un bloqueo de por medio el post no existe
     if (await isBlockedBetween(req.user.id, post.authorId)) {

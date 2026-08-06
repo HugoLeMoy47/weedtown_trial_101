@@ -55,7 +55,7 @@ const Login = () => {
   const nextParam = searchParams.get('next');
   const vieneDePostNoAccesible = refParam === 'post' && /^\/p\/\d+$/.test(nextParam || '');
 
-  // HU-CTA-002: capturar ref/pid/next apenas se aterriza aquí — antes de
+  // HU-CTA-002: capturar ref/next apenas se aterriza aquí — antes de
   // cualquier navegación (Mastodon se va del sitio por completo; el enlace
   // mágico puede abrirse en otra pestaña).
   useEffect(() => {

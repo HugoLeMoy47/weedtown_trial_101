@@ -98,10 +98,15 @@ function alTocarLimite(nombre) {
   };
 }
 
-// Rate limit general de la API
+// Rate limit general de la API. Configurable por env: sin API_LIMITER_MAX
+// (cualquier despliegue real) el límite es 300/15min, igual que siempre —
+// solo backend/.env.test sube el techo, porque una suite de integración que
+// crece con cada ciclo va sumando peticiones reales contra un único proceso
+// del backend, y 300 termina siendo el presupuesto de la SUITE, no el de
+// una persona usuaria real.
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 300,
+  limit: Number(process.env.API_LIMITER_MAX) || 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
@@ -137,10 +142,24 @@ const emailLimiter = rateLimit({
   message: { error: 'Demasiadas solicitudes de enlace. Intenta de nuevo en unos minutos.' },
   handler: alTocarLimite('email')
 });
+// HU-ATR-001: sin `userId` en el log ya no se puede deduplicar al contar, así
+// que una cuenta recién creada podría llamar este endpoint hasta agotar el
+// apiLimiter general (300/15 min) e inflar la métrica que justamente valida
+// la hipótesis del ciclo. No es una defensa de seguridad —el endpoint no
+// decide nada—, es higiene de la métrica.
+const attributionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
+  handler: alTocarLimite('attribution')
+});
 app.use('/api', apiLimiter);
 app.use('/api/auth/mastodon', authLimiter);
 app.use('/api/auth/passkey', passkeyLimiter);
 app.use('/api/auth/email', emailLimiter);
+app.use('/api/auth/attribution', attributionLimiter);
 
 
 // Health check: proceso vivo + dependencias críticas (BD, storage, mailer).
