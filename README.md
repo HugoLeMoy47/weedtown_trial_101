@@ -58,6 +58,7 @@
 | Posteo no accesible (de amistades o inexistente) sin sesión → redirige a iniciar sesión y regresa al mismo enlace tras el alta, sin bucles ni distinguir "privado" de "no existe" | ✅ Funcionando |
 | Comentarios de un posteo público: el contenido solo se lista con sesión (recorte en el servidor); sin sesión se ve el conteo, no el texto | ✅ Funcionando |
 | Subforos temáticos institucionales sembrados vía script idempotente (`npm run subforos`) | ✅ Funcionando |
+| Ficha de previsualización (Open Graph/Twitter Card) al pegar `/p/:id` en WhatsApp, Telegram, Facebook o X: título, descripción, imagen (propia o de campaña) — armada en el borde con un Worker de Cloudflare, sin depender de que React ni el backend respondan a tiempo | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -423,6 +424,8 @@ El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin d
 
 **2. URL del backend.** El frontend resuelve el origen de la API en este orden: `REACT_APP_API_URL` si existe; si no y estás en desarrollo, el mismo host con puerto 4000 (así funciona igual en `localhost` y desde otra máquina de la red); si no y estás en producción, **el mismo origen que la web**, que es lo que da un reverse proxy sirviendo el frontend y `/api` juntos. Si tu backend vive en otro dominio o puerto, define `REACT_APP_API_URL` al compilar — la app avisa por consola cuando cae en el default de producción.
 
+**3. Ficha de previsualización (Worker de Cloudflare).** Desde el ciclo 7B, `frontend/wrangler.jsonc` ya no es "solo assets": tiene un Worker (`frontend/src/worker.js`) que intercepta `/p/:id` para inyectar meta tags Open Graph antes de servir el HTML — ver [frontend/README.md](frontend/README.md) para el porqué y el detalle técnico. Al desplegar (`npm run deploy` en `frontend/`, o vía el dashboard de Cloudflare) hay que apuntar `vars.PREVIEW_API_URL` en `wrangler.jsonc` al backend real (`https://weedtown-api.onrender.com` en producción) — sin eso, la ficha intenta hablarle a `localhost:4000` y siempre cae en la genérica.
+
 ### Integración continua
 
 `.github/workflows/ci.yml` corre en cada push a `main`, en cada pull request y a mano (*Run workflow*). Son dos trabajos en paralelo:
@@ -485,6 +488,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/posts?page=` | — | Feed paginado (20 por página) |
 | POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`, `visibility?`: PUBLIC\|FRIENDS, default PUBLIC) |
 | GET | `/api/posts/:id` | opcional | Un posteo por id; funciona sin sesión si es `PUBLIC` (base de `/p/:id`). 404 si está oculto por moderación, es de amistades sin ser amiga, o hay bloqueo de por medio |
+| GET | `/api/posts/:id/preview` | — | Ficha de previsualización Open Graph (HU-SHR-001): `titulo`, `descripcion`, `imagen`, `imagenAlt`, `handleAutor`, `tieneImagen`. Sin `optionalAuth` — no importa quién pregunta. 200 solo si es `PUBLIC`, no está oculto y su autor no está suspendido; todo lo demás, el mismo 404 (nunca 403). La consume el Worker de `frontend/src/worker.js` (HU-SHR-002), no el frontend directamente. Fuera del `apiLimiter` general; limitador propio |
 | GET | `/api/posts/search?q=` | — | Búsqueda por contenido o autor |
 | POST | `/api/posts/:id/reaction` | 🔒 | Reaccionar (`type`: LIKE/ROLA/INTERESA/MOLESTA; misma = quitar, distinta = reemplazar) |
 | DELETE | `/api/posts/:id/reaction` | 🔒 | Quitar la reacción propia |

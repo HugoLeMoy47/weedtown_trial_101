@@ -38,7 +38,7 @@ function suite(name, mark) {
     });
     let data = null;
     try { data = await res.json(); } catch { /* respuestas sin cuerpo */ }
-    return { status: res.status, data };
+    return { status: res.status, data, headers: res.headers };
   }
 
   const instance = `${mark}.test`;

@@ -15,6 +15,10 @@ node_modules/
 /mobile/android/
 /mobile/ios/
 
+# Estado local de `wrangler dev` (ciclo 7B): caché simulada de Workers/D1/KV,
+# nada que versionar
+/frontend/.wrangler/
+
 # Salida de las pruebas E2E (Playwright) — se regenera en cada corrida
 /e2e/test-results/
 /e2e/playwright-report/

@@ -1,6 +1,7 @@
 // Rutas para feed de posteos, reacciones y comentarios
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 
 const prisma = require('../lib/prisma');
 const { requireAuth, optionalAuth, requireNotSuspended } = require('../middlewares/requireAuth');
@@ -8,8 +9,9 @@ const { REACTION_TYPES, summarizeReactions, toggleReaction, reactionCounts } = r
 const { blockedWith, isBlockedBetween, excludeBlocked } = require('../lib/blocks');
 const { areFriends, friendIds } = require('../lib/friends');
 const storage = require('../lib/storage');
-const { soloVisible } = require('../lib/moderation');
+const { soloVisible, estaSuspendido } = require('../lib/moderation');
 const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
+const { armarFicha } = require('../lib/preview');
 
 // Topes de contenido: defensa contra payloads abusivos
 const MAX_POST_LENGTH = 2000;
@@ -206,6 +208,64 @@ router.get('/:id', optionalAuth, async (req, res) => {
   } catch (e) {
     console.error('Error al obtener el post:', e);
     res.status(500).json({ error: 'Error al obtener el post' });
+  }
+});
+
+// GET /api/posts/:id/preview — ficha de previsualización Open Graph
+// (HU-SHR-001, ciclo 7B). Sin sesión: la consume el Worker de Cloudflare
+// (HU-SHR-002) en nombre de un rastreador anónimo, así que ni siquiera lleva
+// `optionalAuth` — no importa quién pregunta.
+//
+// T3 del plan: excluida del `apiLimiter` general en app.js (todas las
+// peticiones del Worker llegan de un rango chico de IPs de Cloudflare; un
+// enlace popular agotaría el cupo general y tumbaría 429 el resto de /api).
+// Este limitador propio la protege a ELLA sola de abuso directo (alguien
+// pegándole a IDs consecutivos sin pasar por el Worker/su caché) con un techo
+// generoso: en el camino normal, el Worker cachea la ficha ~1h-24h por post,
+// así que el volumen real que le llega a esta ruta es bajísimo comparado con
+// el límite general de 300/15min que protege al resto de la API.
+const previewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 2000,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
+});
+
+router.get('/:id/preview', previewLimiter, async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!postId) return res.status(404).json({ error: 'Post no encontrado' });
+  try {
+    // Trampa 2 (el rastreador no espera): una sola consulta, select mínimo —
+    // nada de include de reacciones, comentarios ni hashtags, que es lo que
+    // vuelve pesado a GET /:id normal.
+    //
+    // Trampa 1 (fuga de contenido privado): visibility PUBLIC y soloVisible
+    // (hiddenAt: null) van en el WHERE, no se comprueban después — así un
+    // FRIENDS o un oculto por moderación ni siquiera llegan a esta rama, y
+    // responden exactamente el mismo 404 que "no existe" (nunca 403: un 403
+    // ya confirma que el posteo existe).
+    const post = await prisma.post.findUnique({
+      where: { id: postId, visibility: 'PUBLIC', ...soloVisible },
+      select: {
+        id: true,
+        content: true,
+        image: true,
+        author: { select: { handle: true, suspendedUntil: true } }
+      }
+    });
+    if (!post || estaSuspendido(post.author)) {
+      return res.status(404).json({ error: 'Post no encontrado' });
+    }
+    // Caché explícito y corto: esta respuesta la consume el Worker (que trae
+    // su propia estrategia de caché larga/resistente, HU-SHR-002), no un
+    // navegador — esto solo evita pegarle dos veces seguidas al mismo posteo
+    // si algo falla en esa capa.
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(armarFicha(post));
+  } catch (e) {
+    console.error('Error al armar la ficha de previsualización:', e);
+    res.status(500).json({ error: 'Error al armar la ficha de previsualización' });
   }
 });
 

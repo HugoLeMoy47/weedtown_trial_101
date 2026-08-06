@@ -104,11 +104,35 @@ function alTocarLimite(nombre) {
 // crece con cada ciclo va sumando peticiones reales contra un único proceso
 // del backend, y 300 termina siendo el presupuesto de la SUITE, no el de
 // una persona usuaria real.
+//
+// Ciclo 7B, Tarea 0: la variable puede desactivar el límite general EN
+// SILENCIO — copiar un .env.test a .env es de las cosas que pasan. Dos
+// blindajes:
+//   1. Se registra al arrancar cuál es el límite efectivo y de dónde salió
+//      (mismo criterio que storage.js/mailer.js, que fallan si su config es
+//      inválida — este es un grado más suave: avisa, no bloquea el arranque).
+//   2. Number("-1") es truthy y pasa de largo el `|| 300` de abajo: SIN este
+//      piso, un valor negativo produce un límite negativo que bloquea TODA
+//      la API sin causa evidente (fail-closed, pero una caída total muda).
+const limiteApiConfigurado = Number(process.env.API_LIMITER_MAX) || 300;
+const API_LIMITER_MAX = Math.max(limiteApiConfigurado, 1);
+log('arranque_api_limiter', {
+  limite: API_LIMITER_MAX,
+  origen: process.env.API_LIMITER_MAX ? 'env (API_LIMITER_MAX)' : 'default',
+  blindadoPorNegativo: limiteApiConfigurado !== API_LIMITER_MAX
+});
+// GET /api/posts/:id/preview queda fuera de este limitador (T3, ciclo 7B):
+// todas las peticiones del Worker de Cloudflare llegan desde un rango chico
+// de IPs, así que un enlace popular agotaría el cupo general y devolvería
+// 429 a TODA la API, no solo a la ficha. Tiene su propio limitador, más alto,
+// en postRoutes.js.
+const RUTA_PREVIEW_SIN_LIMITE_GENERAL = /^\/posts\/\d+\/preview$/;
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: Number(process.env.API_LIMITER_MAX) || 300,
+  limit: API_LIMITER_MAX,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  skip: (req) => RUTA_PREVIEW_SIN_LIMITE_GENERAL.test(req.path),
   message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
   handler: alTocarLimite('api')
 });

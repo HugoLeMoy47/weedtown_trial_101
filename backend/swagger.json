@@ -1075,6 +1075,49 @@
         "description": "Ya no expone la instancia de Mastodon: era un dato de origen que decía en qué servidor del fediverso está esa persona, y con un handle propio dejó de hacer falta. Sin sesión, friendStatus siempre es \"none\"."
       }
     },
+    "/api/posts/{id}/preview": {
+      "get": {
+        "tags": [
+          "Posteos"
+        ],
+        "summary": "Ficha de previsualización Open Graph (HU-SHR-001)",
+        "description": "Sin sesión, ni siquiera opcional: la consume el Worker de Cloudflare en nombre de un rastreador anónimo (WhatsApp, Telegram, Facebook, X). 200 solo si el posteo es PUBLIC, no está oculto por moderación y su autor no está suspendido — cualquier otro caso responde el mismo 404 (nunca 403, que ya confirmaría que existe). `handleAutor` es siempre `User.handle`, nunca `name`, `id`, correo ni instancia de Mastodon. `imagen` es la propia del posteo o, si no tiene, una del manifiesto de campaña elegida de forma determinista por id (HU-SHR-003) — nunca vacía. Fuera del limitador general de la API (T3 del plan); tiene uno propio y más alto.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ficha lista para armar las meta tags Open Graph",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "titulo": { "type": "string", "description": "Extracto del contenido, ~70 caracteres, cortado en palabra completa y ya escapado" },
+                    "descripcion": { "type": "string", "description": "Invitación fija a la red, no contenido del posteo (D8)" },
+                    "imagen": { "type": "string", "description": "URL absoluta https: propia del posteo o de campaña" },
+                    "imagenAlt": { "type": "string", "nullable": true, "description": "Solo con imagen de campaña; null con imagen propia del posteo" },
+                    "handleAutor": { "type": "string" },
+                    "tieneImagen": { "type": "boolean", "description": "true si la imagen es propia del posteo, false si es de campaña" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe, es FRIENDS, está oculto por moderación, o su autor está suspendido — mismo 404 en los cuatro casos",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
     "/api/posts/{id}/reaction": {
       "post": {
         "tags": [
