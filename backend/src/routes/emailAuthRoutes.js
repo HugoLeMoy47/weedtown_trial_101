@@ -94,6 +94,11 @@ router.get('/callback', async (req, res) => {
       where: { provider_externalId: { provider: 'EMAIL', externalId: enlace.email } }
     });
 
+    // Se calcula ANTES de las ramas de abajo porque `identidad` cambia de
+    // significado según el camino (agregar respaldo vs. alta nueva) — esta
+    // bandera es "de verdad se creó una cuenta en esta petición", nada más.
+    const esAltaNueva = !enlace.addToUserId && !identidad;
+
     let userId;
     if (enlace.addToUserId) {
       // Se pidió como respaldo de una cuenta ya abierta.
@@ -150,7 +155,9 @@ router.get('/callback', async (req, res) => {
       modo: enlace.addToUserId ? 'agregar' : (identidad ? 'login' : 'alta'),
       userId, requestId: req.id
     });
-    res.redirect(frontendUrl(`/auth/callback#token=${sessionToken}`));
+    // Mismo criterio que Mastodon: `isNew` en la query, no en el fragmento —
+    // es la señal para que el frontend registre la atribución (HU-CTA-002).
+    res.redirect(frontendUrl(`/auth/callback${esAltaNueva ? '?isNew=1' : ''}#token=${sessionToken}`));
   } catch (e) {
     console.error('Error en callback de enlace mágico:', e);
     res.redirect(frontendUrl('/login?error=magiclink'));

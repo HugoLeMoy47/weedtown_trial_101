@@ -74,6 +74,7 @@ module.exports = async function run() {
     });
     check('la verificación crea la cuenta y da una sesión', r2.status === 200 && typeof r2.data.token === 'string',
       JSON.stringify(r2.data));
+    check('HU-CTA-002: el alta con llave de acceso marca isNew: true', r2.data.isNew === true, JSON.stringify(r2.data));
     const tokenPk1 = r2.data.token;
 
     r = await call('GET', '/api/auth/me', { tok: tokenPk1 });
@@ -151,8 +152,9 @@ module.exports = async function run() {
     const emailAlta = 'wtacc_alta@example.com';
     let raw = await crearEnlace(emailAlta);
     let cb = await callback(raw);
-    check('el callback redirige con un token de sesión → 302', cb.status === 302 && cb.location?.includes('/auth/callback#token='),
+    check('el callback redirige con un token de sesión → 302', cb.status === 302 && cb.location?.includes('/auth/callback') && cb.location?.includes('#token='),
       `(${cb.status} ${cb.location})`);
+    check('HU-CTA-002: el alta nueva marca ?isNew=1 (señal para la atribución)', cb.location?.includes('?isNew=1'), `(${cb.location})`);
     let tk = tokenDeFragmento(cb.location);
     r = await call('GET', '/api/auth/me', { tok: tk });
     check('la sesión resultante tiene handle propio', r.status === 200 && !!r.data.handle);
@@ -164,6 +166,7 @@ module.exports = async function run() {
 
     raw = await crearEnlace(emailAlta);
     cb = await callback(raw);
+    check('un reingreso (misma cuenta ya existente) NO marca ?isNew=1', !cb.location?.includes('isNew'), `(${cb.location})`);
     tk = tokenDeFragmento(cb.location);
     r = await call('GET', '/api/auth/me', { tok: tk });
     check('pedir el enlace de nuevo con el mismo correo entra a la MISMA cuenta', r.data.id === userIdEmail,

@@ -100,7 +100,7 @@ const CommentItem = ({ comment, onEdited, onDeleted, onBlocked, disabled = false
   );
 };
 
-const CommentSection = ({ postId, onCountChange, readOnly = false }) => {
+const CommentSection = ({ postId, commentCount = 0, onCountChange, readOnly = false }) => {
   const { user } = useAuth();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +117,16 @@ const CommentSection = ({ postId, onCountChange, readOnly = false }) => {
       .finally(() => setLoading(false));
   }, [postId]);
 
-  useEffect(() => { load(); }, [load]);
+  // HU-PRV-001: sin sesión, la API ya no trae contenido (backend recortado en
+  // postRoutes.js) — ni siquiera vale la pena pedirlo. El conteo se muestra
+  // con lo que ya trajo el posteo (`commentCount`), no con esta lista.
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    load();
+  }, [load, user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -144,6 +153,22 @@ const CommentSection = ({ postId, onCountChange, readOnly = false }) => {
       setSending(false);
     }
   };
+
+  // HU-PRV-001: sin sesión no hay lista que mostrar (el backend no la manda),
+  // así que no se finge un estado "sin comentarios" — sería falso si sí los
+  // hay, y el conteo real ya viaja en `commentCount` desde el posteo.
+  if (!user) {
+    return (
+      <Box sx={{ px: 2, pb: 2 }}>
+        <Divider sx={{ mb: 1 }} />
+        <Alert severity="info" sx={{ mt: 1 }}>
+          {commentCount > 0
+            ? `${commentCount} comentario${commentCount === 1 ? '' : 's'} — inicia sesión para leerlos`
+            : 'Inicia sesión para comentar'}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ px: 2, pb: 2 }}>

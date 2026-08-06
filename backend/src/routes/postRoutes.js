@@ -40,7 +40,9 @@ function parseHashtags(raw) {
 }
 
 const postInclude = {
-  author: { select: { id: true, name: true, avatar: true } },
+  // handle se agrega para el bloque de invitación (HU-CTA-001: "Sigue a
+  // @handle") — no cambia nada para quien ya consumía este include.
+  author: { select: { id: true, name: true, avatar: true, handle: true } },
   hashtags: { include: { hashtag: true } },
   reactions: { select: { type: true, userId: true } },
   _count: { select: { comments: true } }
@@ -172,8 +174,12 @@ router.get('/search', optionalAuth, async (req, res) => {
   }
 });
 
+// H1: un post oculto por moderación (hiddenAt) nunca es visible, ni para su
+// propio autor — mismo criterio que ya aplica el feed (soloVisible) y el
+// detalle de foro (GET /forum/posts/:id). Antes solo revisaba bloqueo y
+// alcance, así que un post retirado seguía siendo visible por enlace directo.
 async function puedeVerPost(post, viewerId) {
-  if (!post) return false;
+  if (!post || post.hiddenAt) return false;
   if (await isBlockedBetween(viewerId, post.authorId)) return false;
   if (post.visibility === 'FRIENDS' && post.authorId !== viewerId && !(await areFriends(viewerId, post.authorId))) {
     return false;
@@ -186,8 +192,11 @@ router.get('/:id', optionalAuth, async (req, res) => {
   const postId = Number(req.params.id);
   if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
   try {
+    // soloVisible filtra en la consulta (igual que el feed); puedeVerPost
+    // repite el chequeo de hiddenAt por si esta función se reutiliza en otro
+    // punto que no filtre ya en el where.
     const post = await prisma.post.findUnique({
-      where: { id: postId },
+      where: { id: postId, ...soloVisible },
       include: postInclude
     });
     if (!post || !await puedeVerPost(post, req.user?.id)) {
@@ -370,9 +379,16 @@ router.get('/:id/comments', optionalAuth, async (req, res) => {
   const postId = Number(req.params.id);
   if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
   try {
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true, visibility: true } });
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true, visibility: true, hiddenAt: true } });
     if (!post || !await puedeVerPost(post, req.user?.id)) {
       return res.status(404).json({ error: 'Post no encontrado' });
+    }
+    // HU-PRV-001: sin sesión no se listan comentarios, ni siquiera de un post
+    // público — el conteo ya viaja en post.commentCount. El recorte se hace
+    // aquí, en el servidor: ocultarlo solo en el cliente no protege nada,
+    // porque la respuesta seguiría trayendo el contenido.
+    if (!req.user) {
+      return res.json({ comments: [], restricted: true });
     }
     const comments = await prisma.comment.findMany({
       where: { postId, ...soloVisible, ...excludeBlocked(await blockedWith(req.user?.id)) },

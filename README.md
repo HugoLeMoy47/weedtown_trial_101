@@ -52,6 +52,11 @@
 | Cuarentena de altas nuevas para contacto directo (toque, chat), diferenciada por método de acceso — HU-SEG-006/007 | ✅ Funcionando |
 | Control de spam: contenido repetido en ráfaga y exceso de enlaces por posteo | ✅ Funcionando |
 | Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando |
+| Posteo público por enlace (`/p/:id`, visible sin sesión si es `PUBLIC`); un posteo oculto por moderación deja de resolverse para cualquiera, incluida su propia autora | ✅ Funcionando |
+| Bloque de invitación bajo un posteo público para quien no tiene sesión, con atribución de altas (`?ref=post`) sin migración — solo una línea en el log estructurado | ✅ Funcionando |
+| Posteo no accesible (de amistades o inexistente) sin sesión → redirige a iniciar sesión y regresa al mismo enlace tras el alta, sin bucles ni distinguir "privado" de "no existe" | ✅ Funcionando |
+| Comentarios de un posteo público: el contenido solo se lista con sesión (recorte en el servidor); sin sesión se ve el conteo, no el texto | ✅ Funcionando |
+| Subforos temáticos institucionales sembrados vía script idempotente (`npm run subforos`) | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -68,6 +73,7 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   ├── app.js          Entrada: middlewares, rutas, Swagger UI, /health
 │   ├── prisma/         schema.prisma + migraciones
 │   ├── scripts/        rol.js — asigna el primer MOD/ADMIN (`npm run rol`)
+│   │                   subforos.js — siembra el catálogo institucional de subforos (`npm run subforos`)
 │   ├── src/
 │   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, amistad, moderación, socket,
 │   │   │                 storage, avatar, handle, webauthn, mailer
@@ -79,10 +85,11 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   └── tests/          Pruebas de integración (`npm test`) contra una base aparte
 ├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
 │   └── src/
-│       ├── components/ Navbar, PostCard, ContentActions, RequireAuth, RequireRole, ...
+│       ├── components/ Navbar, PostCard, InviteBlock, ContentActions, RequireAuth, RequireRole, ...
 │       ├── hooks/      useAuth (AuthProvider + sesión en localStorage)
+│       ├── lib/        atribucion de altas y validación de `next` (rutaInterna.js)
 │       ├── pages/      Login, AuthCallback, Feed, Forum, Chat, Nearby, Profile, PublicProfile,
-│       │               Friends, Admin
+│       │               PublicPost, Friends, Admin
 │       ├── services/   api.js (axios con Authorization automático)
 │       └── theme.js    Tema Material claro/oscuro (sistema + toggle persistido)
 └── mobile/             App móvil (Expo) — CONGELADA, ver mobile/README.md
@@ -279,6 +286,16 @@ npm run rol -- --listar                            # ver quién tiene rol
 
 De ahí en adelante, un `ADMIN` reparte roles desde el panel. Un `MOD` puede moderar contenido y suspender cuentas normales, pero no tocar a otro `MOD` ni repartir roles: eso queda reservado a `ADMIN`.
 
+**Subforos temáticos** se siembran con otro script, igual de manual y por la misma razón (deja rastro en git, no un `INSERT` a mano):
+
+```bash
+cd backend
+npm run subforos                          # atribuidos a @weedtown (por defecto)
+npm run subforos -- --creador=otrohandle  # o a cualquier otra cuenta ya existente
+```
+
+El script **no crea usuarios**: la cuenta creadora (`@weedtown` por defecto) se da de alta primero por el flujo normal, o el script falla con un mensaje claro. Es idempotente — correrlo de nuevo no duplica subforos ni pisa una descripción que la comunidad ya haya editado — y no siembra contenido dentro de ellos: nacen vacíos.
+
 ---
 
 ## 🛠️ Stack tecnológico
@@ -458,14 +475,16 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/auth/email/callback?token=` | — | Canjea el enlace (uso interno del flujo) |
 | DELETE | `/api/auth/identities/:id` | 🔒 | Quita un método de acceso propio (rechaza el último) |
 | GET | `/api/auth/me` | 🔒 | Usuario de la sesión actual |
+| POST | `/api/auth/attribution` | 🔒 | Atribución de altas sin migración (`ref`: post\|perfil\|directo, `pid?`); solo deja rastro en el log si la cuenta se acaba de crear |
 | GET | `/api/posts?page=` | — | Feed paginado (20 por página) |
 | POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`, `visibility?`: PUBLIC\|FRIENDS, default PUBLIC) |
+| GET | `/api/posts/:id` | opcional | Un posteo por id; funciona sin sesión si es `PUBLIC` (base de `/p/:id`). 404 si está oculto por moderación, es de amistades sin ser amiga, o hay bloqueo de por medio |
 | GET | `/api/posts/search?q=` | — | Búsqueda por contenido o autor |
 | POST | `/api/posts/:id/reaction` | 🔒 | Reaccionar (`type`: LIKE/ROLA/INTERESA/MOLESTA; misma = quitar, distinta = reemplazar) |
 | DELETE | `/api/posts/:id/reaction` | 🔒 | Quitar la reacción propia |
 | POST | `/api/posts/:id/like` | 🔒 | Alias de compatibilidad → reacción LIKE |
 | POST | `/api/posts/:id/comment` | 🔒 | Comentar un posteo |
-| GET | `/api/posts/:id/comments` | — | Comentarios con conteos de reacciones |
+| GET | `/api/posts/:id/comments` | opcional | Comentarios con conteos de reacciones; sin sesión, `comments` vuelve vacío con `restricted: true` (el conteo real ya viaja en el posteo) |
 | POST/DELETE | `/api/comments/:id/reaction` | 🔒 | Reaccionar / quitar reacción en un comentario |
 | POST | `/api/media/upload` | 🔒 | Subir imagen (multipart, ≤5 MB, JPG/PNG/WebP) → devuelve URL |
 | GET/POST | `/api/forum/subforums` | —/🔒 | Directorio de subforos / crear (máx. 3 por usuario) |

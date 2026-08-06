@@ -177,7 +177,9 @@ router.post('/register/verify', optionalAuth, async (req, res) => {
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     log('auth_exito', { proveedor: 'PASSKEY', modo: 'alta', userId: user.id, requestId: req.id });
-    res.json({ token });
+    // isNew: mismo criterio que Mastodon y correo — señal para que el
+    // frontend registre la atribución de alta (HU-CTA-002).
+    res.json({ token, isNew: true });
   } catch (e) {
     console.error('Error verificando registro de passkey:', e);
     res.status(400).json({ error: 'No se pudo completar el registro de la llave de acceso' });

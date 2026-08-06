@@ -11,6 +11,7 @@
     "test:smoke": "node tests/run.js smoke.test.js",
     "test:reset": "node tests/reset.js",
     "rol": "node scripts/rol.js",
+    "subforos": "node scripts/subforos.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate"
   },

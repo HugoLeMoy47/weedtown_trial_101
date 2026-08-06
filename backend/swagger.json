@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeedTown API",
-    "version": "2.5.0",
+    "version": "2.6.0",
     "description": "API de WeedTown, red social de la comunidad cannábica de México. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Seguridad: headers via helmet, CORS restringido al frontend, rate limiting (300 peticiones/15 min general; 20/15 min en el flujo OAuth), payload JSON limitado a 100 kB e imágenes a 5 MB. El perfil público (GET /api/profile/{id}) no expone PII (email, teléfono, nombre real, edad, nacimiento ni género). Las rutas de mercado y admin son stubs pendientes de implementación."
   },
   "servers": [
@@ -678,6 +678,35 @@
         "description": "Devuelve handle (identificador público de WeedTown) en lugar de acct/mastodonInstance, que salieron de User al desacoplar la identidad del proveedor. Incluye `role` y, si aplica, `suspendedUntil` y `suspendedReason`. El rol viaja para que el frontend sepa si pintar el panel; la autorización real se verifica en el servidor en cada petición. Incluye mastodonAvatar (la foto de la instancia) para que el perfil pueda ofrecerla como alternativa al avatar generado."
       }
     },
+    "/api/auth/attribution": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Registra el origen de una alta reciente (HU-CTA-002)",
+        "description": "Puramente observacional: escribe una línea en el log estructurado (evento `alta_atribuida`), no guarda nada en la base — cero migraciones. `ref` fuera de la lista blanca se descarta en silencio. Solo deja rastro si la cuenta se creó hace pocos minutos; nunca decide autorización.",
+        "security": [
+          { "bearerAuth": [] }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ref": { "type": "string", "enum": ["post", "perfil", "directo"] },
+                  "pid": { "type": "integer", "description": "Entero positivo opcional (p. ej. el id del posteo que originó el alta)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Siempre, incluso si el ref no era válido o no se registró nada" },
+          "401": { "description": "Sin token o token inválido" }
+        }
+      }
+    },
     "/api/auth/identities/{id}": {
       "delete": {
         "tags": [
@@ -1229,6 +1258,7 @@
           "Comentarios"
         ],
         "summary": "Listar comentarios de un posteo (con conteos de reacciones)",
+        "description": "HU-PRV-001: sin sesión, `comments` vuelve vacío y `restricted: true` — el recorte se hace en el servidor, no en el cliente. El conteo real ya viaja en `commentCount` del posteo.",
         "parameters": [
           {
             "name": "id",
@@ -1241,7 +1271,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Comentarios del post",
+            "description": "Comentarios del post (vacíos y con `restricted: true` si no hay sesión)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1252,11 +1282,18 @@
                       "items": {
                         "$ref": "#/components/schemas/Comment"
                       }
+                    },
+                    "restricted": {
+                      "type": "boolean",
+                      "description": "true cuando la petición no traía sesión: `comments` viene vacío a propósito"
                     }
                   }
                 }
               }
             }
+          },
+          "404": {
+            "description": "Post no encontrado, oculto por moderación, o sin acceso (bloqueo o alcance FRIENDS)"
           }
         }
       }

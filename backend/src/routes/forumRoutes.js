@@ -10,6 +10,7 @@ const { blockedWith, isBlockedBetween, excludeBlocked } = require('../lib/blocks
 const storage = require('../lib/storage');
 const { soloVisible } = require('../lib/moderation');
 const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
+const { slugify } = require('../lib/slugify');
 
 const MAX_SUBFORUMS_PER_USER = 3;
 const PAGE_SIZE = 20;
@@ -18,16 +19,6 @@ const MAX_DESCRIPTION_LENGTH = 300;
 const MAX_POST_LENGTH = 10000;
 const MAX_COMMENT_LENGTH = 2000;
 const IMAGE_URL_RE = /^https?:\/\/\S{1,500}$/;
-
-function slugify(name) {
-  return name
-    .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar acentos
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/[\s-]+/g, '-')
-    .slice(0, 48);
-}
 
 const subforumSelect = {
   id: true, name: true, slug: true, description: true, createdAt: true,

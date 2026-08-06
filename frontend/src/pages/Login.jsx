@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate, useSearchParams, Link as RouterLink } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Stack, IconButton, Tooltip,
   CircularProgress, Divider, Collapse, Checkbox, FormControlLabel, Link, Tabs, Tab
@@ -17,6 +17,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
 import api, { API_ORIGIN } from '../services/api';
+import { capturarAtribucion, tomarNextPendiente, registrarAltaSiCorresponde } from '../lib/attribution';
 
 const API_URL = `${API_ORIGIN}/api`;
 
@@ -40,10 +41,39 @@ const INSTANCIAS_SUGERIDAS = ['mstdn.mx', 'mastodon.social'];
 
 const Login = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { user, loading, loginWithToken } = useAuth();
   const { mode, toggle } = useColorMode();
   const errorParam = searchParams.get('error');
   const error = ERROR_MESSAGES[errorParam] || '';
+
+  // HU-CTA-003: si el CTA de un posteo no accesible mandó aquí, el mensaje no
+  // puede afirmar que el posteo exista — la API responde 404 igual para "no
+  // existe" y para "es de amistades", y esa indistinción es la garantía de
+  // privacidad (no se toca).
+  const refParam = searchParams.get('ref');
+  const nextParam = searchParams.get('next');
+  const vieneDePostNoAccesible = refParam === 'post' && /^\/p\/\d+$/.test(nextParam || '');
+
+  // HU-CTA-002: capturar ref/pid/next apenas se aterriza aquí — antes de
+  // cualquier navegación (Mastodon se va del sitio por completo; el enlace
+  // mágico puede abrirse en otra pestaña).
+  useEffect(() => {
+    capturarAtribucion(searchParams);
+  }, [searchParams]);
+
+  // HU-CTA-003: aterriza en `next` si había uno pendiente y es una ruta
+  // interna válida; si no, el destino de siempre. Este es el único punto que
+  // consume `next` para los flujos que vuelven a /login (llave de acceso) —
+  // Mastodon y correo vuelven a /auth/callback y lo consumen ahí.
+  //
+  // Va en un efecto, no en el cuerpo del render: tomarNextPendiente() BORRA
+  // el valor al leerlo, y este componente puede re-renderizarse más de una
+  // vez con `user` ya definido antes de desmontar — leerlo ahí adentro haría
+  // que la segunda lectura ya no encontrara nada y cayera siempre a /feed.
+  useEffect(() => {
+    if (user) navigate(tomarNextPendiente() || '/feed', { replace: true });
+  }, [user, navigate]);
 
   // 0 = Entrar, 1 = Crear cuenta. Los tres métodos viven debajo, en el mismo
   // orden, en ambas pestañas — lo que cambia es la intención declarada
@@ -92,6 +122,7 @@ const Login = () => {
         authResp, loginToken: data.loginToken
       });
       await loginWithToken(verificado.token);
+      await registrarAltaSiCorresponde(false); // login, no alta: solo limpia lo pendiente
     } catch (e) {
       if (e?.name === 'NotAllowedError') setPasskeyError('Cancelado.');
       else setPasskeyError('No se pudo entrar con la llave de acceso.');
@@ -111,6 +142,7 @@ const Login = () => {
         attResp, regToken: data.regToken
       });
       await loginWithToken(creado.token);
+      await registrarAltaSiCorresponde(creado.isNew);
     } catch (e) {
       if (e?.name === 'NotAllowedError') setPasskeyError('Cancelado.');
       else if (e?.name === 'InvalidStateError') setPasskeyError('Esa llave ya está registrada. Usa "Entrar con llave de acceso".');
@@ -148,7 +180,10 @@ const Login = () => {
       </Box>
     );
   }
-  if (user) return <Navigate to="/feed" replace />;
+  // La navegación real la dispara el efecto de arriba (necesita consumir
+  // `next` una sola vez); acá solo se evita seguir mostrando el formulario
+  // mientras eso ocurre.
+  if (user) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -215,6 +250,14 @@ const Login = () => {
               </Tabs>
 
               {error && <Alert severity="error" role="alert" sx={{ width: '100%' }}>{error}</Alert>}
+              {vieneDePostNoAccesible && (
+                // No afirma que el posteo exista ni que sea privado: la API
+                // responde 404 igual para "no existe" y para "es de
+                // amistades" — decirlo distinto filtraría esa distinción.
+                <Alert severity="info" role="status" sx={{ width: '100%' }}>
+                  Inicia sesión para ver si tienes acceso a esta publicación.
+                </Alert>
+              )}
 
               {/* Correo — primero: es el método que cualquiera entiende */}
               <Box component="form" onSubmit={pedirEnlaceMagico} sx={{ width: '100%' }}>

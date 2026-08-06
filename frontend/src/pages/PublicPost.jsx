@@ -1,23 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link as RouterLink } from 'react-router-dom';
+import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import { Box, Stack, Typography, CircularProgress, Alert, Button } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 import PostCard from '../components/PostCard';
 import CommentSection from '../components/CommentSection';
+import InviteBlock from '../components/InviteBlock';
 
 const PublicPost = () => {
   const { id } = useParams();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notFound, setNotFound] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError('');
+    setNotFound(false);
     setPost(null);
     api.get(`/posts/${id}`)
       .then(res => {
@@ -28,6 +32,7 @@ const PublicPost = () => {
       .catch(err => {
         if (cancelled) return;
         setError(err.response?.data?.error || 'No se pudo cargar la publicación.');
+        setNotFound(err.response?.status === 404);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -35,7 +40,18 @@ const PublicPost = () => {
     return () => { cancelled = true; };
   }, [id]);
 
-  if (loading) {
+  // HU-CTA-003 + Trampa 9: la API responde 404 igual para "no existe" y para
+  // "es de amistades" — a propósito, no se toca. Por eso esta redirección
+  // también dispara con un id inexistente; lo que no puede pasar es un
+  // bucle, así que solo redirige sin sesión y nunca a quien ya tiene una
+  // (si hay sesión y sigue sin acceso, se queda en la página de error).
+  useEffect(() => {
+    if (!loading && !authLoading && notFound && !user) {
+      navigate(`/login?ref=post&next=${encodeURIComponent(`/p/${id}`)}`, { replace: true });
+    }
+  }, [loading, authLoading, notFound, user, id, navigate]);
+
+  if (loading || (notFound && !user)) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }} role="status" aria-label="Cargando publicación">
         <CircularProgress />
@@ -66,10 +82,16 @@ const PublicPost = () => {
               disableReactions={!user}
               commentCount={commentCount}
             />
+            {/* HU-CTA-001: debajo del posteo, encima de comentarios — nunca
+                al revés, y nunca si ya hay sesión. */}
+            {!user && (
+              <InviteBlock authorId={post.author?.id} authorHandle={post.author?.handle} />
+            )}
             <Box>
               <Typography variant="h6" sx={{ mb: 1 }}>Comentarios</Typography>
               <CommentSection
                 postId={post.id}
+                commentCount={commentCount}
                 onCountChange={setCommentCount}
                 readOnly={!user}
               />

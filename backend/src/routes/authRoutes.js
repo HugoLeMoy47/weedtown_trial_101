@@ -181,8 +181,12 @@ router.get('/mastodon/callback', async (req, res) => {
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     log('auth_exito', { proveedor: 'MASTODON', modo: identidad ? 'login' : 'alta', userId: user.id, requestId: req.id });
-    // Token en el fragmento (#): no llega al servidor del frontend ni queda en logs de acceso
-    res.redirect(frontendUrl(`/auth/callback#token=${token}`));
+    // Token en el fragmento (#): no llega al servidor del frontend ni queda en
+    // logs de acceso. `isNew` sí puede ir en la query: no es secreto, y es la
+    // señal que el frontend usa para decidir si registra la atribución de
+    // alta (HU-CTA-002) — no se guarda nada en el `state` firmado para esto.
+    const isNewQuery = identidad ? '' : '?isNew=1';
+    res.redirect(frontendUrl(`/auth/callback${isNewQuery}#token=${token}`));
   } catch (e) {
     console.error('Error en callback OAuth Mastodon:', e);
     res.redirect(frontendUrl('/login?error=oauth'));
@@ -245,6 +249,37 @@ router.get('/me', requireAuth, async (req, res) => {
     console.error('Error en /auth/me:', e);
     res.status(500).json({ error: 'Error al obtener la sesión' });
   }
+});
+
+// HU-CTA-002 — atribución de altas, sin migración: nada se guarda en la
+// base, solo se escribe una línea en logger.js. Puramente observacional
+// (criterio 5): nunca decide autorización, así que un valor no reconocido o
+// una llamada fuera de ventana simplemente no deja rastro, sin error.
+const REF_WHITELIST = ['post', 'perfil', 'directo'];
+// Ventana desde la creación de la cuenta dentro de la que se acepta la
+// atribución. El frontend solo llama a este endpoint cuando el propio
+// backend acaba de marcar la sesión como alta nueva (?isNew=1 o el `isNew`
+// del passkey) — esta ventana es una segunda defensa contra un POST suelto
+// sobre una cuenta vieja, no el mecanismo principal.
+const ATRIBUCION_VENTANA_MS = 10 * 60 * 1000;
+
+// POST /api/auth/attribution { ref, pid? } — requiere sesión (la cuenta que
+// se acaba de crear) porque la atribución es "esta alta vino de tal CTA", y
+// solo tiene sentido para la cuenta que la propia sesión ya identifica.
+router.post('/attribution', requireAuth, async (req, res) => {
+  const ref = REF_WHITELIST.includes(req.body?.ref) ? req.body.ref : null;
+  const pidRaw = req.body?.pid;
+  const pid = Number.isInteger(pidRaw) && pidRaw > 0 ? pidRaw : null;
+  if (!ref) return res.status(204).end();
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { createdAt: true } });
+    if (user && Date.now() - new Date(user.createdAt).getTime() < ATRIBUCION_VENTANA_MS) {
+      log('alta_atribuida', { ref, pid, userId: req.user.id, requestId: req.id });
+    }
+  } catch (e) {
+    console.error('Error registrando atribución de alta:', e);
+  }
+  res.status(204).end();
 });
 
 module.exports = router;
