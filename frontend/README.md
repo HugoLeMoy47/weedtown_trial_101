@@ -53,9 +53,12 @@ Límite aceptado: un enlace que **nunca** se expandió antes cae en la ficha gen
 
 ### Variables
 
-| Variable (`wrangler.jsonc` → `vars`) | Qué es |
-|---|---|
-| `PREVIEW_API_URL` | Origen del backend que consulta el Worker para `GET /api/posts/:id/preview`. En local (`npm run worker:dev`) apunta a `http://localhost:4000`; **en producción hay que cambiarlo a `https://weedtown-api.onrender.com`** antes de desplegar (o moverlo a un secreto/variable del dashboard de Cloudflare si no se quiere commitear el dominio real) |
+| Variable | Dónde vive | Valor |
+|---|---|---|
+| `PREVIEW_API_URL` | `wrangler.jsonc` → `vars` (raíz) | `http://localhost:4000` — solo para `wrangler dev` / `npm run worker:dev` |
+| `PREVIEW_API_URL` | `wrangler.jsonc` → `env.production.vars` | `https://weedtown-api.onrender.com` — lo que de verdad se despliega |
+
+Están separados a propósito: si `npm run deploy` leyera el valor de arriba, el Worker en Cloudflare intentaría hablarle a "localhost" desde el borde, fallaría siempre, y como el diseño cae a la ficha genérica sin error (ver la tabla de abajo), **nadie se enteraría** — mismo patrón de "variable mal puesta apaga algo en silencio" que el `apiLimiter` del backend. Por eso `npm run deploy` ya corre `wrangler deploy --env production`: no hay forma de mandar el valor de desarrollo a producción por accidente. Verificado con `npx wrangler deploy --dry-run` (sin `--env`, resuelve a `localhost:4000`) y `npx wrangler deploy --dry-run --env production` (resuelve al dominio real), sin desplegar de verdad.
 
 ### Probarlo en local
 
@@ -76,4 +79,4 @@ curl http://127.0.0.1:8787/feed         # debe servir el SPA igual que siempre, 
 npm run deploy
 ```
 
-Compila y corre `wrangler deploy`. Verifica antes que `vars.PREVIEW_API_URL` en `wrangler.jsonc` apunte al backend real — no al de desarrollo.
+Compila y corre `wrangler deploy --env production`, que toma `PREVIEW_API_URL` de `env.production.vars` en `wrangler.jsonc` — ya apunta al backend real, no hace falta editar nada antes de desplegar.

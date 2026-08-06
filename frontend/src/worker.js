@@ -32,6 +32,25 @@ const UN_DIA_MS = 24 * UNA_HORA_MS;
 const TIMEOUT_BACKEND_MS = 1500;
 const CACHED_AT_HEADER = 'X-Wt-Cached-At';
 
+// HU-CAC-001 (ciclo 7D): dos TTL distintos a propósito, uno para cada
+// caché, y nunca deben mezclarse — ver prepararParaEdge/prepararParaCliente.
+//   EDGE:    lo que guarda la Cache API del Worker. Largo (24h) porque es la
+//            defensa contra el backend dormido (T8) — cuanto más tiempo
+//            aguante la copia, menos veces hay que despertarlo.
+//   CLIENTE: lo que de verdad recibe el navegador en el header Cache-Control
+//            de la respuesta HTTP. Corto (minutos): el HTML de /p/:id es el
+//            shell del SPA — referencia los bundles de CRA con hash en el
+//            nombre. Si el navegador lo cachea 24h y mientras tanto se
+//            redespliega el frontend, pide un /static/js/main.VIEJO.js que
+//            ya no existe (confirmado en vivo: un rebuild real BORRA el
+//            bundle anterior de build/, no lo deja al lado) — página en
+//            blanco, sin error visible, y era una regresión ya activa desde
+//            el 7B (antes de este Worker, Static Assets no mandaba 24h).
+//            Los rastreadores (WhatsApp, etc.) cachean por su cuenta y
+//            mucho más tiempo que esto — no necesitan que se lo pidamos.
+const EDGE_CACHE_CONTROL = 'public, max-age=86400';
+const CLIENTE_CACHE_CONTROL = 'public, max-age=300';
+
 const RUTA_POST = /^\/p\/(\d+)\/?$/;
 
 // URL del backend: CONFIGURABLE, nunca incrustada (criterio 8 de
@@ -39,8 +58,30 @@ const RUTA_POST = /^\/p\/(\d+)\/?$/;
 // producción apunta a weedtown-api.onrender.com, en `wrangler dev` local cae
 // al backend de desarrollo. Se puede sobreescribir sin tocar código:
 // `wrangler dev --var PREVIEW_API_URL:http://localhost:4010`.
+//
+// Tarea 3.3 (ciclo 7D): "localhost" en PREVIEW_API_URL es legítimo en
+// `wrangler dev` y sería un desastre silencioso ya desplegado (el Worker en
+// Cloudflare jamás puede alcanzar el "localhost" de la máquina de quien
+// desplegó — toda ficha caería en la genérica, para siempre, sin que nada
+// avise). Mismo remedio que API_LIMITER_MAX en el backend: no se bloquea
+// —el caso local es válido— se hace RUIDOSO. `console.error` (no .warn) para
+// que aparezca en los logs de `wrangler tail`/el dashboard con el nivel que
+// de verdad llama la atención si esto corriera en producción por accidente.
+let avisoLocalYaEmitido = false;
 function urlBackend(env) {
-  return (env.PREVIEW_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+  const url = (env.PREVIEW_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+  if (!avisoLocalYaEmitido && /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(url)) {
+    avisoLocalYaEmitido = true;
+    console.error(
+      `⚠️ PREVIEW_API_URL apunta a una dirección local (${url}). ` +
+      'Es normal en `wrangler dev`. Si ves esto en producción, el Worker ' +
+      'desplegado NUNCA puede alcanzar esa URL desde el edge de Cloudflare: ' +
+      'todas las fichas de /p/:id van a caer en la genérica, sin ningún ' +
+      'error visible. Revisa `env.production.vars.PREVIEW_API_URL` en ' +
+      'wrangler.jsonc y que el deploy haya usado `--env production`.'
+    );
+  }
+  return url;
 }
 
 // ---------- Ficha genérica (fallback de WeedTown, sin datos de ningún posteo) ----------
@@ -79,8 +120,9 @@ async function pedirFicha(id, env) {
 
 // ---------- Inyección de meta tags (Trampa T1, la más grave de este ciclo) ----------
 //
-// NOTA DE IMPLEMENTACIÓN (esto salió distinto de lo planeado — el plan pedía
-// "HTMLRewriter con setAttribute" y el código manda sobre el plan):
+// NOTA DE IMPLEMENTACIÓN (esto salió distinto de lo planeado dos veces — el
+// plan pedía "HTMLRewriter con setAttribute" y el código manda sobre el
+// plan):
 //
 // El diseño original era en DOS pasos — inyectar un esqueleto vacío con
 // `head.append(html, {html:true})` y, en un segundo handler registrado sobre
@@ -98,20 +140,19 @@ async function pedirFicha(id, env) {
 // concatenación sin escapar: `escaparAtributo` corre sobre cada valor ANTES
 // de entrar al template, nunca al revés.
 //
-// SEGUNDO HALLAZGO en la misma prueba: `titulo` NO se re-escapa aquí a
-// propósito. `preview.js` en el backend ya lo escapa (es criterio de
-// aceptación explícito de HU-SHR-001, verificado en
-// backend/tests/preview.test.js) — volver a pasarlo por `escaparAtributo`
-// lo rompe dos veces: un `&quot;` ya escapado se vuelve `&amp;quot;`, y ESO
-// es lo que se ve, literal, en la ficha ("&quot;" en vez de una comilla).
-// `descripcion` es un string fijo que este mismo proyecto controla, sin
-// datos de ningún posteo — tampoco necesita esta capa.
-// `imagen` SÍ se escapa: es una URL que viene de `Post.image`, y la validación
-// del backend (`IMAGE_URL_RE`, en postRoutes.js) solo exige "sin espacios" —
-// `"`, `<`, `>` pasan esa regex sin problema, así que aquí es donde de verdad
-// hace falta la defensa. `imagenAlt` y `url` se escapan por consistencia
-// (developer-controlled, pero cuesta cero y evita sorpresas si el manifiesto
-// de campaña algún día trae una comilla).
+// SEGUNDO HALLAZGO, corregido en el ciclo 7D (HU-SEC-001): la primera versión
+// de este archivo NO re-escapaba `titulo`/`descripcion` porque "ya venían
+// escapados de preview.js". Ese contrato entre dos sistemas que se despliegan
+// por separado (Express en Render, este Worker en Cloudflare) solo vivía en
+// un comentario — y de hecho mordió una vez durante el propio 7B (doble
+// escapado visible). La regla ahora es la única que no depende de que nadie
+// se acuerde de nada en el otro repo:
+//
+//   EL ESCAPADO SE HACE AQUÍ Y SOLO AQUÍ, PORQUE AQUÍ ES DONDE SE EMITE
+//   HTML. `preview.js` devuelve JSON plano; TODO lo que este archivo
+//   interpola pasa por `escaparAtributo`, sin excepciones ni "porque es
+//   fijo" — la excepción de ayer en `descripcion` es justo la que se
+//   rompería el día que alguien la personalice con datos del posteo.
 function escaparAtributo(valor) {
   return String(valor)
     .replace(/&/g, '&amp;')
@@ -121,19 +162,28 @@ function escaparAtributo(valor) {
     .replace(/'/g, '&#39;');
 }
 
+// Tarea 3.1 (ciclo 7D): og:image:width/height solo se declaran cuando
+// SABEMOS las dimensiones de verdad — las imágenes de campaña son 1200×630
+// por diseño (D2 del plan). Con imagen propia del posteo (`tieneImagen`) no
+// hay forma de saberlo sin decodificar el archivo, que este proyecto no
+// sube ni procesa: declarar 1200×630 igual, para una foto vertical que
+// alguien subió desde el celular, es peor que no declarar nada — las redes
+// que sí las leen literalmente (en vez de solo como sugerencia) mostrarían
+// la imagen recortada o distorsionada con más confianza de la que hay.
 function construirMetaTags(datos) {
-  const titulo = datos.titulo;
-  const descripcion = datos.descripcion;
+  const titulo = escaparAtributo(datos.titulo);
+  const descripcion = escaparAtributo(datos.descripcion);
   const imagen = escaparAtributo(datos.imagen);
   const imagenAlt = escaparAtributo(datos.imagenAlt);
   const ogUrl = escaparAtributo(datos.url);
+  const dimensiones = datos.dimensionesConocidas
+    ? '<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n'
+    : '';
   return `
 <meta property="og:title" content="${titulo}">
 <meta property="og:description" content="${descripcion}">
 <meta property="og:image" content="${imagen}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="${imagenAlt}">
+${dimensiones}<meta property="og:image:alt" content="${imagenAlt}">
 <meta property="og:url" content="${ogUrl}">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="WeedTown">
@@ -156,11 +206,6 @@ class InyectarMeta {
   }
 }
 
-// og:image:width/height quedan fijos en 1200x630 (el formato primario de la
-// campaña, D2 del plan) también cuando la imagen es propia del posteo, que
-// puede tener otras proporciones. Es una imprecisión aceptada: las redes
-// usan esas dos etiquetas como sugerencia de layout, no como verdad
-// absoluta, y siguen inspeccionando el archivo real antes de mostrarlo.
 function datosMeta(ficha, url, id) {
   const generica = fichaGenerica(url);
   return {
@@ -168,6 +213,9 @@ function datosMeta(ficha, url, id) {
     descripcion: ficha.descripcion || generica.descripcion,
     imagen: ficha.imagen || generica.imagen,
     imagenAlt: ficha.imagenAlt || generica.imagenAlt,
+    // Solo la imagen de campaña (o la genérica, que también lo es) tiene
+    // dimensiones conocidas de antemano — ver la nota en construirMetaTags.
+    dimensionesConocidas: !ficha.tieneImagen,
     // Canónica y sin los parámetros con que haya llegado (criterio 3): se
     // arma con el origen real de la petición + la ruta limpia, nunca con
     // `url.href` tal cual llegó.
@@ -182,7 +230,46 @@ async function armarHtmlConMeta(env, url, datos) {
     .transform(indexRes);
   const headers = new Headers(transformado.headers);
   headers.set('Content-Type', 'text/html; charset=utf-8');
+  // Sin Cache-Control ni X-Wt-Cached-At todavía: esta función arma el HTML,
+  // no decide cómo se cachea — eso es trabajo de prepararParaEdge/
+  // prepararParaCliente (HU-CAC-001), para que sea imposible que las dos
+  // copias terminen compartiendo headers por accidente.
   return new Response(transformado.body, { status: 200, headers });
+}
+
+// HU-CAC-001 (ciclo 7D) — HALLAZGO EN LA MISMA PRUEBA, y grave: la primera
+// versión de estas dos funciones hacía `respuesta.clone()` y mutaba los
+// headers DEL CLON con `.set()`/`.delete()`. Funciona perfecto cuando
+// `respuesta` sale recién armada de `armarHtmlConMeta` — pero revienta con
+// `TypeError: Can't modify immutable headers` cuando `respuesta` es
+// `cacheada`, el Response que devuelve `cache.match()`: los Response de la
+// Cache API son inmutables, y `.clone()` NO levanta esa inmutabilidad, se
+// propaga al clon. Eso significa que TODA petición sobre caché (fresca o
+// rancia — la mayoría del tráfico real, si el diseño funciona) tiraba, caía
+// al `catch` de `fetch()` y servía el SPA plano SIN NINGUNA meta tag — peor
+// que la ficha genérica, indistinguible de que este Worker no existiera.
+//
+// El fix real: nunca mutar headers ajenos. Se arma un `Headers` NUEVO a
+// partir de los del original (el constructor `new Headers(x)` siempre
+// produce una instancia mutable, sin importar si `x` era inmutable) y se
+// arma un Response nuevo encima — mismo patrón que ya usaba
+// `armarHtmlConMeta` para el Response que sale de HTMLRewriter, que por eso
+// nunca mostró este bug.
+function prepararParaEdge(respuesta) {
+  const headers = new Headers(respuesta.headers);
+  headers.set('Cache-Control', EDGE_CACHE_CONTROL);
+  headers.set(CACHED_AT_HEADER, String(Date.now()));
+  return new Response(respuesta.clone().body, { status: respuesta.status, headers });
+}
+
+// La copia que de verdad llega al navegador: TTL corto (HU-CAC-001) y SIN
+// X-Wt-Cached-At (Tarea 3.2 — es un header interno de esta estrategia de
+// caché, no información que el cliente necesite ni deba ver).
+function prepararParaCliente(respuesta) {
+  const headers = new Headers(respuesta.headers);
+  headers.set('Cache-Control', CLIENTE_CACHE_CONTROL);
+  headers.delete(CACHED_AT_HEADER);
+  return new Response(respuesta.clone().body, { status: respuesta.status, headers });
 }
 
 // ---------- La tabla de caché resistente (Trampa T8, la más costosa del ciclo) ----------
@@ -228,11 +315,11 @@ async function servirFichaDePost(id, env, ctx, url) {
     const cacheadaEn = Number(cacheada.headers.get(CACHED_AT_HEADER)) || 0;
     const edadMs = Date.now() - cacheadaEn;
     if (edadMs < UNA_HORA_MS) {
-      return cacheada;
+      return prepararParaCliente(cacheada);
     }
     if (edadMs < UN_DIA_MS) {
       ctx.waitUntil(refrescarEnSegundoPlano(id, env, cache, cacheKey, url));
-      return cacheada;
+      return prepararParaCliente(cacheada);
     }
     // >= 24h: se guardó con max-age=86400, así que en la práctica la Cache
     // API ya la habrá evictado sola. Si por lo que sea sigue aquí, se cae al
@@ -250,11 +337,9 @@ async function servirFichaDePost(id, env, ctx, url) {
     return armarHtmlConMeta(env, url, datosMeta(fichaGenerica(url), url, id));
   }
 
-  const respuesta = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, id));
-  respuesta.headers.set('Cache-Control', 'public, max-age=86400');
-  respuesta.headers.set(CACHED_AT_HEADER, String(Date.now()));
-  ctx.waitUntil(cache.put(cacheKey, respuesta.clone()));
-  return respuesta;
+  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, id));
+  ctx.waitUntil(cache.put(cacheKey, prepararParaEdge(base)));
+  return prepararParaCliente(base);
 }
 
 async function refrescarEnSegundoPlano(id, env, cache, cacheKey, url) {
@@ -265,10 +350,8 @@ async function refrescarEnSegundoPlano(id, env, cache, cacheKey, url) {
   }
   if (resultado.estado === 'fallo') return; // sigue fallando: se deja la rancia como está
 
-  const respuesta = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, id));
-  respuesta.headers.set('Cache-Control', 'public, max-age=86400');
-  respuesta.headers.set(CACHED_AT_HEADER, String(Date.now()));
-  await cache.put(cacheKey, respuesta);
+  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, id));
+  await cache.put(cacheKey, prepararParaEdge(base));
 }
 
 export default {
@@ -298,3 +381,10 @@ export default {
     }
   }
 };
+
+// Exports nombrados SOLO para worker.test.js (HU-SEC-001, ciclo 7D): son
+// funciones puras (string -> string), sin ninguna API de runtime de
+// Workers (HTMLRewriter, caches, ASSETS), así que se pueden importar y
+// probar con Jest normal — sin levantar `wrangler dev` ni agregar
+// dependencias nuevas. No las importa nada más que el propio test.
+export { escaparAtributo, construirMetaTags, datosMeta, fichaGenerica };

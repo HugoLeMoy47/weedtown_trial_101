@@ -15,7 +15,7 @@ const TITULO_MAX = 70;
 // D8 (plan del ciclo): la descripción es una invitación a la red, no más
 // contenido del posteo — el título ya adelantó de qué se trata. Es fija a
 // propósito: no se arma con datos del posteo, así que no hay nada nuevo que
-// escapar ni que fugue.
+// fugue.
 const DESCRIPCION_INVITACION = 'Se comparte en WeedTown, la red social de la comunidad cannábica de México. Únete para ver la conversación completa.';
 
 const SITE_NAME = 'WeedTown';
@@ -27,28 +27,28 @@ function colapsarEspacios(texto) {
   return texto.replace(/\s+/g, ' ').trim();
 }
 
-// Escapa las cinco entidades HTML mínimas. El destino final de este texto es
-// el <head> de un documento (lo inyecta el Worker de HU-SHR-002 vía
-// HTMLRewriter), así que sale ya inerte desde aquí — dos capas de defensa
-// contra un posteo con `"><script>` en el contenido, no una.
-function escaparHtml(texto) {
-  return texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
+// HU-SEC-001 (ciclo 7D): este endpoint devuelve JSON — el carácter `"` es
+// `"`, no `&quot;`. NO escapa HTML. El escapado se hace una sola vez, en
+// `frontend/src/worker.js`, que es quien de verdad emite HTML — es el único
+// punto de salida y el único lugar donde tiene sentido decidir cómo se
+// neutraliza cada valor. Escapar aquí TAMBIÉN fue el diseño original del
+// ciclo 7B, y mordió en la práctica: un backend en Render y un Worker en
+// Cloudflare se despliegan por separado, unidos por un contrato ("preview.js
+// ya escapa, worker.js no debe volver a hacerlo") que solo vivía en un
+// comentario. El día que alguien limpie el escapado de un lado sin saber del
+// otro, o lo agregue de los dos, el resultado es HTML crudo inyectado o un
+// doble escapado visible — ninguno de los dos con una prueba que lo agarre
+// en ESTE archivo, porque ESTE archivo no es quien emite HTML.
+//
 // Extracto a ~70 caracteres cortado en palabra completa (D8): es la línea en
 // negritas que decide si alguien toca el enlace.
 function truncarTitulo(contenido) {
   const limpio = colapsarEspacios(contenido || '');
-  if (limpio.length <= TITULO_MAX) return escaparHtml(limpio);
+  if (limpio.length <= TITULO_MAX) return limpio;
   const corte = limpio.slice(0, TITULO_MAX);
   const ultimoEspacio = corte.lastIndexOf(' ');
   const cortado = ultimoEspacio > 0 ? corte.slice(0, ultimoEspacio) : corte;
-  return escaparHtml(`${cortado}…`);
+  return `${cortado}…`;
 }
 
 function urlBaseFrontend() {
@@ -92,4 +92,4 @@ function armarFicha(post) {
   };
 }
 
-module.exports = { armarFicha, truncarTitulo, escaparHtml, DESCRIPCION_INVITACION, SITE_NAME };
+module.exports = { armarFicha, truncarTitulo, DESCRIPCION_INVITACION, SITE_NAME };

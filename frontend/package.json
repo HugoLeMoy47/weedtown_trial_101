@@ -9,7 +9,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "worker:dev": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy --env production"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

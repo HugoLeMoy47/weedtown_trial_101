@@ -35,13 +35,27 @@
   },
   // URL del backend que consulta src/worker.js para la ficha de /p/:id
   // (GET /api/posts/:id/preview) — configurable a propósito (nunca
-  // incrustada en el código, criterio 8 de HU-SHR-002). En local
-  // (`npm run worker:dev`) apunta al backend de desarrollo; en producción
-  // hay que apuntarla a weedtown-api.onrender.com, sea aquí o con
-  // `wrangler secret`/variable de entorno del dashboard si se prefiere no
-  // commitear el dominio real.
+  // incrustada en el código, criterio 8 de HU-SHR-002).
+  //
+  // Este valor de arriba es el que usa `wrangler dev` (sin --env) — solo
+  // para desarrollo local. A PROPÓSITO no es el valor que se despliega: si
+  // `npm run deploy` lo leyera directo, el Worker en Cloudflare intentaría
+  // hablarle a "localhost" desde el borde, fallaría siempre, y como el
+  // diseño cae a la ficha genérica sin error (T8/T4), NADIE se enteraría —
+  // mismo patrón de "variable mal puesta apaga algo en silencio" que
+  // apiLimiter (ver Tarea 0 del ciclo 7B en app.js). Por eso producción vive
+  // en su propio bloque `env.production` de abajo, y `npm run deploy` lo
+  // pide explícitamente con `--env production` — no hay forma de desplegar
+  // "por accidente" con el valor de desarrollo.
   "vars": {
     "PREVIEW_API_URL": "http://localhost:4000"
+  },
+  "env": {
+    "production": {
+      "vars": {
+        "PREVIEW_API_URL": "https://weedtown-api.onrender.com"
+      }
+    }
   },
   "compatibility_flags": [
     "nodejs_compat"

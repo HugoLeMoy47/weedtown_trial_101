@@ -51,21 +51,29 @@ module.exports = async function run() {
     r = await call('GET', `/api/posts/${rPostCorto.id}/preview`);
     check('titulo corto sale igual, sin elipsis', r.data.titulo === 'posteo corto');
 
-    console.log('\n  — Inyección de HTML: el contenido sale escapado (Trampa 1) —');
+    console.log('\n  — HU-SEC-001 (ciclo 7D): este endpoint es JSON, no escapa HTML —');
+    // El escapado se mudó al Worker (frontend/src/worker.js), que es quien
+    // de verdad emite HTML. Este endpoint devuelve el contenido TAL CUAL —
+    // escaparlo aquí sería el bug que el 7D vino a corregir: dos sistemas
+    // desplegados por separado, unidos por un contrato que solo vivía en un
+    // comentario. La prueba de que la inyección sale inerte en el HTML final
+    // vive en frontend/src/worker.test.js, contra quien de verdad la neutraliza.
     const rPostInyeccion = await prisma.post.create({
       data: { content: '"><script>alert(1)</script>', visibility: 'PUBLIC', authorId: ana.id }
     });
     r = await call('GET', `/api/posts/${rPostInyeccion.id}/preview`);
     check(
-      'el título no contiene la etiqueta <script> cruda',
-      r.status === 200 && !r.data.titulo.includes('<script>') && !r.data.titulo.includes('"><'),
+      'el título llega TAL CUAL, sin escapar — es JSON, no HTML',
+      r.status === 200 && r.data.titulo === '"><script>alert(1)</script>',
       r.data.titulo
     );
-    check(
-      'el título trae las entidades escapadas',
-      r.data.titulo.includes('&quot;&gt;&lt;script&gt;') || r.data.titulo.includes('&lt;script&gt;'),
-      r.data.titulo
-    );
+
+    console.log('\n  — Un "&" legítimo tampoco se toca (nada que desescapar después) —');
+    const rPostAmpersand = await prisma.post.create({
+      data: { content: 'Ron & cola', visibility: 'PUBLIC', authorId: ana.id }
+    });
+    r = await call('GET', `/api/posts/${rPostAmpersand.id}/preview`);
+    check('el "&" llega literal, no como &amp;', r.data.titulo === 'Ron & cola', r.data.titulo);
 
     console.log('\n  — Fuga de contenido privado (Trampa 1 del plan): siempre 404, nunca 403 —');
     const rFriends = await prisma.post.create({
