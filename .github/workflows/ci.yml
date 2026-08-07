@@ -58,6 +58,15 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      # Solo el backend: hoy está en 0 avisos (ciclo 8E), así que un aviso
+      # alto nuevo aquí es señal real, no ruido. El frontend queda fuera a
+      # propósito — hereda altos/críticos del toolchain de Create React App
+      # (deuda de fondo documentada en la auditoría, fuera de este ciclo) y
+      # este gate fallaría de inmediato sin decir nada nuevo.
+      - name: Auditar dependencias (solo altas/críticas)
+        working-directory: backend
+        run: npm audit --audit-level=high
+
       - name: Generar el cliente de Prisma
         working-directory: backend
         run: npx prisma generate
