@@ -88,8 +88,20 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # CI=true convierte los warnings de ESLint en error: una variable sin usar
-      # o un hook con dependencias incompletas rompen la tanda.
+      # CI=true hace que react-scripts test corra una vez y salga (sin watch
+      # mode, que es el default fuera de CI y dejaría el job colgado para
+      # siempre). Sin este paso, worker.test.js (HU-SEC-001: que la inyección
+      # de HTML en /p/:id salga inerte) y rutaInterna.test.js nunca corrían en
+      # CI — la única defensa automática contra esa inyección no protegía nada.
+      - name: Pruebas
+        working-directory: frontend
+        env:
+          CI: true
+        run: npm test
+
+      # CI=true TAMBIÉN convierte los warnings de ESLint en error acá: una
+      # variable sin usar o un hook con dependencias incompletas rompen la
+      # tanda.
       - name: Compilar
         working-directory: frontend
         env:
