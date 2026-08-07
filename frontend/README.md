@@ -80,3 +80,19 @@ npm run deploy
 ```
 
 Compila y corre `wrangler deploy --env production`, que toma `PREVIEW_API_URL` de `env.production.vars` en `wrangler.jsonc` — ya apunta al backend real, no hace falta editar nada antes de desplegar.
+
+### Deploy automático (Cloudflare) — y por qué el comando importa dos veces
+
+En la práctica **nadie corre `npm run deploy` a mano en producción**: Cloudflare tiene su propia integración de Git conectada a este repo, y hace un deploy automático en cada push a `main`. Eso significa que el comando correcto tiene que estar bien puesto **en dos lugares independientes**, no solo en `package.json`:
+
+1. **`package.json` → script `deploy`** (arriba): ya corre `wrangler deploy --env production`. Este es el que usa quien despliega a mano desde su máquina.
+2. **El dashboard de Cloudflare, en su propio campo de configuración** — Workers & Pages → **`weedtown`** → **Settings → Build → Build configuration → Deploy command**. Este campo **no lee `package.json`**: es un comando independiente que Cloudflare guarda en su propia configuración de la integración de Git, y es el que corre en cada deploy automático. Debe decir exactamente:
+   ```
+   npx wrangler deploy --env production
+   ```
+
+**Por qué el flag es obligatorio en los dos:** sin `--env production`, `wrangler deploy` toma `vars` de la raíz de `wrangler.jsonc` — el valor de desarrollo de `PREVIEW_API_URL` (`http://localhost:4000`), inalcanzable desde el edge de Cloudflare (ver la sección "Variables" arriba y el comentario de `src/worker.js:62-69`). El Worker no falla ni avisa: cae a la ficha genérica en silencio para *todo* `/p/:id`.
+
+**Esto ya pasó.** El campo del dashboard llegó a tener el comando sin el flag, y `weedtown.social` sirvió la ficha genérica para todos los posteos hasta que se corrigió (2026-08-07). Si vuelves a configurar este Worker desde cero, o si Cloudflare alguna vez resetea la configuración de build al reconectar el repositorio, **revisa este campo primero** — es la causa más probable si las fichas de `/p/:id` dejan de traer datos reales sin que nada más haya cambiado.
+
+**El dominio también vive solo en el dashboard.** `weedtown.social` está enlazado al Worker como **Custom Domain** (Settings → **Domains**), no como una Workers Route de zona clásica — si buscas el binding en "Workers Routes" a nivel de cuenta, esa lista aparece vacía a propósito; no es un error, es que el binding vive en la página del Worker, no en la de la zona.

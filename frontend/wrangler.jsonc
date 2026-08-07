@@ -50,6 +50,15 @@
   "vars": {
     "PREVIEW_API_URL": "http://localhost:4000"
   },
+  // El deploy AUTOMÁTICO (integración de Git de Cloudflare, en cada push a
+  // `main`) no lee el script `deploy` de package.json — usa su propio comando,
+  // guardado aparte en el dashboard: Workers & Pages > weedtown > Settings >
+  // Build > Deploy command. Ese campo YA CAUSÓ UN INCIDENTE (2026-08-06/07):
+  // llegó a estar sin "--env production", así que tomaba los `vars` de la
+  // raíz de este archivo (localhost) en vez de los de abajo, y /p/:id sirvió
+  // la ficha genérica para TODO el sitio, sin ningún error visible. Debe decir
+  // exactamente `npx wrangler deploy --env production`. Detalle completo en
+  // frontend/README.md → "Deploy automático (Cloudflare)".
   "env": {
     "production": {
       "vars": {

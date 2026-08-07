@@ -52,7 +52,7 @@
 | Exportar mis datos y eliminar (anonimizar) mi cuenta, con bitácora propia | ✅ Funcionando |
 | Cuarentena de altas nuevas para contacto directo (toque, chat), diferenciada por método de acceso — HU-SEG-006/007 | ✅ Funcionando |
 | Control de spam: contenido repetido en ráfaga y exceso de enlaces por posteo | ✅ Funcionando |
-| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando |
+| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando localmente — **no corre en CI** (ver [Integración continua](#integración-continua)) |
 | Posteo público por enlace (`/p/:id`, visible sin sesión si es `PUBLIC`); un posteo oculto por moderación deja de resolverse para cualquiera, incluida su propia autora | ✅ Funcionando |
 | Bloque de invitación bajo un posteo público para quien no tiene sesión, con atribución de altas (`?ref=post`) sin migración — solo una línea en el log estructurado | ✅ Funcionando |
 | Posteo no accesible (de amistades o inexistente) sin sesión → redirige a iniciar sesión y regresa al mismo enlace tras el alta, sin bucles ni distinguir "privado" de "no existe" | ✅ Funcionando |
@@ -432,10 +432,12 @@ El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin d
 
 | Trabajo | Qué hace |
 |---|---|
-| **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` |
-| **Frontend** | `npm run build` con `CI=true`, que convierte los warnings de ESLint en error |
+| **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` (integración) |
+| **Frontend** | `npm test` (unitarias — `worker.test.js`, `rutaInterna.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
 
 El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se pisarían. El Postgres del runner nace y muere con el trabajo, así que tampoco hay secretos que guardar — el `JWT_SECRET` se genera con `openssl rand` al vuelo. No hace falta configurar nada en el repositorio para que funcione.
+
+**Lo que NO corre en CI:** las pruebas E2E de Playwright (`e2e/`). Viven y pasan en local (ver más abajo), pero levantar backend + frontend compilado + Chromium dentro del runner no está armado todavía — es trabajo de infraestructura de pruebas pendiente, no una omisión silenciosa: quien lea esta sección ya sabe que esa cobertura depende de que alguien la corra a mano antes de confiar en ella.
 
 El runner de pruebas detecta dónde está corriendo: en local lee `.env.test`, y en CI toma las variables ya inyectadas en el entorno. Los tres guardias se aplican igual en ambos casos.
 
@@ -458,14 +460,18 @@ Después, desde cualquier equipo de la red: `http://<IP-LAN>:3000`.
 | `JWT_SECRET` | Secreto para firmar los JWT de sesión y el `state` de OAuth. Usar un valor largo y aleatorio |
 | `BACKEND_URL` | URL pública del backend; forma el `redirect_uri` de OAuth (`{BACKEND_URL}/api/auth/mastodon/callback`) |
 | `FRONTEND_URL` | URL del frontend; destino de los redirects post-login **y RP ID de las llaves de acceso** (su hostname). WebAuthn exige un dominio válido — no funciona sobre una IP de LAN, aunque el resto de la app sí |
+| `ALLOWED_ORIGINS` | Orígenes adicionales permitidos por CORS, separados por comas (opcional; `FRONTEND_URL` ya está permitido sin esto) |
 | `PORT` | Puerto del backend (default 4000) |
+| `NODE_ENV` | El host la define solo (Render la pone en `production`). Cambia el formato de logging de morgan — no hace falta tocarla en desarrollo |
 | `STORAGE_DRIVER` | `local` (default, disco del proceso) o `supabase` (Supabase Storage). **En producción tiene que ser `supabase`** |
 | `SUPABASE_URL` · `SUPABASE_SERVICE_KEY` · `SUPABASE_BUCKET` | Solo con el driver `supabase`. La service key es secreta y nunca debe llegar al frontend |
 | `MAIL_DRIVER` | `log` (default, imprime el enlace mágico en la consola) o `resend` (envío real). **En producción tiene que ser `resend`** |
 | `RESEND_API_KEY` · `RESEND_FROM` | Solo con el driver `resend`. `RESEND_FROM` necesita un dominio propio verificado en Resend |
 | `SIGNUP_QUARANTINE_HOURS_EMAIL` · `SIGNUP_QUARANTINE_HOURS_PASSKEY` | Horas que una cuenta dada de alta por correo (default 3) o por llave de acceso (default 24) debe esperar antes de mandar un toque o abrir un chat nuevo — Mastodon no tiene variable, su cuarentena es 0h. Una cuenta con varias identidades toma la más corta. Ver [Cuarentena de cuentas nuevas](#cuarentena-de-cuentas-nuevas-diferenciada-por-método-hu-seg-006007) |
+| `API_LIMITER_MAX` | **Solo para pruebas** — sube el límite general de la API (300/15min por default, el presupuesto de una persona real) para que la suite de integración no choque contra su propio tráfico. **No definir en producción** |
+| `OBSERVABILITY_URL` | URL del panel externo de observabilidad (logs/errores/latencia). Si no está definida, la tarjeta de estado técnico en `/admin` dice que no hay observabilidad conectada en vez de mostrar un enlace roto |
 
-> ⚠️ `.env` está en `.gitignore` y nunca debe commitearse. Si el `redirect_uri` cambia (p. ej. al desplegar), borra las filas de `MastodonApp` para que las apps se re-registren con la nueva URL.
+> ⚠️ `.env` está en `.gitignore` y nunca debe commitearse. `backend/.env.example` trae la lista completa con comentarios — es el punto de partida para configurar un entorno nuevo (`cp .env.example .env`). Si el `redirect_uri` cambia (p. ej. al desplegar), borra las filas de `MastodonApp` para que las apps se re-registren con la nueva URL.
 
 ---
 
