@@ -638,3 +638,5 @@ Cambiar de Feed a Chat —la acción más frecuente del producto— costaba esti
 ## 🤝 Contribuciones
 
 ¡Las contribuciones son bienvenidas! Abre un issue o pull request para sugerencias o mejoras. Este proyecto se construye con y para la comunidad — el respeto es innegociable.
+
+**¿Encontraste una vulnerabilidad de seguridad?** No abras un issue público — repórtala en privado siguiendo [SECURITY.md](SECURITY.md).
