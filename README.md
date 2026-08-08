@@ -428,7 +428,22 @@ Cubre hoy: alta y login con llave de acceso (con un autenticador WebAuthn virtua
 
 ### Despliegue
 
-Dos cosas que hay que decidir explícitamente al desplegar, porque los defaults están pensados para desarrollo:
+> **Bases separadas: desarrollo NUNCA apunta a la base de producción.** Ya ocurrió una vez (2026-08-08): el `.env` local usaba el mismo proyecto y el mismo schema que producción, y una migración de desarrollo se aplicó sobre los datos reales de la comunidad. `prisma migrate dev` además **ofrece resetear la base** cuando detecta deriva — un enter de más borra todo. Usa un proyecto de Supabase aparte para desarrollo, no solo otro schema: con otro schema conservas las mismas credenciales y el default sin `?schema=` es `public`, o sea producción. Al levantar el backend, la línea `arranque_base_de_datos` dice host y schema para que la pregunta se conteste de un vistazo.
+
+**Backend (Render).** Auto-despliega desde `main`. Su configuración vive en el dashboard de Render, **no en este repo** — igual que la de Cloudflare, y con la misma consecuencia: no se ve al leer el código. Los dos campos que importan están en *Settings → Build & Deploy*:
+
+| Campo | Valor |
+|---|---|
+| Root Directory | `backend` |
+| Build Command | `npm install && npx prisma generate && npx prisma migrate deploy` |
+
+**`prisma migrate deploy` no es opcional.** Sin él, `prisma generate` deja un cliente que conoce columnas que la base no tiene, y la primera consulta que las toque devuelve 500 — para la migración del ciclo 9C eso habría sido el feed completo, porque `postInclude` selecciona la tabla `Hashtag`. Va en el **Build Command** y no en el Start a propósito: Render corre el build antes de reemplazar la instancia vieja, así que una migración aditiva se aplica mientras el código anterior sigue sirviendo —que la ignora sin problema— y recién después entra el nuevo.
+
+**Frontend (Cloudflare Workers).** Ver [frontend/README.md → Deploy automático](frontend/README.md), donde está el detalle del `--env production` y del Custom Domain.
+
+---
+
+Dos cosas más que hay que decidir explícitamente al desplegar, porque los defaults están pensados para desarrollo:
 
 **1. Almacenamiento de imágenes.** El default `STORAGE_DRIVER=local` guarda en el disco del proceso. En cualquier PaaS con sistema de archivos efímero (Render, Railway, Fly) eso significa que **las imágenes desaparecen en el primer redespliegue** y las URLs quedan cacheadas 30 días apuntando a nada. En producción hay que poner `STORAGE_DRIVER=supabase` y crear un bucket público de lectura.
 

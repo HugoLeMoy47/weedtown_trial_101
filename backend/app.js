@@ -27,6 +27,39 @@ function validarEntorno() {
 }
 validarEntorno();
 
+// Contra qué base está trabajando este proceso.
+//
+// Existe por un incidente real: el desarrollo local apuntaba a la MISMA base
+// que producción sin que nada lo dijera, y la migración del ciclo 9C se
+// aplicó sobre los datos de la comunidad al correr `prisma migrate dev` en
+// una máquina. No pasó nada grave —era aditiva— pero `migrate dev` también
+// ofrece RESETEAR la base cuando detecta deriva, y aceptar ese prompt sin
+// leerlo habría borrado todas las cuentas, posteos y chats reales.
+//
+// El código no puede saber cuál base es "la de producción", así que esto no
+// bloquea nada: solo lo dice en voz alta, para que "¿sobre qué estoy
+// trabajando?" se conteste mirando el arranque y no destripando el .env.
+// Mismo criterio que `arranque_api_limiter` y que el aviso de PREVIEW_API_URL
+// en el Worker: hacer ruidoso lo que si no es silencioso.
+//
+// Nunca registra la contraseña: solo host, puerto y schema.
+function avisarBaseDeDatos() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return;
+  try {
+    const u = new URL(url);
+    log('arranque_base_de_datos', {
+      host: u.hostname,
+      puerto: u.port || '(default)',
+      schema: u.searchParams.get('schema') || 'public (default)',
+      entorno: process.env.NODE_ENV || 'desarrollo'
+    });
+  } catch {
+    log('arranque_base_de_datos', { error: 'DATABASE_URL no se pudo interpretar como URL' });
+  }
+}
+avisarBaseDeDatos();
+
 const app = express();
 // Necesario para que el rate limit identifique la IP real detrás de un proxy (deploy)
 app.set('trust proxy', 1);

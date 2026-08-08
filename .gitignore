@@ -2,10 +2,15 @@
 node_modules/
 
 # Entornos y secretos
+#
+# El patrón es "todo .env queda fuera, salvo los ejemplos" y no una lista de
+# variantes conocidas: un respaldo tipo `.env.test.respaldo` no coincidía con
+# la lista vieja y aparecía como archivo sin trackear, a un "stage all" de
+# distancia de subir credenciales al repo.
 .env
-.env.test
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.test.example
 
 # Imágenes subidas por usuarios (dev local)
 /backend/uploads/
