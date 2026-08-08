@@ -18,8 +18,20 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
   const author = typeof post.author === 'string' ? { name: post.author } : (post.author || {});
   const isMine = user && author.id === user.id;
   const authorName = author.name || author.handle || 'Anónimo';
+  // Ciclo 9C: un hashtag son DOS cosas y hay que no confundirlas.
+  //   llave  — minúsculas, es lo que agrupa (#Rolar y #rolar son el mismo
+  //            tema) y lo que usará el enlace de la vista por hashtag (Ola 2).
+  //   grafia — cómo se escribió, que es lo único que se pinta.
+  // `displayTag` puede faltar en dos casos legítimos: un hashtag que llega
+  // como cadena suelta (forma vieja de la API, que este componente ya
+  // toleraba) y las filas anteriores a la migración. En ambos se cae a la
+  // llave, que es exactamente lo que se veía antes.
   const tags = (post.hashtags || [])
-    .map(h => (typeof h === 'string' ? h : h.hashtag?.tag))
+    .map(h => {
+      if (typeof h === 'string') return { llave: h, grafia: h };
+      const llave = h.hashtag?.tag;
+      return llave ? { llave, grafia: h.hashtag.displayTag || llave } : null;
+    })
     .filter(Boolean);
   const date = post.createdAt ? new Date(post.createdAt) : null;
   const perfilHref = author.id ? (isMine ? '/profile' : `/perfil/${author.id}`) : null;
@@ -31,7 +43,12 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
   const [shareStatus, setShareStatus] = useState('');
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
-  const [editHashtags, setEditHashtags] = useState(tags.join(' '));
+  // El cuadro de edición se llena con la GRAFÍA, no con la llave: si mostrara
+  // "rolarenlatarde", editar el posteo por cualquier otra razón obligaría a
+  // reescribir a mano las mayúsculas propias. Guardar sin tocarlo no cambia
+  // nada — la llave se recalcula igual en el servidor y la grafía ya está
+  // fijada desde la primera vez que se usó el tag.
+  const [editHashtags, setEditHashtags] = useState(tags.map(t => t.grafia).join(' '));
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -127,7 +144,7 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
         action={isMine ? (
           <OwnerActions
             deleteLabel="este posteo y sus comentarios"
-            onEdit={() => { setEditContent(post.content); setEditHashtags(tags.join(' ')); setEditing(true); }}
+            onEdit={() => { setEditContent(post.content); setEditHashtags(tags.map(t => t.grafia).join(' ')); setEditing(true); }}
             onDelete={async () => {
               await api.delete(`/posts/${post.id}`);
               onDeleted?.(post.id);
@@ -150,8 +167,8 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
         <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{post.content}</Typography>
         {tags.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
-            {tags.map((tag, i) => (
-              <Chip key={i} label={`#${tag}`} size="small" color="primary" variant="outlined" />
+            {tags.map(t => (
+              <Chip key={t.llave} label={`#${t.grafia}`} size="small" color="primary" variant="outlined" />
             ))}
           </Stack>
         )}

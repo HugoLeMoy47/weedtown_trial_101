@@ -256,7 +256,17 @@ model Post {
 
 model Hashtag {
   id    Int             @id @default(autoincrement())
+  // Llave de agrupación: SIEMPRE en minúsculas. Es lo que hace que #Rolar y
+  // #rolar sean el mismo tema, y lo que usará el enlace de la vista por
+  // hashtag (Ola 2). No se muestra.
   tag   String          @unique
+  // Grafía a mostrar (ciclo 9C). Gana la PRIMERA vez que se vio el tag: quien
+  // lo estrenó decide cómo se escribe, y no cambia después. Es la regla más
+  // simple de explicar y la única que no exige recontar nada en cada posteo
+  // nuevo. Las filas que ya existían quedaron con su grafía en minúsculas —
+  // la original se perdió antes de que esta columna existiera y no hay de
+  // dónde recuperarla.
+  displayTag String
   posts HashtagOnPost[]
 }
 
