@@ -48,8 +48,14 @@ module.exports = async function run() {
     const posCarla = orden.indexOf(carla.id);
     check('Beto (amigo) aparece antes que Carla (no amiga)', posBeto < posCarla, `(orden: ${orden})`);
 
-    console.log('\n  — La respuesta no gana campos nuevos aparte de isFriend —');
-    const camposEsperados = ['id', 'name', 'displayName', 'avatar', 'handle', 'cell', 'distanceKm', 'band', 'isFriend'].sort();
+    console.log('\n  — La respuesta no gana campos nuevos aparte de isFriend e intencion —');
+    // Esta aserción es un guardián contra fugas: cada campo que se agregue al
+    // select de /api/nearby aparece aquí y hay que justificarlo. Ya hizo su
+    // trabajo en el 10C — al sumar la intención empezaron a viajar también
+    // `nearbyUpdatedAt` (cuándo actualizó su zona cada quien) y
+    // `nearbyIntentUntil` (mecánica de caducidad), y los dos se quitaron.
+    // `intencion` sí entra: es el dato del ciclo, y solo viaja si está vigente.
+    const camposEsperados = ['id', 'name', 'displayName', 'avatar', 'handle', 'cell', 'distanceKm', 'band', 'isFriend', 'intencion'].sort();
     const camposReales = Object.keys(porId[beto.id]).sort();
     check(
       'people[].keys() == campos esperados + isFriend',

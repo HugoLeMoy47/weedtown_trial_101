@@ -15,6 +15,14 @@ enum UserRole {
   ADMIN
 }
 
+// Para qué anda alguien en el mapa de Cerca (ciclo 10C). En español, como
+// ReactionType: son términos del producto, no de la infraestructura.
+enum IntencionCerca {
+  ROLAR     // ando para rolar
+  CONECTAR  // abierto a conocer gente
+  MIRANDO   // solo mirando, sin buscar nada
+}
+
 // Quién ve un dato del perfil, DENTRO de la red (ciclo 10B). Hacia afuera
 // manda `User.perfilPublico`, y nunca amplía esto — ver src/lib/visibilidadPerfil.js.
 enum VisibilidadCampo {
@@ -93,6 +101,17 @@ model User {
   // (nunca llegan coordenadas reales al servidor). null = no comparte. Caduca a los 7 días.
   nearbyCell       String?
   nearbyUpdatedAt  DateTime?
+  // Intención de Cerca (ciclo 10C): para QUÉ está alguien en el mapa, no solo
+  // dónde. Un mapa de presencia no genera encuentros; uno de disponibilidad sí.
+  //
+  // Caduca en HORAS, no en días como la celda. Una intención vieja no es solo
+  // ruido: es una invitación que ya nadie sostiene. Y NO acumula historia a
+  // propósito — es un estado presente y efímero, y ahí está su seguridad. Esa
+  // es justamente la diferencia con los posteos georreferenciados que se
+  // descartaron (D8): aquéllos atan contenido a un lugar de forma permanente y
+  // varios en la misma celda convergen hacia dónde estás de verdad.
+  nearbyIntent      IntencionCerca?
+  nearbyIntentUntil DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   posts            Post[]

@@ -19,6 +19,8 @@ import api from '../services/api';
 import { getMyCell } from '../lib/geo';
 import { mensajeCuarentena } from '../lib/cuarentena';
 import { rutaPerfil } from '../lib/rutaPerfil';
+import { intencionPor } from '../lib/intencionCerca';
+import SelectorIntencion from '../components/SelectorIntencion';
 
 // Radio visual de una celda de la cuadrícula (~2.2 km de lado) en metros
 const ZONE_RADIUS_M = 1100;
@@ -44,6 +46,8 @@ function InvalidarAlRedimensionar() {
 const Nearby = () => {
   const navigate = useNavigate();
   const [sharing, setSharing] = useState(null); // null = cargando estado
+  // Intención propia (ciclo 10C): viaja junto al estado de compartir
+  const [miIntencion, setMiIntencion] = useState({ intencion: null, intencionHasta: null, horas: [2, 4, 8] });
   const [data, setData] = useState(null);       // { myZone, people, zones }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -66,6 +70,11 @@ const Nearby = () => {
     api.get('/nearby/location')
       .then(res => {
         setSharing(res.data.sharing);
+        setMiIntencion({
+          intencion: res.data.intencion,
+          intencionHasta: res.data.intencionHasta,
+          horas: res.data.horasDisponibles || [2, 4, 8]
+        });
         if (res.data.sharing) loadNearby();
       })
       .catch(() => setSharing(false));
@@ -93,6 +102,8 @@ const Nearby = () => {
       await api.delete('/nearby/location');
       setSharing(false);
       setData(null);
+      // La intención se va con la zona (el backend la borra); la pantalla lo refleja
+      setMiIntencion(m => ({ ...m, intencion: null, intencionHasta: null }));
     } catch {
       setError('No se pudo desactivar. Intenta de nuevo.');
     } finally {
@@ -180,6 +191,18 @@ const Nearby = () => {
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress /></Box>
         ) : (
           <Stack spacing={2}>
+            {/* Ciclo 10C: arriba de todo, porque declarar para qué andas es
+                la acción que convierte el mapa de presencia en uno de
+                disponibilidad — y es lo primero que conviene ver al entrar. */}
+            <SelectorIntencion
+              intencion={miIntencion.intencion}
+              intencionHasta={miIntencion.intencionHasta}
+              horas={miIntencion.horas}
+              onCambio={(nuevo) => {
+                setMiIntencion(m => ({ ...m, ...nuevo }));
+                loadNearby();
+              }}
+            />
             <Paper sx={{ overflow: 'hidden' }}>
               <MapContainer
                 center={[data.myZone.lat, data.myZone.lon]}
@@ -296,6 +319,18 @@ const Nearby = () => {
                           secondary={
                             <Stack direction="row" spacing={1} alignItems="center" component="span" flexWrap="wrap" useFlexGap>
                               <Chip label={p.band} size="small" color={p.band === 'En tu zona' ? 'primary' : 'default'} component="span" />
+                              {/* La intención va primero entre los distintivos:
+                                  es lo que dice si tiene sentido acercarse. */}
+                              {intencionPor(p.intencion) && (
+                                <Chip
+                                  label={`${intencionPor(p.intencion).emoji} ${intencionPor(p.intencion).ajena}`}
+                                  size="small"
+                                  variant="filled"
+                                  color={intencionPor(p.intencion).color === 'default' ? undefined : intencionPor(p.intencion).color}
+                                  component="span"
+                                  aria-label={`${displayName(p)} ${intencionPor(p.intencion).ajena}`}
+                                />
+                              )}
                               {p.isFriend && (
                                 <Chip
                                   icon={<PeopleAltIcon />}

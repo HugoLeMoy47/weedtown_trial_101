@@ -43,15 +43,46 @@ function hasActiveCell(user) {
   return Boolean(user?.nearbyCell && isValidCell(user.nearbyCell) && user.nearbyUpdatedAt >= cutoffDate());
 }
 
+// --- Intención (ciclo 10C) ---
+//
+// Duraciones que se pueden elegir. Horas, nunca días: la celda vive 7 días
+// porque describe dónde sueles estar; la intención describe cómo andas AHORA.
+// 4 h cubre una salida; 8 h, un tramo largo del día. Más allá de eso deja de
+// ser información y pasa a ser una invitación que ya nadie sostiene — y quien
+// la ve no tiene cómo saber que caducó de hecho aunque no de fecha.
+const HORAS_INTENCION = [2, 4, 8];
+const INTENCIONES = ['ROLAR', 'CONECTAR', 'MIRANDO'];
+
+// LA REGLA: la intención NUNCA sobrevive a la celda.
+//
+// Se comprueban las dos cosas juntas y en un solo lugar, para que no exista un
+// camino donde una intención se muestre sin celda vigente detrás. Si la celda
+// caducó, la intención no se ve aunque su propia fecha no haya llegado: es un
+// atributo de la celda, no algo independiente.
+function intencionVigente(user) {
+  if (!hasActiveCell(user)) return null;
+  if (!user.nearbyIntent || !user.nearbyIntentUntil) return null;
+  if (new Date(user.nearbyIntentUntil) <= new Date()) return null;
+  return { intencion: user.nearbyIntent, hasta: user.nearbyIntentUntil };
+}
+
 // GET /api/nearby/location — mi estado de compartir (celda propia o null)
 router.get('/location', requireAuth, async (req, res) => {
   try {
     const me = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { nearbyCell: true, nearbyUpdatedAt: true }
+      select: { nearbyCell: true, nearbyUpdatedAt: true, nearbyIntent: true, nearbyIntentUntil: true }
     });
     const active = hasActiveCell(me);
-    res.json({ sharing: active, cell: active ? me.nearbyCell : null, updatedAt: active ? me.nearbyUpdatedAt : null });
+    const intencion = intencionVigente(me);
+    res.json({
+      sharing: active,
+      cell: active ? me.nearbyCell : null,
+      updatedAt: active ? me.nearbyUpdatedAt : null,
+      intencion: intencion?.intencion ?? null,
+      intencionHasta: intencion?.hasta ?? null,
+      horasDisponibles: HORAS_INTENCION
+    });
   } catch (e) {
     console.error('Error al consultar estado de Cerca:', e);
     res.status(500).json({ error: 'Error al consultar tu estado' });
@@ -84,14 +115,63 @@ router.put('/location', requireAuth, async (req, res) => {
 // DELETE /api/nearby/location — dejar de compartir (borra la celda)
 router.delete('/location', requireAuth, async (req, res) => {
   try {
+    // La intención se va con la celda (10C): dejar de compartir la zona no
+    // puede dejar un estado colgado que reaparezca al volver a compartir.
     await prisma.user.update({
       where: { id: req.user.id },
-      data: { nearbyCell: null, nearbyUpdatedAt: null }
+      data: { nearbyCell: null, nearbyUpdatedAt: null, nearbyIntent: null, nearbyIntentUntil: null }
     });
-    res.json({ sharing: false });
+    res.json({ sharing: false, intencion: null });
   } catch (e) {
     console.error('Error al dejar de compartir zona:', e);
     res.status(500).json({ error: 'Error al dejar de compartir' });
+  }
+});
+
+// PUT /api/nearby/intent { intencion, horas } — declarar para qué ando (10C)
+//
+// Exige celda vigente: sin compartir zona no hay dónde poner la intención, y
+// permitirla suelta crearía justo el estado colgado que `DELETE /location`
+// evita.
+router.put('/intent', requireAuth, async (req, res) => {
+  const { intencion, horas } = req.body || {};
+  if (!INTENCIONES.includes(intencion)) {
+    return res.status(400).json({ error: 'Intención inválida' });
+  }
+  if (!HORAS_INTENCION.includes(Number(horas))) {
+    return res.status(400).json({ error: `Duración inválida: elige ${HORAS_INTENCION.join(', ')} horas` });
+  }
+  try {
+    const me = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { nearbyCell: true, nearbyUpdatedAt: true }
+    });
+    if (!hasActiveCell(me)) {
+      return res.status(403).json({ error: 'Comparte tu zona antes de decir para qué andas' });
+    }
+    const hasta = new Date(Date.now() + Number(horas) * 60 * 60 * 1000);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { nearbyIntent: intencion, nearbyIntentUntil: hasta }
+    });
+    res.json({ intencion, intencionHasta: hasta });
+  } catch (e) {
+    console.error('Error al declarar intención:', e);
+    res.status(500).json({ error: 'No se pudo guardar tu intención' });
+  }
+});
+
+// DELETE /api/nearby/intent — quitarla sin dejar de compartir la zona
+router.delete('/intent', requireAuth, async (req, res) => {
+  try {
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { nearbyIntent: null, nearbyIntentUntil: null }
+    });
+    res.json({ intencion: null });
+  } catch (e) {
+    console.error('Error al quitar intención:', e);
+    res.status(500).json({ error: 'No se pudo quitar tu intención' });
   }
 });
 
@@ -116,7 +196,17 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
           nearbyCell: { in: cells },
           nearbyUpdatedAt: { gte: cutoffDate() }
         },
-        select: { ...participantSelect, nearbyCell: true }
+        select: {
+          ...participantSelect,
+          nearbyCell: true,
+          // Para calcular la intención hace falta también nearbyUpdatedAt, que
+          // ya viene filtrado por el `where`, pero `intencionVigente` lo
+          // reevalúa: una sola función decide, sin confiar en que el filtro de
+          // arriba siga siendo el mismo mañana.
+          nearbyUpdatedAt: true,
+          nearbyIntent: true,
+          nearbyIntentUntil: true
+        }
       }),
       friendIds(req.user.id)
     ]);
@@ -125,13 +215,19 @@ router.get('/', requireAuth, nearbyLimiter, async (req, res) => {
     const people = users
       .map(u => {
         const km = cellDistanceKm(me.nearbyCell, u.nearbyCell);
-        const { nearbyCell, ...pub } = u;
+        // Se sacan del objeto público: `nearbyIntentUntil` es la mecánica de
+        // caducidad, no información que nadie necesite, y `nearbyUpdatedAt`
+        // diría cuándo actualizó su zona por última vez.
+        const { nearbyCell, nearbyUpdatedAt, nearbyIntent, nearbyIntentUntil, ...pub } = u;
         return {
           ...pub,
           cell: nearbyCell,
           distanceKm: Math.round(km),
           band: bandLabel(km, nearbyCell === me.nearbyCell),
-          isFriend: amigosSet.has(u.id)
+          isFriend: amigosSet.has(u.id),
+          // La intención viaja SOLO si está vigente, y por la misma función que
+          // usa el resto: quien ve la celda ve la intención, nadie más.
+          intencion: intencionVigente(u)?.intencion ?? null
         };
       })
       // Amistades primero; dentro de cada grupo se conserva el orden por cercanía
