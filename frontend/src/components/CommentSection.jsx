@@ -8,6 +8,7 @@ import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import ImagePicker from './ImagePicker';
 import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
+import AparicionSuave from './AparicionSuave';
 import { useAuth } from '../hooks/useAuth';
 
 const CommentItem = ({ comment, onEdited, onDeleted, onBlocked, disabled = false }) => {
@@ -108,6 +109,11 @@ const CommentSection = ({ postId, commentCount = 0, onCountChange, readOnly = fa
   const [input, setInput] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [sending, setSending] = useState(false);
+  // Ciclo 9E: el id del comentario que ACABA de escribir esta persona, para
+  // que se integre a la conversación en vez de aparecer de golpe al final.
+  // Solo ese: la lista entera no se anima al cargar ni al recargarse tras un
+  // bloqueo.
+  const [recienEnviado, setRecienEnviado] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -144,6 +150,7 @@ const CommentSection = ({ postId, commentCount = 0, onCountChange, readOnly = fa
       }
       const res = await api.post(`/posts/${postId}/comment`, { content, image: imageUrl });
       setComments(prev => [...prev, res.data]);
+      setRecienEnviado(res.data.id);
       setInput('');
       setImageFile(null);
       onCountChange?.(comments.length + 1);
@@ -185,18 +192,19 @@ const CommentSection = ({ postId, commentCount = 0, onCountChange, readOnly = fa
       ) : (
         <Stack divider={<Divider flexItem />}>
           {comments.map(c => (
-            <CommentItem
-              key={c.id}
-              comment={c}
-              onEdited={(updated) => setComments(prev => prev.map(x => (x.id === updated.id ? { ...x, ...updated } : x)))}
-              onDeleted={(id) => setComments(prev => {
-                const next = prev.filter(x => x.id !== id);
-                onCountChange?.(next.length);
-                return next;
-              })}
-              onBlocked={load}
-              disabled={readOnly || !user}
-            />
+            <AparicionSuave key={c.id} activo={c.id === recienEnviado}>
+              <CommentItem
+                comment={c}
+                onEdited={(updated) => setComments(prev => prev.map(x => (x.id === updated.id ? { ...x, ...updated } : x)))}
+                onDeleted={(id) => setComments(prev => {
+                  const next = prev.filter(x => x.id !== id);
+                  onCountChange?.(next.length);
+                  return next;
+                })}
+                onBlocked={load}
+                disabled={readOnly || !user}
+              />
+            </AparicionSuave>
           ))}
         </Stack>
       )}

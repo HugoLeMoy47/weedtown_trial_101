@@ -1,10 +1,12 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
-import { Box, IconButton, Tooltip, Typography, CircularProgress, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Box, IconButton, Tooltip, Typography, CircularProgress, Menu, MenuItem, ListItemIcon, ListItemText, Button } from '@mui/material';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import CollectionsIcon from '@mui/icons-material/Collections';
 import CloseIcon from '@mui/icons-material/Close';
+import CropRotateIcon from '@mui/icons-material/CropRotate';
 import { validateImage, sanitizeImage, ALLOWED_EXTENSIONS } from '../lib/imageProcessing';
+import ImageEditor from './ImageEditor';
 
 const ACCEPT = ALLOWED_EXTENSIONS.map(e => '.' + e).join(',');
 const TOOLTIP_TEXT = 'Adjuntar imagen (JPG, PNG o WebP, máx. 5 MB). Se eliminan los metadatos (EXIF/GPS) antes de enviarla.';
@@ -18,6 +20,7 @@ const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
   const [processing, setProcessing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [menuAnchor, setMenuAnchor] = useState(null);
+  const [editando, setEditando] = useState(false);
 
   // `capture="environment"` en un <input type="file"> no AGREGA la cámara,
   // la SUSTITUYE: en iOS Safari y Chrome/Android abre la cámara directo y
@@ -82,6 +85,22 @@ const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
     onChange(null);
   };
 
+  // Ciclo 9D. El editor es OPCIONAL y se abre a mano, no automáticamente al
+  // elegir la foto: quien no quiere editar publica con los mismos clics de
+  // siempre, sin un diálogo de por medio (criterio 6, "sin fricción nueva").
+  // Por eso el botón dice qué hace en texto en vez de ser solo un ícono — es
+  // lo que lo vuelve descubrible sin imponérselo a nadie.
+  //
+  // Edita el archivo YA anonimizado (el que guarda `file` salió de
+  // `sanitizeImage`), nunca el original: el orden anonimizar → editar → subir
+  // no se negocia, y así está garantizado por construcción, porque aquí ya no
+  // existe el archivo crudo.
+  const aplicarEdicion = (editada) => {
+    setEditando(false);
+    setError('');
+    onChange(editada);
+  };
+
   return (
     <Box>
       <input
@@ -133,31 +152,50 @@ const ImagePicker = ({ file, onChange, disabled = false, size = 'medium' }) => {
         </MenuItem>
       </Menu>
       {file && previewUrl && (
-        <Box sx={{ position: 'relative', display: 'inline-block', mt: 1 }}>
-          <Box
-            component="img"
-            src={previewUrl}
-            alt="Vista previa de la imagen adjunta"
-            sx={{
-              maxWidth: '100%', maxHeight: 160, borderRadius: 2, display: 'block',
-              border: 1, borderColor: 'divider'
-            }}
-          />
-          <Tooltip title="Quitar imagen">
-            <IconButton
-              onClick={handleClear}
-              size="small"
-              aria-label="Quitar imagen adjunta"
+        <Box sx={{ mt: 1 }}>
+          <Box sx={{ position: 'relative', display: 'inline-block' }}>
+            <Box
+              component="img"
+              src={previewUrl}
+              alt="Vista previa de la imagen adjunta"
               sx={{
-                position: 'absolute', top: 4, right: 4,
-                bgcolor: 'background.paper', boxShadow: 1,
-                '&:hover': { bgcolor: 'background.paper' }
+                maxWidth: '100%', maxHeight: 160, borderRadius: 2, display: 'block',
+                border: 1, borderColor: 'divider'
               }}
-            >
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+            />
+            <Tooltip title="Quitar imagen">
+              <IconButton
+                onClick={handleClear}
+                size="small"
+                aria-label="Quitar imagen adjunta"
+                sx={{
+                  position: 'absolute', top: 4, right: 4,
+                  bgcolor: 'background.paper', boxShadow: 1,
+                  '&:hover': { bgcolor: 'background.paper' }
+                }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Button
+            size="small"
+            startIcon={<CropRotateIcon />}
+            onClick={() => setEditando(true)}
+            disabled={disabled || processing}
+            sx={{ display: 'flex', mt: 0.5 }}
+          >
+            Recortar o girar
+          </Button>
         </Box>
+      )}
+      {file && (
+        <ImageEditor
+          file={file}
+          open={editando}
+          onCancel={() => setEditando(false)}
+          onApply={aplicarEdicion}
+        />
       )}
       {error && (
         <Typography variant="caption" color="error" role="alert" sx={{ display: 'block', mt: 0.5 }}>

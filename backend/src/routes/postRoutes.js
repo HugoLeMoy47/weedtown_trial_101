@@ -12,6 +12,7 @@ const storage = require('../lib/storage');
 const { soloVisible, estaSuspendido } = require('../lib/moderation');
 const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
 const { armarFicha } = require('../lib/preview');
+const { seDescarta } = require('../lib/diccionarioDescarte');
 
 // Topes de contenido: defensa contra payloads abusivos
 const MAX_POST_LENGTH = 2000;
@@ -34,11 +35,43 @@ function alcanceWhere(viewerId, misAmigos) {
   };
 }
 
+// Ciclo 9C: devuelve pares {tag, displayTag}, no cadenas sueltas.
+//
+//   tag        la llave de agrupación, en minúsculas. Es lo que hace que
+//              #Rolar y #rolar sean el mismo tema. Nunca se muestra.
+//   displayTag la grafía tal cual se escribió, que es lo que se pinta.
+//
+// Agrupar en minúsculas siempre estuvo bien; lo que estaba mal era MOSTRAR en
+// minúsculas — "#RolarEnLaTarde" quedaba como "rolarenlatarde", ilegible. Son
+// dos necesidades distintas y ahora viajan en dos campos distintos.
+//
+// Dentro de un mismo posteo gana la primera grafía vista (el Map no
+// sobreescribe), igual que gana la primera a nivel de tabla — ver el
+// `connectOrCreate` de abajo, que conecta sin actualizar si el tag ya existe.
+//
+// El descarte (diccionarioDescarte.js) ocurre AQUÍ, al guardar: la palabra
+// vacía nunca llega a ser una fila de Hashtag. El contenido del posteo no se
+// toca en ningún momento — quien escribió "#de" sigue viendo su texto igual,
+// solo que esa palabra no generó un tema.
 function parseHashtags(raw) {
   if (!Array.isArray(raw)) return null;
-  return [...new Set(
-    raw.map(t => String(t).replace(/^#/, '').trim().toLowerCase()).filter(Boolean)
-  )].filter(tag => tag.length <= MAX_TAG_LENGTH).slice(0, MAX_HASHTAGS);
+  const porLlave = new Map();
+  for (const bruto of raw) {
+    const grafia = String(bruto).replace(/^#/, '').trim();
+    if (!grafia || grafia.length > MAX_TAG_LENGTH) continue;
+    const llave = grafia.toLowerCase();
+    if (seDescarta(llave)) continue;
+    if (!porLlave.has(llave)) porLlave.set(llave, grafia);
+  }
+  return [...porLlave].slice(0, MAX_HASHTAGS).map(([tag, displayTag]) => ({ tag, displayTag }));
+}
+
+// El upsert de un hashtag, en un solo lugar porque lo usan crear y editar y la
+// regla de la grafía vive justo aquí: si la fila YA existe, `connectOrCreate`
+// conecta y no actualiza nada — por eso "gana la primera vez que se vio" sale
+// gratis, sin una consulta extra ni un `update` condicional.
+function conectarHashtag({ tag, displayTag }) {
+  return { hashtag: { connectOrCreate: { where: { tag }, create: { tag, displayTag } } } };
 }
 
 const postInclude = {
@@ -132,11 +165,7 @@ router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
         image: image || null,
         visibility,
         authorId: req.user.id,
-        hashtags: {
-          create: tags.map(tag => ({
-            hashtag: { connectOrCreate: { where: { tag }, create: { tag } } }
-          }))
-        }
+        hashtags: { create: tags.map(conectarHashtag) }
       },
       include: postInclude
     });
@@ -291,9 +320,7 @@ router.put('/:id', requireAuth, requireNotSuspended, async (req, res) => {
         ...(tags !== null && {
           hashtags: {
             deleteMany: {},
-            create: tags.map(tag => ({
-              hashtag: { connectOrCreate: { where: { tag }, create: { tag } } }
-            }))
+            create: tags.map(conectarHashtag)
           }
         })
       },

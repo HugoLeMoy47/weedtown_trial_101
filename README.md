@@ -58,7 +58,7 @@
 | Posteo no accesible (de amistades o inexistente) sin sesión → redirige a iniciar sesión y regresa al mismo enlace tras el alta, sin bucles ni distinguir "privado" de "no existe" | ✅ Funcionando |
 | Comentarios de un posteo público: el contenido solo se lista con sesión (recorte en el servidor); sin sesión se ve el conteo, no el texto | ✅ Funcionando |
 | Subforos temáticos institucionales sembrados vía script idempotente (`npm run subforos`) | ✅ Funcionando |
-| Ficha de previsualización (Open Graph/Twitter Card) al pegar `/p/:id` en WhatsApp, Telegram, Facebook o X: título, descripción, imagen (propia o de campaña) — armada en el borde con un Worker de Cloudflare, sin depender de que React ni el backend respondan a tiempo | ✅ Funcionando |
+| Ficha de previsualización (Open Graph/Twitter Card) al pegar `/p/:id` o `/forum/:slug` en WhatsApp, Telegram, Facebook o X: título, descripción, imagen (propia o de campaña) — armada en el borde con un Worker de Cloudflare, sin depender de que React ni el backend respondan a tiempo. Los hilos (`/forum/:slug/post/:id`) todavía no tienen ficha propia | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -211,6 +211,8 @@ Llaves de acceso y correo con enlace mágico (etapa 2, ver más abajo) confirmar
 - **Rate limiting**: 300 peticiones/15 min por IP en toda la API; 20/15 min en Mastodon OAuth y en passkeys; 10/15 min en enlace mágico (más un enfriamiento de 60 s por correo destino, ver arriba). Cada límite alcanzado queda como evento `rate_limit_excedido` en el log estructurado. Respeta proxies (`trust proxy`).
 - **Límites de payload**: body JSON ≤ 100 kB; imágenes ≤ 5 MB por multipart (multer, solo JPG/PNG/WebP, nombre aleatorio); el handshake de Socket.IO ≤ 20 kB (el chat no sube payloads propios del cliente, solo el JWT de auth).
 - **Límites de contenido**: post del feed ≤ 2000 caracteres, comentario ≤ 1000; post de foro ≤ 10000, comentario de foro ≤ 2000; máximo 10 hashtags de ≤ 30 caracteres; bio ≤ 500. El campo `image` debe ser URL http(s).
+- **Hashtags: la llave y la grafía son dos cosas** (ciclo 9C). `Hashtag.tag` es la llave de agrupación, siempre en minúsculas — es lo que hace que `#Rolar` y `#rolar` sean el mismo tema. `Hashtag.displayTag` es cómo se escribió, y es lo único que se pinta: antes se guardaba solo la llave, así que `#RolarEnLaTarde` se mostraba como `rolarenlatarde`. **Gana la grafía de la primera vez que se vio el tag** — quien lo estrenó decide cómo se ve, y no cambia después (sale gratis del `connectOrCreate`: si la fila existe, conecta y no actualiza). Los tags anteriores a la migración se quedaron en minúsculas; su grafía original se perdió antes de que la columna existiera. La API manda **los dos campos** en `postInclude`, y `PostCard.jsx` pinta `displayTag` pero agrupa por `tag`.
+- **Diccionario de descarte de hashtags** (`src/lib/diccionarioDescarte.js`, ciclo 9C): preposiciones, artículos y conjunciones no entran al índice de hashtags — no es censura, es no ensuciar el índice que en la Ola 2 va a alimentar agrupación y tendencias. **El texto del posteo no se toca jamás**: quien escribe `#de` sigue viendo su posteo igual, solo que esa palabra no genera un tema. El descarte es silencioso (el posteo se publica con 200) porque el resultado ya es visible — el chip simplemente no aparece — y porque los otros recortes del mismo campo (tope de 10 tags, tope de 30 caracteres, deduplicado) también lo son. La lista está hardcodeada; gestionarla desde `/admin` es Ola 2.
 - **Control de spam** (`src/lib/antiSpam.js`): un posteo o comentario (feed o foro) con más de 5 enlaces se rechaza con 400; repetir el mismo texto exacto en menos de 10 minutos se rechaza con 429. No sustituye al rate limit por IP — lo complementa mirando el contenido, no solo la frecuencia.
 - **Privacidad**: el perfil público (`GET /api/profile/:id`) no expone email, teléfono, nombre real, edad, fecha de nacimiento ni género — esos datos solo los ve su dueño en `/api/profile/me`.
 - **Errores sanitizados**: el detalle (stack, Prisma) solo se registra en el servidor; el cliente recibe mensajes genéricos salvo en errores de validación.
@@ -367,7 +369,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 465 y cubren estas áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 542 y cubren estas áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -389,6 +391,7 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Subforos** | `slugify` para los 10 nombres del catálogo institucional (con aserción sobre los casos límite #9 y #10); el script `subforos.js` es idempotente y no crea usuarios |
 | **Atribucion** | HU-CTA-002/HU-ATR-001: `ref` fuera de la lista blanca se descarta en silencio, exige sesión, y el limitador propio (5/15min) corta antes que el general |
 | **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
+| **Hashtags** | Ciclo 9C: `#RolarEnLaTarde` guarda llave `rolarenlatarde` y grafía `RolarEnLaTarde`; `#Rolar` y `#rolar` son una sola fila y gana la primera grafía vista (también al editar); las palabras del diccionario de descarte no generan fila; y el texto del posteo vuelve **idéntico**, con sus `#de` adentro |
 | **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las demás |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
@@ -399,7 +402,7 @@ Sin Docker ni Postgres local, la forma más simple de tener una base separada es
 
 | Script | Qué hace |
 |---|---|
-| `npm test` | Las 465 pruebas de integración |
+| `npm test` | Las 542 pruebas de integración |
 | `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
 | `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las 292 |
 | `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
@@ -501,7 +504,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/auth/me` | 🔒 | Usuario de la sesión actual |
 | POST | `/api/auth/attribution` | 🔒 | Atribución de altas sin migración (`ref`: post\|perfil\|directo); el log solo lleva `ref`, sin `userId` ni `pid` (HU-ATR-001); limitador propio 5/15min; solo deja rastro si la cuenta se acaba de crear |
 | GET | `/api/posts?page=` | — | Feed paginado (20 por página) |
-| POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`, `visibility?`: PUBLIC\|FRIENDS, default PUBLIC) |
+| POST | `/api/posts` | 🔒 | Crear posteo (`content`, `image?`, `hashtags?[]`, `visibility?`: PUBLIC\|FRIENDS, default PUBLIC). Cada hashtag vuelve con `tag` (llave en minúsculas, para agrupar) y `displayTag` (la grafía, para pintar) — ver "Hashtags" abajo |
 | GET | `/api/posts/:id` | opcional | Un posteo por id; funciona sin sesión si es `PUBLIC` (base de `/p/:id`). 404 si está oculto por moderación, es de amistades sin ser amiga, o hay bloqueo de por medio |
 | GET | `/api/posts/:id/preview` | — | Ficha de previsualización Open Graph (HU-SHR-001): `titulo`, `descripcion`, `imagen`, `imagenAlt`, `handleAutor`, `tieneImagen`. Sin `optionalAuth` — no importa quién pregunta. 200 solo si es `PUBLIC`, no está oculto y su autor no está suspendido; todo lo demás, el mismo 404 (nunca 403). La consume el Worker de `frontend/src/worker.js` (HU-SHR-002), no el frontend directamente. Fuera del `apiLimiter` general; limitador propio |
 | GET | `/api/posts/search?q=` | — | Búsqueda por contenido o autor |
@@ -572,6 +575,7 @@ La moderación (`/api/admin`) ya existía; lo que faltaba eran indicadores y ten
 
 - **Por qué no hay DAU/MAU, retención por cohorte ni embudos de conversión.** Esas métricas exigen saber cuándo entró cada persona por última vez o seguir su recorrido — es decir, tracking por individuo, y esa es exactamente la línea que este proyecto decidió no cruzar. Es un intercambio consciente, no una limitación técnica que se vaya a resolver después: para un README que abre con "la privacidad no es una feature, es la base", medir solo con agregados de lo que ya se guarda es la postura coherente.
 - **Cuatro trampas técnicas evitadas a propósito** (documentadas en `.planeacion/2026-07-30_panoptico_plan.html`, pestaña 02): (1) una consulta agregada por métrica — 13 consultas cubren el catálogo completo, constantes sin importar la ventana de 7/30/90 días, nunca un ciclo con un conteo por día; (2) el día se trunca en `America/Mexico_City`, no en UTC — `date_trunc` ingenuo corta la noche (el pico de actividad) al día siguiente, y las gráficas se ven igual de razonables estando mal; (3) ningún desglose (por subforo, por segmento) expone un grupo con menos de 5 elementos — se colapsa en un cubo "Otros"; (4) la carga por moderador es la única pieza visible a `MOD`, y solo como número propio + promedio del equipo — el desglose por persona es `ADMIN`, para no convertir una herramienta de trabajo en un tablero de comparación entre compañeros.
+- **La trampa 2 tenía una segunda cara, encontrada en el ciclo 9A: el mismo error de zona horaria, pero en el *límite* de la ventana.** Las cuatro consultas que no agrupan por día (carga por moderador, concentración, tiempo de respuesta, reincidencia) tomaban las fechas de calendario mexicano de la ventana y las leían como instantes UTC (`` `${hasta}T23:59:59.999Z` ``). Como un día de México termina 6 horas después de eso, la ventana entera quedaba corrida: se comía todo lo ocurrido entre las 18:00 y la medianoche del último día —el mismo pico nocturno de la trampa original— y a cambio metía esas 6 horas del día anterior al primero. No fallaba: devolvía un número plausible y más chico, todos los días. Ahora las cuatro filtran con `entreDiasMx()`, que deja la traducción del día en Postgres igual que `diaMx()`. La prueba de regresión siembra una acción de moderación a las **23:00 hora de México** para que falle sin importar a qué hora se corra la suite — el motivo de que esto viviera en verde es que la prueba anterior sembraba "el instante actual", que solo cae en la franja ciega si las pruebas se corren de noche.
 - **Caché en memoria del proceso, 10 minutos.** Nadie decide distinto porque un conteo esté unos minutos desactualizado; la respuesta siempre trae `calculadoEn` para que la pantalla no invite a malinterpretar datos viejos como si fueran en vivo.
 - **Salud técnica sin infraestructura nueva.** La tarjeta de estado técnico re-expone lo que `/health` ya calculaba (base, storage, mailer, uptime) más un enlace a observabilidad externa configurable por `OBSERVABILITY_URL`. Historial de errores/latencia en el tiempo es trabajo de despliegue (conectar un log drain al `logger.js` que ya emite JSON estructurado), no una tabla nueva en Postgres.
 
@@ -641,7 +645,7 @@ Cambiar de Feed a Chat —la acción más frecuente del producto— costaba esti
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 465 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 542 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 

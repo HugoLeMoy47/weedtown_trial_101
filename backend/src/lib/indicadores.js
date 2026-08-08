@@ -40,8 +40,44 @@ const QUARANTINE_HOURS = Number(process.env.SIGNUP_QUARANTINE_HOURS) || 24; // =
 // ahí se trunca el día. `col` nunca es entrada de usuario — es un nombre de
 // columna fijo que este mismo archivo elige, así que usar Prisma.raw() aquí
 // no abre ninguna superficie de inyección.
-function diaMx(col) {
-  return Prisma.raw(`date_trunc('day', "${col}" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date`);
+//
+// `alias` es el alias de tabla cuando la consulta lo usa (`fp."createdAt"`).
+// Como `col`, nunca es entrada de usuario: lo elige este mismo archivo.
+function diaMx(col, alias) {
+  const ref = alias ? `"${alias}"."${col}"` : `"${col}"`;
+  return Prisma.raw(`date_trunc('day', ${ref} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::date`);
+}
+
+// Filtro de ventana EN DÍAS DE MÉXICO, para las consultas que no agrupan por
+// día y por lo tanto no pueden recortarse después con `enRango()`.
+//
+// LA TRAMPA 2, OTRA VEZ, PERO EN EL LÍMITE DE LA VENTANA (hallazgo del ciclo
+// 9A, ver `ventana()` abajo — el comentario ya describía esta regla; cuatro
+// consultas no la seguían). Estas cuatro filtraban así:
+//
+//     BETWEEN new Date(`${desde}T00:00:00Z`) AND new Date(`${hasta}T23:59:59.999Z`)
+//
+// Eso toma una fecha de CALENDARIO MEXICANO y la interpreta como un instante
+// UTC. Un día de México va de las 06:00 UTC a las 06:00 UTC del día siguiente,
+// así que la ventana entera quedaba corrida 6 horas hacia atrás: se comía todo
+// lo ocurrido entre las 18:00 y la medianoche del último día —el pico de
+// actividad nocturna, exactamente el mismo horario que el comentario de
+// `diaMx` señala para el agrupado— y a cambio metía esas mismas 6 horas del
+// día anterior al primero. No fallaba: devolvía un número plausible y más
+// chico, todos los días, y solo se notaba corriendo las pruebas después de las
+// 18:00 hora de México.
+//
+// El arreglo es dejar que Postgres traduzca el día, igual que en `diaMx`, en
+// vez de hardcodear el desfase en JS: así sigue siendo correcto si México
+// volviera a tener horario de verano.
+//
+// Sí, envolver la columna en una expresión impide usar un índice sobre ella.
+// Es deliberado y no se compensa con un rango UTC holgado extra: son cuatro
+// consultas de panel sobre tablas chicas, cacheadas 10 min (TTL_CACHE_MS), y
+// el rango holgado es justamente la pieza que ya se le olvidó a alguien una
+// vez. Correcto y simple le gana a rápido y sutil aquí.
+function entreDiasMx(col, alias, desdeISO, hastaISO) {
+  return Prisma.sql`${diaMx(col, alias)} BETWEEN ${desdeISO}::date AND ${hastaISO}::date`;
 }
 
 // "Hoy" en hora de México, como 'YYYY-MM-DD' — independiente de en qué huso
@@ -62,6 +98,13 @@ function sumarDiasISO(fechaISO, delta) {
 // `enRango()`. Así el filtro WHERE nunca corta a la mitad de un día en hora
 // de México — que es exactamente el bug de la Trampa 2, aplicado al límite de
 // la ventana en vez de al agrupado.
+//
+// `hasta`, `desdeActual` y `desdeAnterior` son fechas de CALENDARIO MEXICANO
+// ('YYYY-MM-DD'), no instantes. Las consultas que no agrupan por día (y por lo
+// tanto no pasan por `enRango()`) tienen que filtrarlas con `entreDiasMx()`,
+// nunca convirtiéndolas a `Date` con una "Z" pegada — ver la nota de esa
+// función: eso corre la ventana entera 6 horas y no falla, solo cuenta de
+// menos.
 function ventana(dias) {
   const hasta = hoyMexicoISO();
   const desdeActual = sumarDiasISO(hasta, -(dias - 1));
@@ -289,12 +332,10 @@ async function consultaSeguidoresPorSubforo() {
 // subforos más activos. Solo se expone el ratio, no el desglose por nombre —
 // no hace falta nombrar subforos chicos para responder "¿está muy concentrado?".
 async function consultaConcentracion(desdeActualISO, hastaISO) {
-  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
-  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
   const filas = await prisma.$queryRaw`
     SELECT count(fp.id)::int AS valor
     FROM "SubForum" s
-    LEFT JOIN "ForumPost" fp ON fp."subforumId" = s.id AND fp."createdAt" BETWEEN ${desde} AND ${hasta}
+    LEFT JOIN "ForumPost" fp ON fp."subforumId" = s.id AND ${entreDiasMx('createdAt', 'fp', desdeActualISO, hastaISO)}
     WHERE s."archivedAt" IS NULL
     GROUP BY s.id
     ORDER BY valor DESC
@@ -307,15 +348,13 @@ async function consultaConcentracion(desdeActualISO, hastaISO) {
 // L. Tiempo de respuesta a un reporte: mediana y p90, NUNCA promedio — un solo
 // caso olvidado semanas distorsiona el promedio y esconde que el resto va bien.
 async function consultaTiempoRespuesta(desdeActualISO, hastaISO) {
-  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
-  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
   const filas = await prisma.$queryRaw`
     SELECT
       percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("resolvedAt" - "createdAt"))) AS mediana_seg,
       percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("resolvedAt" - "createdAt"))) AS p90_seg,
       count(*)::int AS muestra
     FROM "Report"
-    WHERE "resolvedAt" IS NOT NULL AND "createdAt" BETWEEN ${desde} AND ${hasta}
+    WHERE "resolvedAt" IS NOT NULL AND ${entreDiasMx('createdAt', null, desdeActualISO, hastaISO)}
   `;
   const f = filas[0];
   const aHoras = (seg) => (seg === null ? null : Math.round((Number(seg) / 3600) * 10) / 10);
@@ -326,24 +365,23 @@ async function consultaTiempoRespuesta(desdeActualISO, hastaISO) {
 // atadas al autor real del contenido (o a la cuenta, si el reporte es sobre
 // la cuenta misma). Nunca se listan los nombres, solo el conteo.
 async function consultaReincidencia(desdeActualISO, hastaISO) {
-  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
-  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
+  const enVentana = entreDiasMx('createdAt', 'r', desdeActualISO, hastaISO);
   const filas = await prisma.$queryRaw`
     WITH autores AS (
       SELECT p."authorId" AS "userId" FROM "Report" r JOIN "Post" p ON p.id = r."postId"
-        WHERE r.status = 'ACCIONADO' AND r."postId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+        WHERE r.status = 'ACCIONADO' AND r."postId" IS NOT NULL AND ${enVentana}
       UNION ALL
       SELECT c."authorId" FROM "Report" r JOIN "Comment" c ON c.id = r."commentId"
-        WHERE r.status = 'ACCIONADO' AND r."commentId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+        WHERE r.status = 'ACCIONADO' AND r."commentId" IS NOT NULL AND ${enVentana}
       UNION ALL
       SELECT fp."authorId" FROM "Report" r JOIN "ForumPost" fp ON fp.id = r."forumPostId"
-        WHERE r.status = 'ACCIONADO' AND r."forumPostId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+        WHERE r.status = 'ACCIONADO' AND r."forumPostId" IS NOT NULL AND ${enVentana}
       UNION ALL
       SELECT fc."authorId" FROM "Report" r JOIN "ForumComment" fc ON fc.id = r."forumCommentId"
-        WHERE r.status = 'ACCIONADO' AND r."forumCommentId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+        WHERE r.status = 'ACCIONADO' AND r."forumCommentId" IS NOT NULL AND ${enVentana}
       UNION ALL
       SELECT r."targetUserId" FROM "Report" r
-        WHERE r.status = 'ACCIONADO' AND r."targetUserId" IS NOT NULL AND r."createdAt" BETWEEN ${desde} AND ${hasta}
+        WHERE r.status = 'ACCIONADO' AND r."targetUserId" IS NOT NULL AND ${enVentana}
     )
     SELECT count(*)::int AS cuentas FROM (
       SELECT "userId" FROM autores GROUP BY "userId" HAVING count(*) > 1
@@ -356,12 +394,10 @@ async function consultaReincidencia(desdeActualISO, hastaISO) {
 // de quien pregunta (HU-PAN-004 CA5), a diferencia del resto de la ruta, que
 // es ADMIN estricto.
 async function consultaCargaPorModerador(desdeActualISO, hastaISO) {
-  const desde = new Date(`${desdeActualISO}T00:00:00Z`);
-  const hasta = new Date(`${hastaISO}T23:59:59.999Z`);
   const filas = await prisma.$queryRaw`
     SELECT "moderatorId", count(*)::int AS valor
     FROM "ModerationAction"
-    WHERE "createdAt" BETWEEN ${desde} AND ${hasta}
+    WHERE ${entreDiasMx('createdAt', null, desdeActualISO, hastaISO)}
     GROUP BY "moderatorId"
     ORDER BY valor DESC
   `;

@@ -18,6 +18,10 @@ const { suite } = require('./lib');
 // verificado contra la base real antes de escribir esta prueba) cae a las
 // 05:00 UTC del día calendario SIGUIENTE. Si el backend truncara en UTC
 // ingenuo, este registro aparecería un día después del que le toca.
+//
+// El mismo instante sirve para las DOS caras de la Trampa 2: el agrupado (¿en
+// qué día cae?) y el límite de la ventana (¿entra siquiera?) — ver la acción
+// de moderación de las 23:00 de HOY, más abajo.
 function las2300MexicoDe(fechaISO) {
   const d = new Date(`${fechaISO}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -64,10 +68,32 @@ module.exports = async function run() {
     await prisma.subForumFollow.create({ data: { userId: seguidorB.id, subforumId: sub1.id } });
     await prisma.subForumFollow.create({ data: { userId: seguidorA.id, subforumId: sub2.id } });
 
-    // Carga por moderador: una acción del MOD
+    // Carga por moderador: dos acciones del MOD, y la segunda es la que
+    // importa.
+    //
+    // Trampa 2 en el LÍMITE de la ventana: la ventana de indicadores va de
+    // `desdeActual` a `hasta`, dos fechas de calendario MEXICANO. La versión
+    // anterior de `consultaCargaPorModerador` las convertía a instantes con una
+    // "Z" pegada (`${hasta}T23:59:59.999Z`), o sea las leía como UTC — y un día
+    // de México termina 6 horas DESPUÉS de eso. Resultado: todo lo ocurrido
+    // entre las 18:00 y la medianoche hora de México del último día quedaba
+    // fuera del conteo.
+    //
+    // Esta acción de las 23:00 de HOY cae justo en esa franja, así que la
+    // prueba falla con el bug y pasa con el arreglo SIN IMPORTAR a qué hora se
+    // corran las pruebas. Antes no era así: la única acción sembrada era "el
+    // instante actual", que solo cae en la franja ciega si la suite se corre de
+    // noche — por eso este bug vivió en verde y solo se destapó corriendo las
+    // pruebas después de las 18:00 hora de México.
     const sub3 = await prisma.subForum.create({ data: { name: 'wtpan mod', slug: 'wtpan-mod-target', creatorId: admin.id } });
     await prisma.moderationAction.create({
       data: { moderatorId: mod.id, type: 'ARCHIVAR_SUBFORO', targetType: 'SUBFORUM', targetId: sub3.id }
+    });
+    await prisma.moderationAction.create({
+      data: {
+        moderatorId: mod.id, type: 'ARCHIVAR_SUBFORO', targetType: 'SUBFORUM', targetId: sub3.id,
+        createdAt: las2300MexicoDe(hoy)
+      }
     });
 
     console.log('\n  — Permisos: solo ADMIN en la ruta principal —');
@@ -140,7 +166,11 @@ module.exports = async function run() {
     console.log('\n  — Carga por moderador: recorte por rol (HU-PAN-004 CA5) —');
     r = await call('GET', '/api/admin/indicadores/carga-moderacion?dias=30', { tok: tMod });
     check('un MOD SÍ puede consultar esta ruta aparte (a diferencia de /indicadores)', r.status === 200, `(fue ${r.status})`);
-    check('un MOD ve su propio número', typeof r.data.propio === 'number' && r.data.propio >= 1, `(propio=${r.data.propio})`);
+    check(
+      'un MOD ve su propio número, y cuenta las DOS acciones — incluida la de las 23:00 hora de México (Trampa 2 en el límite de la ventana)',
+      r.data.propio === 2,
+      `(propio=${r.data.propio}; si dice 1, la ventana se está cortando a las 18:00 hora de México)`
+    );
     check('un MOD ve el promedio del equipo', typeof r.data.promedioEquipo === 'number');
     check('un MOD NO ve el desglose por persona', r.data.desglose === undefined, `(trae: ${Object.keys(r.data)})`);
 
