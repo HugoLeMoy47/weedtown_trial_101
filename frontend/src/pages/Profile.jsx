@@ -7,6 +7,7 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
+import PrivacidadPerfil from '../components/PrivacidadPerfil';
 import AccessMethods from '../components/AccessMethods';
 import AccountPrivacy from '../components/AccountPrivacy';
 import { useAuth } from '../hooks/useAuth';
@@ -22,6 +23,7 @@ const Profile = () => {
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState([]);
+  const [privacidad, setPrivacidad] = useState(null);
 
   const cargarPerfil = () => api.get('/profile/me')
     .then(res => {
@@ -37,6 +39,13 @@ const Profile = () => {
         gender: u.gender || ''
       });
       setIdentities(u.identities || []);
+      setPrivacidad({
+        visibilidadBio: u.visibilidadBio,
+        visibilidadAboutMe: u.visibilidadAboutMe,
+        visibilidadAge: u.visibilidadAge,
+        visibilidadGender: u.visibilidadGender,
+        perfilPublico: u.perfilPublico
+      });
     })
     .catch(() => setError('No se pudo cargar el perfil.'));
 
@@ -143,11 +152,14 @@ const Profile = () => {
                     <MenuItem value="femenino">Femenino</MenuItem>
                     <MenuItem value="otro">Otro</MenuItem>
                   </TextField>
+                  {/* Ciclo 10B: quién ve estos dos ya no es fijo, se configura
+                      abajo en "Quién ve qué". Los textos de ayuda decían
+                      "pública" y "solo tus amigos" como si fueran hechos. */}
                   <TextField name="bio" label="Biografía" value={form.bio} onChange={handleChange} multiline minRows={3} fullWidth
-                    helperText="Pública: la ve cualquiera que entre a tu perfil" />
+                    helperText="Quién la ve se configura abajo, en “Quién ve qué”" />
                   <TextField name="aboutMe" label="Sobre mí" value={form.aboutMe} onChange={handleChange} multiline minRows={3} fullWidth
                     inputProps={{ maxLength: 1000 }}
-                    helperText={`Solo tus amigos la ven — ${form.aboutMe.length}/1000`} />
+                    helperText={`Quién lo ve se configura abajo — ${form.aboutMe.length}/1000`} />
 
                   {fieldErrors.length > 0 && (
                     <Alert severity="error" role="alert">
@@ -167,6 +179,23 @@ const Profile = () => {
             )}
           </CardContent>
         </Card>
+
+        {privacidad && (
+          <Card sx={{ mt: 3 }}>
+            <CardContent sx={{ p: 4, pt: 2 }}>
+              <PrivacidadPerfil
+                valores={privacidad}
+                onCambio={(u) => setPrivacidad({
+                  visibilidadBio: u.visibilidadBio,
+                  visibilidadAboutMe: u.visibilidadAboutMe,
+                  visibilidadAge: u.visibilidadAge,
+                  visibilidadGender: u.visibilidadGender,
+                  perfilPublico: u.perfilPublico
+                })}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <AvatarStudio user={user} onSaved={setUser} />
         <AccessMethods identities={identities} onChange={cargarPerfil} />

@@ -72,6 +72,22 @@ const PublicProfile = () => {
     if (rutaInvalida) navigate('/feed', { replace: true });
   }, [rutaInvalida, navigate]);
 
+  // `noindex` salvo que la persona haya encendido el perfil público (10B).
+  //
+  // Esto cubre a los rastreadores que SÍ ejecutan JavaScript, que son los
+  // únicos que llegarían a ver algo de una SPA. Los que no, no ven nada de
+  // todos modos. La defensa de verdad está en el servidor —401 sin sesión— y
+  // en robots.txt; esto es la tercera capa, y la única que puede distinguir un
+  // perfil público de uno privado hasta que exista la ficha del borde (11B).
+  const esPublico = Boolean(perfil?.perfilPublico);
+  useEffect(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = esPublico ? 'index, follow' : 'noindex, nofollow';
+    document.head.appendChild(meta);
+    return () => { document.head.removeChild(meta); };
+  }, [esPublico]);
+
   // Los posteos se piden por handle, así que hasta que el perfil no llega no
   // se sabe cuál es (cuando se entró por id).
   const handleDelPerfil = perfil?.handle;
@@ -180,6 +196,15 @@ const PublicProfile = () => {
 
             {perfil.bio && (
               <Typography variant="body1" sx={{ mt: 3, whiteSpace: 'pre-wrap' }}>{perfil.bio}</Typography>
+            )}
+
+            {/* Edad y género pueden llegar desde el 10B, si su dueña los abrió.
+                El servidor ya decidió: aquí solo se pinta lo que vino. */}
+            {(perfil.age || perfil.gender) && (
+              <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+                {perfil.age && <Chip size="small" label={`${perfil.age} años`} />}
+                {perfil.gender && <Chip size="small" label={perfil.gender} sx={{ textTransform: 'capitalize' }} />}
+              </Stack>
             )}
 
             {perfil.aboutMe && (

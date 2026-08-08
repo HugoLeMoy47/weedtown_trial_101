@@ -15,6 +15,14 @@ enum UserRole {
   ADMIN
 }
 
+// Quién ve un dato del perfil, DENTRO de la red (ciclo 10B). Hacia afuera
+// manda `User.perfilPublico`, y nunca amplía esto — ver src/lib/visibilidadPerfil.js.
+enum VisibilidadCampo {
+  TODOS
+  AMIGOS
+  NADIE
+}
+
 model User {
   id               Int          @id @default(autoincrement())
   // Identificador público de WeedTown, elegido por la persona y único en la
@@ -42,6 +50,31 @@ model User {
   age              Int?
   birthdate        DateTime?
   gender           String?
+
+  // --- Visibilidad del perfil (ciclo 10B) ---
+  //
+  // Solo estos cuatro datos son configurables, y la lista NO es arbitraria:
+  // son los que la persona escribió sobre sí misma. `email`, `phone`,
+  // `fullName` y `birthdate` quedan fuera A PROPÓSITO — son contacto,
+  // autenticación e identificación real. `birthdate` identifica más que `age`,
+  // y `fullName` contradice el seudonimato del producto: ofrecerlos como
+  // interruptor sería ofrecer un disparo al pie. `handle`, `displayName`,
+  // `avatar` y `createdAt` son siempre visibles: sin ellos no hay perfil.
+  //
+  // Los defaults reproducen EXACTAMENTE lo que la app hacía antes del 10B, para
+  // que nadie cambie de exposición por una migración: la bio se veía con
+  // sesión, "sobre mí" solo entre amistades (HU-AMI-002), y edad y género no se
+  // mostraban nunca.
+  visibilidadBio     VisibilidadCampo @default(TODOS)
+  visibilidadAboutMe VisibilidadCampo @default(AMIGOS)
+  visibilidadAge     VisibilidadCampo @default(NADIE)
+  visibilidadGender  VisibilidadCampo @default(NADIE)
+
+  // ¿El perfil se ve también FUERA de la red, sin cuenta? Apagado por defecto.
+  // NUNCA amplía lo de arriba: expone solo lo que ya estaba en TODOS. Un dato
+  // en AMIGOS no sale hacia afuera, porque afuera no hay amistades.
+  perfilPublico    Boolean      @default(false)
+
   role             UserRole     @default(USER)
   // Eliminación propia de la cuenta (HU-PRIV-001), distinta de moderar: acá el
   // dueño de los datos ejerce su derecho a que se borren los suyos, no se

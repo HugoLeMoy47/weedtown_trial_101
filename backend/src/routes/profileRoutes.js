@@ -3,11 +3,14 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-// optionalAuth salió de aquí en el ciclo 10A: ya no queda ninguna ruta de
-// perfil que se resuelva sin sesión.
-const { requireAuth } = require('../middlewares/requireAuth');
+// `optionalAuth` volvió en el 10B: el interruptor de perfil público habilita
+// el caso anónimo, y la decisión de si pasa o no la toma `responderPerfil` a
+// mano para poder mantener la antienumeración de los perfiles que NO son
+// públicos.
+const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
 const { isBlockedBetween } = require('../lib/blocks');
 const { friendStatusBetween } = require('../lib/friends');
+const { camposVisibles, CAMPOS, esVisibilidadValida } = require('../lib/visibilidadPerfil');
 const avatar = require('../lib/avatar');
 const handleLib = require('../lib/handle');
 const privacy = require('../lib/privacy');
@@ -18,6 +21,10 @@ const profileSelect = {
   id: true, handle: true, displayName: true, email: true,
   name: true, avatar: true, mastodonAvatar: true, phone: true, fullName: true,
   bio: true, aboutMe: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true,
+  // Sus propias preferencias de visibilidad (10B): solo viajan por /me. Nadie
+  // más necesita saber qué decidió esconder — eso también es información.
+  perfilPublico: true,
+  ...Object.fromEntries(Object.values(CAMPOS).map(p => [p, true])),
   // Con qué métodos puede entrar esta persona. Solo lo ve su dueño. `id` es lo
   // que usa DELETE /api/auth/identities/:id; `originHandle` trae, según el
   // proveedor, el acct de Mastodon, el correo o el nombre que se le dio a la llave.
@@ -36,6 +43,16 @@ const profileSelect = {
 const publicProfileSelect = {
   id: true, handle: true, displayName: true,
   name: true, avatar: true, bio: true, createdAt: true
+};
+
+// Ciclo 10B: lo que hay que LEER para poder decidir qué sale. Trae los cuatro
+// campos configurables, sus preferencias y el interruptor público — nada de
+// esto se devuelve tal cual: `responderPerfil` lo recorta antes de responder.
+const perfilConVisibilidadSelect = {
+  ...publicProfileSelect,
+  aboutMe: true, age: true, gender: true,
+  perfilPublico: true,
+  ...Object.fromEntries(Object.values(CAMPOS).map(p => [p, true]))
 };
 
 // Validación simple de perfil
@@ -108,6 +125,26 @@ router.put('/me', requireAuth, async (req, res) => {
       nuevoHandle = propuesto;
     }
 
+    // Preferencias de visibilidad (10B). Se aceptan sueltas: mandar solo
+    // `visibilidadBio` no debe tocar las otras tres ni el interruptor. Un valor
+    // fuera de TODOS/AMIGOS/NADIE se rechaza en vez de guardarse: `campoVisible`
+    // falla cerrado ante lo desconocido, pero un dato inválido en la base es
+    // deuda silenciosa y aquí sí hay a quién avisarle.
+    const preferencias = {};
+    for (const preferencia of Object.values(CAMPOS)) {
+      if (data[preferencia] === undefined) continue;
+      if (!esVisibilidadValida(data[preferencia])) {
+        return res.status(400).json({ errors: [`Valor de visibilidad inválido para ${preferencia}`] });
+      }
+      preferencias[preferencia] = data[preferencia];
+    }
+    if (data.perfilPublico !== undefined) {
+      if (typeof data.perfilPublico !== 'boolean') {
+        return res.status(400).json({ errors: ['perfilPublico debe ser true o false'] });
+      }
+      preferencias.perfilPublico = data.perfilPublico;
+    }
+
     let nuevoAvatar;
     if (data.avatar !== undefined) {
       const propio = await prisma.user.findUnique({
@@ -125,13 +162,26 @@ router.put('/me', requireAuth, async (req, res) => {
         name: data.name || undefined,
         ...(nuevoHandle !== undefined && { handle: nuevoHandle }),
         ...(nuevoAvatar !== undefined && { avatar: nuevoAvatar }),
-        phone: data.phone || null,
-        fullName: data.fullName || null,
-        bio: data.bio || null,
-        aboutMe: data.aboutMe || null,
-        age: data.age ? Number(data.age) : null,
-        birthdate: data.birthdate ? new Date(data.birthdate) : null,
-        gender: data.gender || null
+        // Solo se toca lo que VIENE en el cuerpo.
+        //
+        // Antes del 10B esto era un reemplazo total: cualquier campo ausente se
+        // ponía en null. Nunca se notó porque el formulario de perfil siempre
+        // manda todo, pero significa que un envío parcial —como el que hace el
+        // interruptor de visibilidad, que solo manda su preferencia— BORRABA la
+        // bio, el "sobre mí", la edad y el teléfono. Lo encontró la prueba de
+        // este ciclo al mandar una sola preferencia.
+        //
+        // Mandar el campo vacío ("") sigue limpiándolo, que es como la interfaz
+        // borra un dato a propósito. Lo que cambia es omitirlo: eso ahora lo
+        // deja como estaba.
+        ...(data.phone !== undefined && { phone: data.phone || null }),
+        ...(data.fullName !== undefined && { fullName: data.fullName || null }),
+        ...(data.bio !== undefined && { bio: data.bio || null }),
+        ...(data.aboutMe !== undefined && { aboutMe: data.aboutMe || null }),
+        ...(data.age !== undefined && { age: data.age ? Number(data.age) : null }),
+        ...(data.birthdate !== undefined && { birthdate: data.birthdate ? new Date(data.birthdate) : null }),
+        ...(data.gender !== undefined && { gender: data.gender || null }),
+        ...preferencias
       },
       select: profileSelect
     });
@@ -194,26 +244,60 @@ router.delete('/me', requireAuth, async (req, res) => {
 // inventado reciben el mismo 401, sin llegar a tocar la base. No hay forma de
 // mapear quién está en la red probando handles. Es la misma propiedad que
 // `/p/:id` consigue no distinguiendo "privado" de "no existe".
+// Ciclo 10B: la ruta pasa a `optionalAuth` porque el interruptor de perfil
+// público habilita el caso anónimo. La antienumeración se mantiene A MANO, y
+// hay que tener presente qué se revela en cada caso:
+//
+//   sin sesión + perfil NO público  → 401, idéntico a...
+//   sin sesión + handle inexistente → 401, el mismo cuerpo
+//   sin sesión + perfil público     → 200. Revela que existe, y eso ES el
+//                                     sentido de haber opt-in: la persona pidió
+//                                     ser visible desde afuera.
+function noAutorizado(res) {
+  return res.status(401).json({ error: 'No autenticado' });
+}
+
 async function responderPerfil(req, res, where) {
   try {
-    const user = await prisma.user.findUnique({ where, select: publicProfileSelect });
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    if (await isBlockedBetween(req.user.id, user.id)) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
+    const user = await prisma.user.findUnique({ where, select: perfilConVisibilidadSelect });
+    const viewerId = req.user?.id;
+
+    // Sin sesión: solo pasan los perfiles públicos, y todo lo demás —incluido
+    // "no existe"— responde exactamente igual.
+    if (!viewerId) {
+      if (!user || !user.perfilPublico) return noAutorizado(res);
+    } else {
+      if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+      if (await isBlockedBetween(viewerId, user.id)) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
     }
 
-    // aboutMe (HU-AMI-002) es lo único del perfil que no es público: solo se
-    // agrega a la respuesta para amigos, o para el propio dueño si consulta
-    // su perfil por esta ruta en vez de /me.
-    const soyYo = req.user.id === user.id;
-    const { status, requestId } = soyYo ? { status: 'self' } : await friendStatusBetween(req.user.id, user.id);
-    let aboutMe = null;
-    if (soyYo || status === 'friends') {
-      const extra = await prisma.user.findUnique({ where: { id: user.id }, select: { aboutMe: true } });
-      aboutMe = extra?.aboutMe ?? null;
-    }
+    const esDueña = viewerId === user.id;
+    const { status, requestId } = !viewerId
+      ? { status: 'none' }
+      : esDueña ? { status: 'self' } : await friendStatusBetween(viewerId, user.id);
 
-    res.json({ ...user, aboutMe, friendStatus: status, friendRequestId: requestId ?? null });
+    // Los cuatro campos configurables los recorta una sola función (10B), que
+    // es donde vive la regla de composición entre los dos controles.
+    const campos = camposVisibles(user, {
+      esDueña,
+      esAmistad: status === 'friends',
+      tieneSesion: Boolean(viewerId)
+    });
+
+    // Lo que sale siempre: sin los campos configurables en crudo ni las
+    // preferencias, que son asunto de su dueña y viajan solo por /me.
+    const { bio, aboutMe, age, gender, perfilPublico, ...resto } = user;
+    for (const preferencia of Object.values(CAMPOS)) delete resto[preferencia];
+
+    res.json({
+      ...resto,
+      ...campos,
+      perfilPublico,
+      friendStatus: status,
+      friendRequestId: requestId ?? null
+    });
   } catch (e) {
     console.error('Error al obtener perfil:', e);
     res.status(500).json({ error: 'Error al obtener perfil' });
@@ -226,13 +310,13 @@ async function responderPerfil(req, res, where) {
 //
 // Se normaliza con la misma función que usa el alta (handle.js): los handles
 // se guardan en minúsculas, así que `/@Luna` y `/@luna` son la misma persona.
-router.get('/handle/:handle', requireAuth, async (req, res) => {
+router.get('/handle/:handle', optionalAuth, async (req, res) => {
   const handle = handleLib.normalizar(req.params.handle);
   if (!handle) return res.status(404).json({ error: 'Usuario no encontrado' });
   return responderPerfil(req, res, { handle });
 });
 
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/:id', optionalAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID requerido' });
   return responderPerfil(req, res, { id });

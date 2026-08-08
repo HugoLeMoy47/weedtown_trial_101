@@ -1,0 +1,26 @@
+# WeedTown — reglas para rastreadores (ciclo 10B)
+#
+# Los perfiles son privados POR DEFECTO: solo se resuelven con sesión, y solo
+# salen de la red si su dueña enciende el interruptor de "perfil público".
+#
+# Un rastreador que no ejecuta JavaScript no ve nada de un perfil de todos
+# modos —esto es una SPA—, así que estas reglas no son la defensa: la defensa
+# está en el servidor, que responde 401 sin sesión. Esto le ahorra el viaje a
+# quien respeta el archivo, y deja escrita la intención.
+#
+# Cuando exista la ficha de previsualización de perfiles (ciclo 11B), el Worker
+# del borde será el que distinga perfil público de privado y emita `noindex`
+# por perfil. Hasta entonces, se excluyen todos.
+User-agent: *
+Disallow: /@
+Disallow: /perfil/
+Disallow: /chat
+Disallow: /admin
+Disallow: /profile
+Disallow: /amigos
+Disallow: /cerca
+
+# Los posteos públicos y el directorio de subforos sí son para compartirse:
+# tienen ficha propia servida desde el borde (ciclos 7B y 9A).
+Allow: /p/
+Allow: /forum
