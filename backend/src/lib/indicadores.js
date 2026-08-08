@@ -550,10 +550,57 @@ function recortarCargaPorRol({ filas, calculadoEn }, viewer) {
   return { calculadoEn, propio, promedioEquipo };
 }
 
+// --- Tendencias de hashtags (ciclo 10D) ---
+//
+// Vive aquí y no en adminRoutes porque hereda las mismas reglas que el resto
+// del panóptico: agrega por volumen, respeta la ventana en días de México
+// (`ventana`, ver la Trampa 2 arriba) y no expone segmentos que representan a
+// muy poca gente.
+//
+// El umbral es de CUENTAS DISTINTAS, no de posteos, y esa es la diferencia que
+// importa: contar posteos deja que una sola persona publicando veinte veces
+// fabrique una tendencia. Se reusa UMBRAL_SUPRESION porque el criterio es el
+// mismo que en los demás desgloses — no mostrar lo que representa a poca gente.
+async function obtenerTendencias(dias) {
+  const { desdeActual, hasta } = ventana(dias);
+  const filas = await prisma.$queryRaw`
+    SELECT h."tag", h."displayTag",
+           count(DISTINCT p."authorId")::int AS cuentas,
+           count(*)::int                     AS posteos
+    FROM "HashtagOnPost" hp
+    JOIN "Hashtag" h ON h."id" = hp."hashtagId"
+    JOIN "Post"    p ON p."id" = hp."postId"
+    JOIN "User"    u ON u."id" = p."authorId"
+    WHERE ${diaMx('createdAt', 'p')} BETWEEN ${desdeActual}::date AND ${hasta}::date
+      -- Nada oculto por moderación alimenta una tendencia
+      AND p."hiddenAt" IS NULL
+      -- Ni el contenido de cuentas suspendidas o eliminadas
+      AND u."deletedAt" IS NULL
+      AND (u."suspendedUntil" IS NULL OR u."suspendedUntil" <= NOW())
+      -- Ni las palabras del diccionario, aunque tengan filas viejas: agregar
+      -- una palabra no borra el pasado, pero sí la saca de esta pantalla.
+      AND NOT EXISTS (
+        SELECT 1 FROM "PalabraDescartada" d WHERE d."palabra" = h."tag"
+      )
+    GROUP BY h."tag", h."displayTag"
+    HAVING count(DISTINCT p."authorId") >= ${UMBRAL_SUPRESION}
+    ORDER BY cuentas DESC, posteos DESC
+    LIMIT 50
+  `;
+  return {
+    dias,
+    umbralCuentas: UMBRAL_SUPRESION,
+    // Sin `authorId` en ninguna parte: la tendencia dice qué tema está activo,
+    // nunca quién lo publicó.
+    tendencias: filas
+  };
+}
+
 module.exports = {
   DIAS_PERMITIDOS,
   UMBRAL_SUPRESION,
   obtenerIndicadores,
   obtenerCargaModeracion,
-  recortarCargaPorRol
+  recortarCargaPorRol,
+  obtenerTendencias
 };

@@ -126,6 +126,7 @@ model User {
   reportsResolved  Report[]     @relation("ReportsResolved")
   suspensionsGiven User[]       @relation("Suspensiones")
   moderationLog    ModerationAction[] @relation("ModeratorActions")
+  palabrasDescartadas PalabraDescartada[] @relation("PalabrasDescartadas")
   hiddenPosts         Post[]         @relation("PostsHidden")
   hiddenComments      Comment[]      @relation("CommentsHidden")
   hiddenForumPosts    ForumPost[]    @relation("ForumPostsHidden")
@@ -304,6 +305,18 @@ model Post {
   notifications Notification[]
 
   @@index([hiddenAt, createdAt])
+}
+
+// Palabras que NO se indexan como hashtag (ciclo 9C, gestionable desde /admin
+// en el 10D). No es censura: el texto del posteo nunca se toca — simplemente
+// no genera un tema navegable. Se guarda ya normalizada (minúsculas, sin
+// acentos), que es la forma en que `diccionarioDescarte` compara.
+model PalabraDescartada {
+  id          Int      @id @default(autoincrement())
+  palabra     String   @unique
+  agregadaPor User?    @relation("PalabrasDescartadas", fields: [agregadaPorId], references: [id])
+  agregadaPorId Int?
+  createdAt   DateTime @default(now())
 }
 
 model Hashtag {
@@ -508,6 +521,11 @@ enum ReportTargetType {
   FORUM_COMMENT
   USER
   SUBFORUM
+  // Ciclo 10D: este enum lo comparten Report y ModerationAction, y desde aquí
+  // deja de ser "lo que se puede reportar" para ser "sobre qué se actúa".
+  // HASHTAG solo aparece en ModerationAction: no hay forma de reportar una
+  // palabra, pero sí de registrar quién la agregó o la quitó del diccionario.
+  HASHTAG
 }
 
 // Un reporte apunta a UNA cosa. Se usan claves foráneas tipadas en vez de un id
@@ -564,6 +582,9 @@ enum ModerationActionType {
   RESTAURAR_SUBFORO
   RENOMBRAR_SUBFORO
   DESCARTAR_REPORTE
+  // Ciclo 10D: gestión del diccionario de palabras que no se indexan.
+  AGREGAR_PALABRA_DESCARTADA
+  QUITAR_PALABRA_DESCARTADA
 }
 
 // Bitácora de lo que hace la moderación. Es lo que hace auditable al panel:

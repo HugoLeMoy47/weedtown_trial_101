@@ -218,6 +218,56 @@ async function puedeVerPost(post, viewerId) {
   return true;
 }
 
+// Los posteos de un hashtag (ciclo 10D). Va ANTES de `/:id`, igual que las
+// otras rutas con prefijo fijo.
+//
+// LO ÚNICO QUE PUEDE SALIR MAL DE VERDAD ES LA VISIBILIDAD, así que se reusa la
+// del feed sin tocarla: un posteo de solo-amigos etiquetado #loquesea solo
+// aparece para amistades, y uno oculto por moderación para nadie. Una segunda
+// implementación de esta regla es lo que produjo H1 en el 7A.
+//
+// Exige sesión por la misma razón que el feed del perfil: si el contenido de la
+// red se puede recorrer sin cuenta filtrando por tema, el cierre del 10A no
+// sirve de nada.
+router.get('/hashtag/:tag', requireAuth, async (req, res) => {
+  // La LLAVE es lo que agrupa (minúsculas); la grafía solo se pinta. Se
+  // normaliza igual que al guardar para que /hashtag/Cultivo y /hashtag/cultivo
+  // sean el mismo tema.
+  const llave = String(req.params.tag || '').trim().toLowerCase().replace(/^#/, '');
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = 20;
+  const skip = (page - 1) * pageSize;
+  if (!llave) return res.status(400).json({ error: 'Hashtag requerido' });
+  try {
+    const hashtag = await prisma.hashtag.findUnique({
+      where: { tag: llave },
+      select: { tag: true, displayTag: true }
+    });
+    if (!hashtag) return res.status(404).json({ error: 'Hashtag no encontrado' });
+
+    const where = {
+      hashtags: { some: { hashtag: { tag: llave } } },
+      ...soloVisible,
+      ...excludeBlocked(await blockedWith(req.user.id)),
+      ...alcanceWhere(req.user.id, await friendIds(req.user.id))
+    };
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({ where, skip, take: pageSize, orderBy: { createdAt: 'desc' }, include: postInclude }),
+      prisma.post.count({ where })
+    ]);
+    res.json({
+      hashtag,
+      posts: posts.map(p => serializePost(p, req.user.id)),
+      page,
+      totalPages: Math.ceil(total / pageSize),
+      total
+    });
+  } catch (e) {
+    console.error('Error al obtener los posteos del hashtag:', e);
+    res.status(500).json({ error: 'Error al obtener los posteos' });
+  }
+});
+
 // Los posteos de una persona, para el feed que va debajo de su perfil
 // (ciclo 10A). Va ANTES de `/:id` para que Express no tome "de" como un id.
 //

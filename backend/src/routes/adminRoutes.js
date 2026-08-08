@@ -19,8 +19,9 @@ const {
   esMotivoValido, registrar, avisar
 } = require('../lib/moderation');
 const {
-  DIAS_PERMITIDOS, obtenerIndicadores, obtenerCargaModeracion, recortarCargaPorRol
+  DIAS_PERMITIDOS, obtenerIndicadores, obtenerCargaModeracion, recortarCargaPorRol, obtenerTendencias
 } = require('../lib/indicadores');
+const diccionario = require('../lib/diccionarioDescarte');
 
 // Sesión válida + rol de moderación para TODA la superficie de admin
 router.use(requireAuth, requireRole('MOD', 'ADMIN'));
@@ -445,6 +446,112 @@ router.get('/indicadores', requireRole('ADMIN'), async (req, res) => {
   } catch (e) {
     console.error('Error al calcular los indicadores:', e);
     res.status(500).json({ error: 'No se pudieron calcular los indicadores' });
+  }
+});
+
+// GET /api/admin/tendencias?dias=7 — qué temas están activos (ciclo 10D).
+//
+// EL RIESGO DE ESTA PANTALLA NO ES EL CONTEO, ES QUE AMPLIFICA. Lo que aparece
+// aquí se mira más, así que las tres reglas de abajo no son prolijidad:
+//
+//   1. Nada oculto por moderación cuenta (`soloVisible`). Un tema que sube
+//      porque alguien inundó con contenido que YA se ocultó sería una
+//      tendencia fabricada por lo que el equipo acaba de moderar.
+//   2. El contenido de cuentas suspendidas tampoco cuenta.
+//   3. Umbral de CUENTAS DISTINTAS, no de posteos: sin esto, una sola persona
+//      publicando veinte veces fabrica una tendencia. Se reusa el mismo
+//      UMBRAL_SUPRESION (5) del panóptico, por consistencia y porque el
+//      criterio es idéntico — no exponer un segmento que representa a muy poca
+//      gente.
+//   4. Las palabras del diccionario no aparecen aunque tengan filas viejas:
+//      el diccionario decide qué es tema, y esta es la superficie donde eso
+//      importa.
+//
+// Y la regla que el panóptico ya se puso, que aplica igual: agrega por volumen,
+// NO dice quién publicó qué. La tendencia informa "este tema está activo", no
+// "estas personas hablan de esto".
+router.get('/tendencias', requireRole('ADMIN'), async (req, res) => {
+  const dias = diasValidados(req.query.dias);
+  if (dias === null) {
+    return res.status(400).json({ error: `dias debe ser uno de: ${DIAS_PERMITIDOS.join(', ')}` });
+  }
+  try {
+    const datos = await obtenerTendencias(dias);
+    res.json(datos);
+  } catch (e) {
+    console.error('Error al calcular tendencias:', e);
+    res.status(500).json({ error: 'No se pudieron calcular las tendencias' });
+  }
+});
+
+// --- Diccionario de palabras que no se indexan (ciclo 10D) ---
+//
+// NO ES CENSURA, y la interfaz lo dice: el texto del posteo nunca se toca. Lo
+// único que cambia es que esa palabra deja de generar un tema navegable.
+//
+// QUÉ PASA CON LO YA INDEXADO. Agregar una palabra NO borra las filas que ya
+// existen ni las quita de los posteos que las llevan. Se decidió así, y la
+// alternativa se descartó a propósito: borrarlas rompería el vínculo entre un
+// posteo y un tema que su propio texto sigue mostrando, y sería irreversible.
+// Lo que sí ocurre de inmediato es que deja de contar para TENDENCIAS —la
+// superficie que amplifica— y deja de indexarse en adelante. Es la opción
+// conservadora: nada se destruye, y el efecto se nota donde importa.
+router.get('/diccionario', async (req, res) => {
+  try {
+    const palabras = await prisma.palabraDescartada.findMany({
+      orderBy: { palabra: 'asc' },
+      select: {
+        id: true, palabra: true, createdAt: true,
+        agregadaPor: { select: { handle: true } }
+      }
+    });
+    res.json({ palabras });
+  } catch (e) {
+    console.error('Error al listar el diccionario:', e);
+    res.status(500).json({ error: 'No se pudo leer el diccionario' });
+  }
+});
+
+router.post('/diccionario', async (req, res) => {
+  const palabra = diccionario.normalizar(req.body?.palabra || '');
+  if (!palabra || !/^[a-z0-9ñ]{1,30}$/.test(palabra)) {
+    return res.status(400).json({ error: 'Palabra inválida: una sola palabra, sin espacios ni signos' });
+  }
+  try {
+    const creada = await prisma.palabraDescartada.upsert({
+      where: { palabra },
+      update: {},
+      create: { palabra, agregadaPorId: req.user.id },
+      select: { id: true, palabra: true }
+    });
+    await diccionario.recargar();
+    await registrar({
+      moderatorId: req.user.id, type: 'AGREGAR_PALABRA_DESCARTADA',
+      targetType: 'HASHTAG', targetId: creada.id, note: palabra
+    });
+    res.status(201).json(creada);
+  } catch (e) {
+    console.error('Error al agregar palabra al diccionario:', e);
+    res.status(500).json({ error: 'No se pudo agregar la palabra' });
+  }
+});
+
+router.delete('/diccionario/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID requerido' });
+  try {
+    const fila = await prisma.palabraDescartada.findUnique({ where: { id }, select: { palabra: true } });
+    if (!fila) return res.status(404).json({ error: 'Palabra no encontrada' });
+    await prisma.palabraDescartada.delete({ where: { id } });
+    await diccionario.recargar();
+    await registrar({
+      moderatorId: req.user.id, type: 'QUITAR_PALABRA_DESCARTADA',
+      targetType: 'HASHTAG', targetId: id, note: fila.palabra
+    });
+    res.json({ ok: true, palabra: fila.palabra });
+  } catch (e) {
+    console.error('Error al quitar palabra del diccionario:', e);
+    res.status(500).json({ error: 'No se pudo quitar la palabra' });
   }
 });
 

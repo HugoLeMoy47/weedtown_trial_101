@@ -10,6 +10,7 @@ import Chat from './pages/Chat';
 import Nearby from './pages/Nearby';
 import Profile from './pages/Profile';
 import PublicProfile from './pages/PublicProfile';
+import Hashtag from './pages/Hashtag';
 import PublicPost from './pages/PublicPost';
 import Friends from './pages/Friends';
 import Admin from './pages/Admin';
@@ -51,6 +52,8 @@ function App() {
                 motivo por el que /p/:id tampoco está protegido aquí. */}
             <Route path="/perfil/:id" element={<PublicProfile />} />
             <Route path="/p/:id" element={<PublicPost />} />
+            {/* Tema (ciclo 10D). Exige sesión como el resto del contenido de la red. */}
+            <Route path="/tema/:tag" element={<RequireAuth><Hashtag /></RequireAuth>} />
             {/* Misma URL que el resto de la app: el panel no es otro despliegue,
                 es una sección más protegida por rol */}
             <Route path="/admin" element={<RequireRole><Admin /></RequireRole>} />

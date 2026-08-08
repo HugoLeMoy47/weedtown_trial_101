@@ -168,8 +168,20 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
         <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{post.content}</Typography>
         {tags.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+            {/* Ciclo 10D: el hashtag lleva a su tema. Se NAVEGA con la llave
+                (minúsculas, lo que agrupa) y se PINTA la grafía — que es
+                justamente para lo que el 9C separó las dos. */}
             {tags.map(t => (
-              <Chip key={t.llave} label={`#${t.grafia}`} size="small" color="primary" variant="outlined" />
+              <Chip
+                key={t.llave}
+                label={`#${t.grafia}`}
+                size="small"
+                color="primary"
+                variant="outlined"
+                component={RouterLink}
+                to={`/tema/${encodeURIComponent(t.llave)}`}
+                clickable
+              />
             ))}
           </Stack>
         )}

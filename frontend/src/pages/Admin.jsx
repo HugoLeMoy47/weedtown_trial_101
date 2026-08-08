@@ -10,12 +10,14 @@ import DoNotDisturbOnIcon from '@mui/icons-material/DoNotDisturbOn';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import InsightsIcon from '@mui/icons-material/Insights';
+import TagIcon from '@mui/icons-material/Tag';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import Navbar from '../components/Navbar';
+import TemasYDiccionario from '../components/TemasYDiccionario';
 import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
@@ -708,11 +710,14 @@ const Admin = () => {
           <Tab label="Accionados" />
           <Tab label="Descartados" />
           <Tab label="Bitácora" />
+          <Tab label="Temas" icon={<TagIcon fontSize="small" />} iconPosition="start" />
           {esAdmin && <Tab label="Indicadores" icon={<InsightsIcon fontSize="small" />} iconPosition="start" />}
         </Tabs>
 
-        {tab === 4 && esAdmin ? (
+        {tab === 5 && esAdmin ? (
           <Indicadores />
+        ) : tab === 4 ? (
+          <TemasYDiccionario esAdmin={esAdmin} />
         ) : tab === 3 ? (
           <Bitacora />
         ) : !cola ? (
