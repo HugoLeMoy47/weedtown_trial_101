@@ -40,6 +40,30 @@ function getTheme(mode) {
       button: { fontFamily: '"Nunito", "Roboto", sans-serif', textTransform: 'none', fontWeight: 700 }
     },
     components: {
+      // Interruptor global de movimiento (ciclo 9E). Es la red que atrapa lo
+      // que se escape: neutraliza TODA transición y animación CSS de la app
+      // —las propias, las que trae MUI y las que alguien agregue mañana sin
+      // enterarse de que esto existe— cuando el sistema pide menos
+      // movimiento. Los componentes además consultan
+      // `usePrefiereMenosMovimiento()` para no montar siquiera la animación,
+      // pero eso es una optimización; ESTO es la garantía.
+      //
+      // 0.01ms en vez de 0: con duración cero, algunos navegadores nunca
+      // disparan `transitionend`/`animationend`, y cualquier código que
+      // espere ese evento para limpiar se queda colgado. Es el truco estándar
+      // y por eso está escrito aquí, para que nadie lo "corrija" a 0.
+      MuiCssBaseline: {
+        styleOverrides: {
+          '@media (prefers-reduced-motion: reduce)': {
+            '*, *::before, *::after': {
+              animationDuration: '0.01ms !important',
+              animationIterationCount: '1 !important',
+              transitionDuration: '0.01ms !important',
+              scrollBehavior: 'auto !important'
+            }
+          }
+        }
+      },
       MuiCard: { defaultProps: { elevation: 1 } },
       MuiButton: { defaultProps: { disableElevation: true } },
       // El swoosh del logo como acento inferior de la barra de navegación

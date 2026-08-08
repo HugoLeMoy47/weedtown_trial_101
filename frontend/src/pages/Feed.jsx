@@ -11,6 +11,7 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import PostCard from '../components/PostCard';
 import PostModal from '../components/PostModal';
+import AparicionSuave from '../components/AparicionSuave';
 import { FEED_REFRESH_EVENT } from '../lib/refresh';
 import { DOCK_BOTTOM_OFFSET, DOCK_SIDE_MARGIN_PX } from '../lib/mobileNav';
 
@@ -26,6 +27,7 @@ function Feed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [recienPublicado, setRecienPublicado] = useState(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [reload, setReload] = useState(0);
@@ -115,8 +117,14 @@ function Feed() {
     setSearchResults(null);
   };
 
+  // Ciclo 9E: el cierre de "publicar". Antes el modal se cerraba y la tarjeta
+  // aparecía de golpe en la primera posición, indistinguible de un
+  // re-renderizado cualquiera. Ahora entra con una aparición corta, y se marca
+  // SOLO ese id: sin esta marca, cambiar de página o buscar animaría el feed
+  // completo, que es ruido permanente en vez de una respuesta a lo que hiciste.
   const handleNewPost = (nuevoPost) => {
     setPosts(prev => [nuevoPost, ...prev]);
+    setRecienPublicado(nuevoPost.id);
     setShowModal(false);
   };
 
@@ -206,13 +214,14 @@ function Feed() {
               </Typography>
             ) : (
               showing.map(post => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  onUpdated={handleUpdated}
-                  onDeleted={handleDeleted}
-                  onBlocked={handleBlocked}
-                />
+                <AparicionSuave key={post.id} activo={post.id === recienPublicado}>
+                  <PostCard
+                    post={post}
+                    onUpdated={handleUpdated}
+                    onDeleted={handleDeleted}
+                    onBlocked={handleBlocked}
+                  />
+                </AparicionSuave>
               ))
             )}
             {searchResults === null && totalPages > 1 && (
