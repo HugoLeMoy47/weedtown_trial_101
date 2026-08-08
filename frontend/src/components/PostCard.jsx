@@ -10,6 +10,7 @@ import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import CommentSection from './CommentSection';
 import OwnerActions from './OwnerActions';
+import { rutaPerfil } from '../lib/rutaPerfil';
 import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 
@@ -34,7 +35,7 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
     })
     .filter(Boolean);
   const date = post.createdAt ? new Date(post.createdAt) : null;
-  const perfilHref = author.id ? (isMine ? '/profile' : `/perfil/${author.id}`) : null;
+  const perfilHref = isMine ? '/profile' : rutaPerfil(author);
 
   const [reactions, setReactions] = useState(post.reactions || EMPTY_COUNTS);
   const [myReaction, setMyReaction] = useState(post.myReaction || null);

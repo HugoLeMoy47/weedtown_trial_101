@@ -9,6 +9,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
+import { rutaPerfil } from '../lib/rutaPerfil';
 
 // Mismo intervalo que el resto del polling de la app (campana, badge de
 // Amigos del Navbar): sin esto, una solicitud que llega mientras esta
@@ -101,7 +102,7 @@ const Friends = () => {
 
   const Persona = ({ user, secondary, right }) => (
     <ListItem disableGutters secondaryAction={right}>
-      <ListItemButton component={RouterLink} to={`/perfil/${user.id}`} sx={{ borderRadius: 1 }}>
+      <ListItemButton component={RouterLink} to={rutaPerfil(user)} sx={{ borderRadius: 1 }}>
         <ListItemAvatar>
           <Avatar src={user.avatar || undefined} sx={{ bgcolor: 'primary.main' }}>
             {(user.displayName || user.name || '?').charAt(0).toUpperCase()}

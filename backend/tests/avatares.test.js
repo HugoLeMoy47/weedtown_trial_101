@@ -117,7 +117,7 @@ module.exports = async function run() {
     r = await call('GET', '/api/posts', { tok: tAna });
     const enFeed = r.data.posts.find(p => p.id === post.id);
     check('el avatar viaja en el feed', avatar.esUrlDeAvatar(enFeed?.author?.avatar));
-    r = await call('GET', `/api/profile/${ana.id}`);
+    r = await call('GET', `/api/profile/${ana.id}`, { tok: tAna });
     check('y en el perfil público', avatar.esUrlDeAvatar(r.data.avatar));
     check('el perfil público NO expone la foto de Mastodon', r.data.mastodonAvatar === undefined);
   } finally {

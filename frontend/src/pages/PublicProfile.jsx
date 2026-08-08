@@ -1,38 +1,105 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, Link as RouterLink } from 'react-router-dom';
+import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container, Card, CardContent, Typography, Avatar, Box, Stack, Button, Chip,
-  CircularProgress, Alert, Divider
+  CircularProgress, Alert, Divider, Pagination
 } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
+import PostCard from '../components/PostCard';
+import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 
 // Perfil de otra persona (HU-AMI-002): datos públicos siempre, "sobre mí"
 // solo cuando friendStatus es "friends" (el backend ya decide eso, aquí solo
-// se pinta lo que llega). El botón de relación es la puerta de entrada al
-// sistema de amistad — no hay buscador todavía, se llega desde un post.
+// se pinta lo que llega).
+//
+// Ciclo 10A. Tres cambios:
+//   · Se llega por HANDLE (`/@luna`), que es la forma compartible. `/perfil/:id`
+//     se conserva porque hay enlaces viejos, y ambos caen en este componente.
+//   · EXIGE SESIÓN. La ruta NO va detrás de RequireAuth a propósito: así el
+//     enlace sobrevive a que lo abra alguien sin cuenta, que aterriza en el
+//     login y VUELVE aquí tras darse de alta (mismo mecanismo que /p/:id).
+//     Ponerlo detrás de RequireAuth mandaría al login sin recordar a dónde iba.
+//   · Debajo del perfil van los posteos de esa persona, con su visibilidad
+//     resuelta en el servidor.
 const PublicProfile = () => {
-  const { id } = useParams();
+  const { id, arrobaHandle } = useParams();
+  const navigate = useNavigate();
+  // La ruta captura el segmento entero (`@luna`) porque React Router v6 no
+  // deja mezclar estático y parámetro — ver el comentario en App.jsx. Aquí se
+  // quita la arroba y se exige que venga: `/cualquiercosa` sin arroba NO es un
+  // perfil, es una URL rota, y debe comportarse como antes (al feed).
+  const handle = arrobaHandle?.startsWith('@') ? arrobaHandle.slice(1) : null;
+  const rutaInvalida = Boolean(arrobaHandle) && !handle;
+  const { user, loading: authLoading } = useAuth();
   const [perfil, setPerfil] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sinSesion, setSinSesion] = useState(false);
   const [busy, setBusy] = useState(false);
   const [accionError, setAccionError] = useState('');
   const [bloqueado, setBloqueado] = useState(false);
+  const [posts, setPosts] = useState([]);
+  const [pagina, setPagina] = useState(1);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+
+  // La ruta canónica de esta persona, para volver aquí tras el login.
+  const ruta = handle ? `/@${handle}` : `/perfil/${id}`;
+  const rutaApi = handle ? `/profile/handle/${handle}` : `/profile/${id}`;
 
   const cargar = useCallback(() => {
+    if (rutaInvalida) return;
     setLoading(true);
     setError('');
-    api.get(`/profile/${id}`)
+    api.get(rutaApi)
       .then(res => setPerfil(res.data))
-      .catch(() => setError('No se encontró ese perfil.'))
+      .catch(err => {
+        if (err.response?.status === 401) setSinSesion(true);
+        else setError('No se encontró ese perfil.');
+      })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [rutaApi, rutaInvalida]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  // Una URL de un solo segmento sin arroba (`/loquesea`) no es un perfil: es
+  // lo que antes atrapaba el catch-all. Se conserva ese comportamiento en vez
+  // de dejar la pantalla colgada en el spinner.
+  useEffect(() => {
+    if (rutaInvalida) navigate('/feed', { replace: true });
+  }, [rutaInvalida, navigate]);
+
+  // Los posteos se piden por handle, así que hasta que el perfil no llega no
+  // se sabe cuál es (cuando se entró por id).
+  const handleDelPerfil = perfil?.handle;
+  useEffect(() => {
+    if (!handleDelPerfil) return;
+    let cancelado = false;
+    api.get(`/posts/de/${handleDelPerfil}?page=${pagina}`)
+      .then(res => {
+        if (cancelado) return;
+        setPosts(res.data.posts || []);
+        setTotalPaginas(res.data.totalPages || 1);
+      })
+      .catch(() => { if (!cancelado) setPosts([]); });
+    return () => { cancelado = true; };
+  }, [handleDelPerfil, pagina]);
+
+  // Sin sesión, al login recordando a dónde iba. `ref=perfil` ya estaba en la
+  // lista blanca de atribución desde el 7A, esperando justamente esto.
+  //
+  // La antienumeración vive en el backend: `requireAuth` corre antes del
+  // handler, así que un handle que existe y uno inventado dan el MISMO 401 y
+  // aterrizan en esta misma pantalla. Desde aquí no hay forma de distinguirlos
+  // —y por eso este efecto no mira si el perfil existe, solo si hay sesión.
+  useEffect(() => {
+    if (!loading && !authLoading && sinSesion && !user) {
+      navigate(`/login?ref=perfil&next=${encodeURIComponent(ruta)}`, { replace: true });
+    }
+  }, [loading, authLoading, sinSesion, user, ruta, navigate]);
 
   const conAccion = async (fn) => {
     setBusy(true);
@@ -47,12 +114,18 @@ const PublicProfile = () => {
     }
   };
 
-  const agregarAmigo = () => conAccion(() => api.post(`/friends/request/${id}`));
-  const cancelarOQuitar = () => conAccion(() => api.delete(`/friends/${id}`));
+  // El id sale del perfil ya cargado, no de la URL: entrando por `/@handle`
+  // no hay id en los parámetros.
+  const idPerfil = perfil?.id;
+  const agregarAmigo = () => conAccion(() => api.post(`/friends/request/${idPerfil}`));
+  const cancelarOQuitar = () => conAccion(() => api.delete(`/friends/${idPerfil}`));
   const aceptar = () => conAccion(() => api.post(`/friends/accept/${perfil.friendRequestId}`));
   const rechazar = () => conAccion(() => api.post(`/friends/reject/${perfil.friendRequestId}`));
 
-  if (loading) {
+  // Mientras se decide la redirección al login, no se pinta el error: quien no
+  // tiene sesión debe ver el spinner y salir hacia /login, no un "no se
+  // encontró" que además insinuaría algo sobre si ese handle existe.
+  if (loading || (sinSesion && !user)) {
     return (
       <>
         <Navbar />
@@ -98,8 +171,8 @@ const PublicProfile = () => {
               </Box>
               {perfil.friendStatus !== 'self' && (
                 <ContentActions
-                  user={{ id: Number(id), name: perfil.name, displayName: perfil.displayName }}
-                  report={{ targetType: 'USER', targetId: Number(id) }}
+                  user={{ id: idPerfil, name: perfil.name, displayName: perfil.displayName }}
+                  report={{ targetType: 'USER', targetId: idPerfil }}
                   onBlocked={() => setBloqueado(true)}
                 />
               )}
@@ -159,6 +232,38 @@ const PublicProfile = () => {
             {accionError && <Alert severity="error" role="alert" sx={{ mt: 2 }}>{accionError}</Alert>}
           </CardContent>
         </Card>
+
+        {/* Sus posteos, del más nuevo al más viejo. Qué entra aquí lo decide el
+            servidor con la MISMA regla que el feed principal: un posteo de
+            solo-amigos no aparece para quien no lo es, ni siquiera en el perfil
+            de su autora. */}
+        <Box component="section" aria-label={`Publicaciones de ${nombre}`} sx={{ mt: 3 }}>
+          <Typography variant="overline" color="text.secondary">Publicaciones</Typography>
+          {posts.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {perfil.friendStatus === 'self'
+                ? 'Todavía no has publicado nada.'
+                : 'Nada que mostrar por aquí.'}
+            </Typography>
+          ) : (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {posts.map(post => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onUpdated={(actualizado) => setPosts(ps => ps.map(p => (p.id === actualizado.id ? actualizado : p)))}
+                  onDeleted={(borradoId) => setPosts(ps => ps.filter(p => p.id !== borradoId))}
+                  onBlocked={() => setBloqueado(true)}
+                />
+              ))}
+            </Stack>
+          )}
+          {totalPaginas > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              <Pagination count={totalPaginas} page={pagina} onChange={(_, v) => setPagina(v)} />
+            </Box>
+          )}
+        </Box>
       </Container>
     </>
   );

@@ -218,6 +218,54 @@ async function puedeVerPost(post, viewerId) {
   return true;
 }
 
+// Los posteos de una persona, para el feed que va debajo de su perfil
+// (ciclo 10A). Va ANTES de `/:id` para que Express no tome "de" como un id.
+//
+// Vive en postRoutes y no en profileRoutes A PROPÓSITO: aquí ya están en
+// alcance `alcanceWhere`, `soloVisible`, `excludeBlocked`, `postInclude` y
+// `serializePost`, o sea TODA la regla de quién ve qué. Escribirlo en el otro
+// archivo habría exigido exportarlas o —peor— reescribirlas, y una segunda
+// implementación de la visibilidad es exactamente lo que produjo H1 en el
+// ciclo 7A. Este listado no "respeta" las mismas reglas que el feed: **es** el
+// feed, filtrado por autor.
+//
+// Exige sesión, igual que el perfil al que acompaña: si el perfil pide cuenta
+// pero sus posteos no, se reconstruye el perfil sin sesión y la decisión del
+// 10A no sirve de nada.
+router.get('/de/:handle', requireAuth, async (req, res) => {
+  const handle = String(req.params.handle || '').trim().toLowerCase();
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = 20;
+  const skip = (page - 1) * pageSize;
+  try {
+    const autor = await prisma.user.findUnique({ where: { handle }, select: { id: true } });
+    // Mismo 404 para "no existe" y para "hay bloqueo de por medio": quien
+    // bloqueó no debe poder distinguir una cosa de la otra.
+    if (!autor || await isBlockedBetween(req.user.id, autor.id)) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const where = {
+      authorId: autor.id,
+      ...soloVisible,
+      ...alcanceWhere(req.user.id, await friendIds(req.user.id))
+    };
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({ where, skip, take: pageSize, orderBy: { createdAt: 'desc' }, include: postInclude }),
+      prisma.post.count({ where })
+    ]);
+    res.json({
+      posts: posts.map(p => serializePost(p, req.user.id)),
+      page,
+      totalPages: Math.ceil(total / pageSize),
+      total
+    });
+  } catch (e) {
+    console.error('Error al obtener los posteos del perfil:', e);
+    res.status(500).json({ error: 'Error al obtener los posteos' });
+  }
+});
+
 // Obtener un post por ID. Funciona sin sesión para publicaciones públicas.
 router.get('/:id', optionalAuth, async (req, res) => {
   const postId = Number(req.params.id);

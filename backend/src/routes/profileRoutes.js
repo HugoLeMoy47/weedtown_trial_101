@@ -3,7 +3,9 @@ const express = require('express');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
+// optionalAuth salió de aquí en el ciclo 10A: ya no queda ninguna ruta de
+// perfil que se resuelva sin sesión.
+const { requireAuth } = require('../middlewares/requireAuth');
 const { isBlockedBetween } = require('../lib/blocks');
 const { friendStatusBetween } = require('../lib/friends');
 const avatar = require('../lib/avatar');
@@ -172,26 +174,42 @@ router.delete('/me', requireAuth, async (req, res) => {
   }
 });
 
-// Perfil público por id. Sigue siendo público (sin sesión se ve igual), pero si
-// quien consulta tiene un bloqueo con esa persona, para él no existe.
-router.get('/:id', optionalAuth, async (req, res) => {
-  const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: 'ID requerido' });
+// El perfil ajeno, resuelto por id o por handle (ciclo 10A).
+//
+// EXIGE SESIÓN, y eso es un CAMBIO de comportamiento: hasta el 10A esta ruta
+// usaba `optionalAuth` y cualquiera podía leer el perfil de cualquiera sin
+// cuenta, sabiendo solo el id. Su único consumidor vivía detrás de
+// RequireAuth, así que la puerta llevaba tiempo abierta sin que nadie la
+// usara — cerrarla no rompe ningún flujo, quita una fuga.
+//
+// El criterio es de RECIPROCIDAD DE EXPOSICIÓN: quien mira también puede ser
+// mirado. No es simetría abstracta — impide que alguien con poder sobre los
+// participantes (un empleador, un periodista, una autoridad) navegue perfiles
+// sin poner nada propio, que en una comunidad con estigma es el riesgo real.
+// Es además el mismo criterio que HU-FOR-012 ya aplicó a los foros: directorio
+// abierto, contenido con sesión.
+//
+// ANTIENUMERACIÓN, que sale gratis y conviene entender por qué: `requireAuth`
+// corre ANTES del handler, así que sin sesión un handle que existe y uno
+// inventado reciben el mismo 401, sin llegar a tocar la base. No hay forma de
+// mapear quién está en la red probando handles. Es la misma propiedad que
+// `/p/:id` consigue no distinguiendo "privado" de "no existe".
+async function responderPerfil(req, res, where) {
   try {
-    const user = await prisma.user.findUnique({ where: { id }, select: publicProfileSelect });
+    const user = await prisma.user.findUnique({ where, select: publicProfileSelect });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    if (await isBlockedBetween(req.user?.id, id)) {
+    if (await isBlockedBetween(req.user.id, user.id)) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
     // aboutMe (HU-AMI-002) es lo único del perfil que no es público: solo se
     // agrega a la respuesta para amigos, o para el propio dueño si consulta
     // su perfil por esta ruta en vez de /me.
-    const soyYo = req.user?.id === id;
-    const { status, requestId } = soyYo ? { status: 'self' } : await friendStatusBetween(req.user?.id, id);
+    const soyYo = req.user.id === user.id;
+    const { status, requestId } = soyYo ? { status: 'self' } : await friendStatusBetween(req.user.id, user.id);
     let aboutMe = null;
     if (soyYo || status === 'friends') {
-      const extra = await prisma.user.findUnique({ where: { id }, select: { aboutMe: true } });
+      const extra = await prisma.user.findUnique({ where: { id: user.id }, select: { aboutMe: true } });
       aboutMe = extra?.aboutMe ?? null;
     }
 
@@ -200,6 +218,24 @@ router.get('/:id', optionalAuth, async (req, res) => {
     console.error('Error al obtener perfil:', e);
     res.status(500).json({ error: 'Error al obtener perfil' });
   }
+}
+
+// Por handle: es la forma compartible (`/@handle` en la web) y la que hace que
+// picarle al handle de alguien lleve a algún lado suyo. Va ANTES de `/:id`
+// porque si no, Express toma "handle" como si fuera un id.
+//
+// Se normaliza con la misma función que usa el alta (handle.js): los handles
+// se guardan en minúsculas, así que `/@Luna` y `/@luna` son la misma persona.
+router.get('/handle/:handle', requireAuth, async (req, res) => {
+  const handle = handleLib.normalizar(req.params.handle);
+  if (!handle) return res.status(404).json({ error: 'Usuario no encontrado' });
+  return responderPerfil(req, res, { handle });
+});
+
+router.get('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID requerido' });
+  return responderPerfil(req, res, { id });
 });
 
 module.exports = router;

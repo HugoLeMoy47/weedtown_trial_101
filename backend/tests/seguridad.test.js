@@ -97,8 +97,10 @@ module.exports = async function run() {
 
     r = await call('GET', `/api/profile/${beto.id}`, { tok: tAna });
     check('el perfil de Beto es 404 para Ana', r.status === 404, `(fue ${r.status})`);
+    // Ciclo 10A: el perfil dejó de resolverse sin sesión (reciprocidad de
+    // exposición). Esta línea afirmaba 200 hasta entonces.
     r = await call('GET', `/api/profile/${beto.id}`);
-    check('el perfil de Beto sigue siendo público para el resto', r.status === 200, `(fue ${r.status})`);
+    check('sin sesión, el perfil de Beto ya no se resuelve → 401', r.status === 401, `(fue ${r.status})`);
 
     const entreAmbos = await prisma.notification.count({
       where: { OR: [{ recipientId: beto.id, actorId: ana.id }, { recipientId: ana.id, actorId: beto.id }] }

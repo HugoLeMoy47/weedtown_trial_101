@@ -143,8 +143,13 @@ module.exports = async function run() {
     r = await call('GET', '/api/profile/me', { tok: tFer });
     check('el dueño ve su propio aboutMe en /me', r.data.aboutMe === 'solo mis amigos ven esto');
 
+    // Ciclo 10A: sin sesión ya no hay perfil que leer. El caso equivalente
+    // ahora es "con sesión, pero sin amistad" — mismo resultado esperado.
     r = await call('GET', `/api/profile/${fer.id}`);
-    check('sin sesión: friendStatus "none" y aboutMe null', r.data.friendStatus === 'none' && r.data.aboutMe === null, `(fue ${r.data.friendStatus}/${r.data.aboutMe})`);
+    check('sin sesión el perfil no se resuelve → 401', r.status === 401, `(fue ${r.status})`);
+    const extrano = await mkUser('extrano');
+    r = await call('GET', `/api/profile/${fer.id}`, { tok: token(extrano.id) });
+    check('con sesión y sin amistad: friendStatus "none" y aboutMe null', r.data.friendStatus === 'none' && r.data.aboutMe === null, `(fue ${r.data.friendStatus}/${r.data.aboutMe})`);
 
     const gus = await mkUser('gus');
     const tGus = token(gus.id);

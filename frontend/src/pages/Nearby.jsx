@@ -18,6 +18,7 @@ import ContentActions from '../components/ContentActions';
 import api from '../services/api';
 import { getMyCell } from '../lib/geo';
 import { mensajeCuarentena } from '../lib/cuarentena';
+import { rutaPerfil } from '../lib/rutaPerfil';
 
 // Radio visual de una celda de la cuadrícula (~2.2 km de lado) en metros
 const ZONE_RADIUS_M = 1100;
@@ -276,7 +277,7 @@ const Nearby = () => {
                           </Stack>
                         }
                       >
-                        <ListItemAvatar component={RouterLink} to={`/perfil/${p.id}`}>
+                        <ListItemAvatar component={RouterLink} to={rutaPerfil(p)}>
                           <Avatar src={p.avatar || undefined} sx={{ bgcolor: 'primary.main' }}>
                             {displayName(p).charAt(0).toUpperCase()}
                           </Avatar>
@@ -285,7 +286,7 @@ const Nearby = () => {
                           primary={
                             <Typography
                               component={RouterLink}
-                              to={`/perfil/${p.id}`}
+                              to={rutaPerfil(p)}
                               variant="body1"
                               sx={{ color: 'text.primary', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
                             >

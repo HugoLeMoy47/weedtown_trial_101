@@ -40,11 +40,33 @@ function App() {
             <Route path="/cerca" element={<RequireAuth><Nearby /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
             <Route path="/amigos" element={<RequireAuth><Friends /></RequireAuth>} />
-            <Route path="/perfil/:id" element={<RequireAuth><PublicProfile /></RequireAuth>} />
+            {/* Perfil ajeno (ciclo 10A). `/@handle` es la forma compartible;
+                `/perfil/:id` se conserva porque hay enlaces viejos, y los dos
+                caen en el mismo componente.
+
+                NINGUNO va detrás de RequireAuth, a propósito: la API ya exige
+                sesión, y el componente manda al login recordando a dónde iba
+                para volver tras el alta. Con RequireAuth el enlace compartido
+                mandaría al login y ahí se perdería el destino — el mismo
+                motivo por el que /p/:id tampoco está protegido aquí. */}
+            <Route path="/perfil/:id" element={<PublicProfile />} />
             <Route path="/p/:id" element={<PublicPost />} />
             {/* Misma URL que el resto de la app: el panel no es otro despliegue,
                 es una sección más protegida por rol */}
             <Route path="/admin" element={<RequireRole><Admin /></RequireRole>} />
+            {/* `/@handle` — la forma compartible del perfil.
+                POR QUÉ EL PARÁMETRO SE LLAMA `arrobaHandle` Y NO `handle`:
+                React Router v6 no permite mezclar texto estático y parámetro
+                dentro de un MISMO segmento, así que `path="/@:handle"` no hace
+                match nunca y la URL termina cayendo en el catch-all de abajo —
+                sin ningún error, que es lo peor de este caso: se ve como si el
+                enlace simplemente no funcionara. El workaround es capturar el
+                segmento completo (`@luna`) y quitarle la arroba en el
+                componente, que además valida que venga.
+                Va al final y antes del catch-all por legibilidad: v6 ordena por
+                especificidad, así que /feed, /login y todas las rutas estáticas
+                le ganan igual sin importar dónde esté escrita. */}
+            <Route path="/:arrobaHandle" element={<PublicProfile />} />
             <Route path="*" element={<Navigate to="/feed" replace />} />
           </Routes>
         </Router>

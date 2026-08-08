@@ -79,7 +79,7 @@ module.exports = async function run() {
     r = await call('GET', '/api/profile/me', { tok: tAna });
     check('el perfil propio lista sus métodos de acceso', Array.isArray(r.data.identities) && r.data.identities.length === 2);
 
-    r = await call('GET', `/api/profile/${ana.id}`);
+    r = await call('GET', `/api/profile/${ana.id}`, { tok: tAna });
     check('el perfil público trae handle', r.data.handle === ana.handle);
     check('el perfil público NO revela los métodos de acceso', r.data.identities === undefined);
     check('el perfil público YA NO revela la instancia de Mastodon', r.data.mastodonInstance === undefined);
