@@ -47,6 +47,25 @@ npm run subforos -- --creador=weedtown
 
 Las tres herramientas de abajo nacieron del rediseño del catálogo a 32×32 (`wt2`), pero sirven para cualquier trabajo futuro sobre el avatar. **Ninguna toca código de producto**: `avatar-hoja.js` y `avatar-plantillas.js` usan solo la API pública de [`src/lib/avatar.js`](../src/lib/avatar.js), y el convertidor es una página suelta sin dependencias.
 
+> ### Estado del rediseño `wt2` — en pausa
+>
+> **Las herramientas están terminadas y verificadas. El arte no ha empezado.** El proyecto está detenido a propósito, esperando referencias visuales concretas que definan el estilo; retomar no requiere reconstruir nada.
+>
+> **Lo que ya quedó decidido** (no hace falta volver a discutirlo):
+>
+> - Rejilla **32×32**. Hoy es 16×16 y cada píxel de arte ocupa 8 px de pantalla — ese es el grosor que se quiere quitar.
+> - El primer `wt2` conserva **la misma cantidad y el mismo orden de piezas por ranura** que `wt1` (base 8 · pelo 4 · ojos 4 · boca 4 · acc 10 · paletas 6). Así el índice 3 de peinado sigue siendo el mismo peinado, y migrar es reescribir `wt1-<índices>` a `wt2-<mismos índices>`: mismo personaje, mejor dibujado.
+> - Las **piezas nuevas se agregan al final** de cada lista. Ésas —y solo ésas— son las desbloqueables de la gamificación.
+> - **Migración automática**, sin vista previa, mientras la base de usuarios sea chica. Al llegar a masa crítica se reactiva la regla de ofrecer el cambio con vista previa.
+>
+> **Palanca que conviene recordar:** la constante `CABEZA` la comparten **5 de las 8 bases** (Persona, Planta, Ajolote, Luchador, Alebrije). Dibujar bien la cabeza de Persona resuelve la base de esas cinco; las otras cuatro quedan reducidas a redibujar solo lo que las distingue. Por eso el orden correcto es Persona primero, todo lo demás después.
+>
+> **Volumen:** 30 piezas dibujables (las 6 paletas son juegos de hexadecimales, no dibujos). El esfuerzo se reparte ~55 % en las 8 bases, ~25 % en los 10 accesorios, ~20 % en peinados, miradas y bocas.
+>
+> **Para retomar hace falta una sola cosa:** dos o tres referencias de pixel art que marquen el estilo — grosor de contorno, si hay contorno, cuánta sombra, qué tan caricatura. Con eso, el primer paso es dibujar **base Persona + mirada Abiertos**, que juntas fijan casi todo el riesgo de estilo.
+>
+> El detalle completo —incluida la especificación pieza por pieza de qué corregir en lentes, mirada, planta, calaca, ajolote y alebrije— está en el brief de planeación (`.planeacion/`, fuera de git).
+
 ### Por qué hicieron falta
 
 Los avatares se generan por piezas, y **cada pieza es un arreglo de rectángulos escrito a mano** (`[x, y, w, h, rol]`), no un bitmap. Eso trae dos problemas prácticos que estas herramientas resuelven:
