@@ -1,6 +1,7 @@
 // Foros estilo Reddit: subforos, posts con puntaje y órdenes hot/new/top
 const express = require('express');
 const { Prisma } = require('@prisma/client');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
@@ -11,6 +12,7 @@ const storage = require('../lib/storage');
 const { soloVisible } = require('../lib/moderation');
 const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
 const { slugify } = require('../lib/slugify');
+const { armarFichaSubforo } = require('../lib/preview');
 
 const MAX_SUBFORUMS_PER_USER = 3;
 const PAGE_SIZE = 20;
@@ -132,6 +134,62 @@ router.get('/subforums/:slug', optionalAuth, async (req, res) => {
   } catch (e) {
     console.error('Error al obtener subforo:', e);
     res.status(500).json({ error: 'Error al obtener el subforo' });
+  }
+});
+
+// GET /api/forum/subforums/:slug/preview — ficha de previsualización Open
+// Graph de un subforo (HU-SHR-004, ciclo 9A). Sin sesión, ni siquiera
+// `optionalAuth`: la consume el Worker de Cloudflare en nombre de un
+// rastreador anónimo (WhatsApp, Telegram, X), que no tiene ni tendrá cuenta.
+// No importa quién pregunta — y que no importe es lo que hace obligatorio que
+// la respuesta no dependa de `req.user` para decidir qué campos salen.
+//
+// Mismo criterio de límite que GET /api/posts/:id/preview (T3 del ciclo 7B):
+// esta ruta queda FUERA del `apiLimiter` general de app.js, porque todas las
+// peticiones del Worker llegan de un rango chico de IPs de Cloudflare y un
+// subforo popular agotaría el cupo compartido, devolviendo 429 a TODA la API
+// en vez de solo a la ficha. Este limitador propio la protege a ella sola de
+// abuso directo (alguien recorriendo slugs sin pasar por el Worker ni su
+// caché) con un techo generoso: por el camino normal el Worker cachea cada
+// ficha entre 1h y 24h, así que el volumen real que llega aquí es mínimo.
+const subforumPreviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 2000,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
+});
+
+router.get('/subforums/:slug/preview', subforumPreviewLimiter, async (req, res) => {
+  try {
+    // `select` mínimo y CERRADO, no `subforumSelect` con cosas de menos: la
+    // regla es no exponer ni un campo más de los que el directorio abierto ya
+    // muestra hoy, y de esos solo los que la ficha de verdad usa. Nunca
+    // `creator` (HU-FOR-012 / `creatorSelect` arriba) — este endpoint no tiene
+    // sesión que consultar, así que el creador simplemente no se pide.
+    //
+    // `archivedAt: null` va en el WHERE, no en el select, por el mismo motivo
+    // que `visibility: 'PUBLIC'` en la ficha de posteos: un subforo archivado
+    // no se resuelve NUNCA, y responde el 404 idéntico al de "no existe" —
+    // nada distingue un slug archivado de uno inventado. (Ojo con el matiz de
+    // producto: archivar NO oculta el subforo por enlace directo, GET
+    // /subforums/:slug lo sigue devolviendo. Lo que se corta aquí es que su
+    // ficha se siga expandiendo en WhatsApp meses después, que es el enlace
+    // que sí se propaga solo.)
+    const subforum = await prisma.subForum.findUnique({
+      where: { slug: req.params.slug, archivedAt: null },
+      select: { id: true, name: true, description: true }
+    });
+    if (!subforum) return res.status(404).json({ error: 'Subforo no encontrado' });
+    // Caché explícito y corto: esta respuesta la consume el Worker (que trae
+    // su propia estrategia larga y resistente), no un navegador.
+    res.set('Cache-Control', 'public, max-age=300');
+    // JSON PLANO, sin escapar nada (HU-SEC-001): el escapado se hace en el
+    // único punto que emite HTML, frontend/src/worker.js, y solo ahí.
+    res.json(armarFichaSubforo(subforum));
+  } catch (e) {
+    console.error('Error al armar la ficha del subforo:', e);
+    res.status(500).json({ error: 'Error al armar la ficha del subforo' });
   }
 });
 

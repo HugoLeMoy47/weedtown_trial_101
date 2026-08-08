@@ -6,12 +6,13 @@
     "enabled": true
   },
   // "main" convierte esto de "solo assets" a Worker con binding de assets
-  // (HU-SHR-002, ciclo 7B). NO LO QUITES sin leer src/worker.js primero: sin
-  // este archivo, weedtown.social sigue sirviendo el SPA para todo, pero
-  // /p/:id deja de tener meta tags Open Graph — un enlace pegado en WhatsApp,
-  // Telegram, Facebook o X vuelve a verse como texto plano, SIN QUE NADA
-  // FALLE NI AVISE (T7 del plan: ese silencio es la trampa). El resto de
-  // rutas (/feed, /login, /auth/callback, cualquier archivo estático) no
+  // (HU-SHR-002, ciclo 7B; /forum/:slug se sumó en el 9A). NO LO QUITES sin
+  // leer src/worker.js primero: sin este archivo, weedtown.social sigue
+  // sirviendo el SPA para todo, pero /p/:id y /forum/:slug dejan de tener meta
+  // tags Open Graph — un enlace pegado en WhatsApp, Telegram, Facebook o X
+  // vuelve a verse como texto plano, SIN QUE NADA FALLE NI AVISE (T7 del
+  // plan: ese silencio es la trampa). El resto de rutas (/feed, /login,
+  // /auth/callback, /forum/:slug/post/:id, cualquier archivo estático) no
   // cambia: src/worker.js les pasa de largo a env.ASSETS.fetch(), que es
   // exactamente lo que Workers Static Assets hacía antes de que este archivo
   // existiera.
@@ -21,7 +22,7 @@
     // Con "main" presente, el binding necesita nombre propio: el Worker lo
     // usa como env.ASSETS.fetch() para servir el index.html real que
     // src/worker.js reescribe con HTMLRewriter, y para pasar de largo todo
-    // lo que no sea /p/:id.
+    // lo que no sea /p/:id ni /forum/:slug.
     "binding": "ASSETS",
     // SPA fallback nativo de Workers Static Assets: cualquier ruta que no
     // coincida con un archivo real (p. ej. /auth/callback, /profile, /feed)
@@ -29,12 +30,14 @@
     // del cliente. El truco de "_redirects" al estilo Pages clásico (/* ->
     // /index.html) NO sirve aquí: este producto lo detecta como loop infinito
     // porque su propio manejo de rutas ya intenta strip de .html/index.
-    // Se conserva íntegro: src/worker.js solo intercepta /p/:id, todo lo
-    // demás sigue resolviéndose aquí, sin que el Worker le cambie nada.
+    // Se conserva íntegro: src/worker.js solo intercepta /p/:id y
+    // /forum/:slug, todo lo demás sigue resolviéndose aquí (incluido
+    // /forum/:slug/post/:id), sin que el Worker le cambie nada.
     "not_found_handling": "single-page-application"
   },
-  // URL del backend que consulta src/worker.js para la ficha de /p/:id
-  // (GET /api/posts/:id/preview) — configurable a propósito (nunca
+  // URL del backend que consulta src/worker.js para las fichas de /p/:id
+  // (GET /api/posts/:id/preview) y /forum/:slug (GET
+  // /api/forum/subforums/:slug/preview) — configurable a propósito (nunca
   // incrustada en el código, criterio 8 de HU-SHR-002).
   //
   // Este valor de arriba es el que usa `wrangler dev` (sin --env) — solo

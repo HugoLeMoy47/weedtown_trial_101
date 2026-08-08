@@ -1,6 +1,6 @@
 # WeedTown — Frontend
 
-React (Create React App) servido en producción como **Cloudflare Workers Static Assets**, con un Worker propio delante para la ficha de previsualización de `/p/:id`. Ver el [README raíz](../README.md) para la visión general del proyecto.
+React (Create React App) servido en producción como **Cloudflare Workers Static Assets**, con un Worker propio delante para las fichas de previsualización de `/p/:id` y `/forum/:slug`. Ver el [README raíz](../README.md) para la visión general del proyecto.
 
 ## Desarrollo local
 
@@ -19,22 +19,26 @@ npm run build
 
 Genera `build/`, que es lo que sirve tanto `serve -s build` en local como Cloudflare en producción.
 
-## El Worker de `/p/:id` (HU-SHR-002, ciclo 7B)
+## El Worker de fichas: `/p/:id` y `/forum/:slug` (HU-SHR-002, ciclo 7B; HU-SHR-004, ciclo 9A)
 
 **Por qué existe.** Un enlace de WeedTown pegado en WhatsApp, Telegram, Facebook o X necesita mostrar una ficha con imagen, título y descripción — lo que se conoce como meta tags Open Graph. El problema es que **esto no se puede resolver desde React**: los rastreadores de esas apps no ejecutan JavaScript, así que nunca ven lo que `react-helmet` o un `useEffect` escribirían en el `<head>` después de que la página cargó. Necesitan HTML crudo, servido por el servidor, ya con las meta tags puestas.
 
-Sin este archivo, `weedtown.social` sirve el mismo `index.html` para cualquier ruta — correcto para `/feed`, `/login`, `/auth/callback`, pero para `/p/:id` significa que el enlace se ve como texto plano en cualquier chat.
+Sin este archivo, `weedtown.social` sirve el mismo `index.html` para cualquier ruta — correcto para `/feed`, `/login`, `/auth/callback`, pero para `/p/:id` y `/forum/:slug` significa que el enlace se ve como texto plano en cualquier chat.
 
-**Qué hace `src/worker.js`.** Intercepta únicamente `GET /p/:id`:
+**Qué hace `src/worker.js`.** Intercepta únicamente `GET /p/:id` y `GET /forum/:slug`:
 
 1. Busca la ficha en la Cache API del borde.
-2. Si no hay caché (o está vencida), le pide `GET /api/posts/:id/preview` al backend, con 1.5s de timeout.
+2. Si no hay caché (o está vencida), le pide la ficha al backend con 1.5s de timeout — `GET /api/posts/:id/preview` para un posteo, `GET /api/forum/subforums/:slug/preview` para un subforo.
 3. Toma el `index.html` real del binding de assets (`env.ASSETS`) y usa `HTMLRewriter` para inyectar las meta tags en streaming — sin cargar el documento completo en memoria.
 4. Guarda el resultado en caché y responde.
 
-Todo lo que **no** sea `/p/:id` pasa de largo a `env.ASSETS.fetch(request)` — el mismo comportamiento (incluido el fallback SPA de `not_found_handling`) que tenía el proyecto antes de que este Worker existiera. No hay detección de User-Agent: las meta tags son inocuas para un navegador, y sniffear UA para decidir qué servir es frágil y se considera *cloaking*.
+Los dos recursos comparten TODO salvo tres datos (ruta canónica, endpoint del backend y `og:type`: `article` para un posteo, `website` para un subforo). La tabla de caché de abajo, el escapado y la inyección existen una sola vez.
 
-**Si "simplificas" esto de vuelta a solo `assets` en `wrangler.jsonc`:** las fichas desaparecen. No hay error, no hay log, nada avisa — `/p/:id` simplemente vuelve a servir el `index.html` genérico. Si vas a tocar el despliegue, lee este archivo primero.
+Todo lo que **no** sea `/p/:id` ni `/forum/:slug` pasa de largo a `env.ASSETS.fetch(request)` — el mismo comportamiento (incluido el fallback SPA de `not_found_handling`) que tenía el proyecto antes de que este Worker existiera. No hay detección de User-Agent: las meta tags son inocuas para un navegador, y sniffear UA para decidir qué servir es frágil y se considera *cloaking*.
+
+> **Trampa del ciclo 9A:** bajo `/forum/` hay dos rutas del SPA, `/forum/:slug` (el subforo, con ficha) y `/forum/:slug/post/:id` (un hilo, **sin** ficha todavía). La regex del Worker usa `[^/]+`, no `.+`, justo para no capturar la segunda: con `.+` tomaría `cultivo/post/42` como slug, pediría una ficha inexistente y serviría la genérica — o sea, rompería las tarjetas de los hilos sin ningún error visible. Hay una prueba por cada caso en `src/worker.test.js`.
+
+**Si "simplificas" esto de vuelta a solo `assets` en `wrangler.jsonc`:** las fichas desaparecen. No hay error, no hay log, nada avisa — esas rutas simplemente vuelven a servir el `index.html` genérico. Si vas a tocar el despliegue, lee este archivo primero.
 
 ### Caché resistente al backend dormido
 
@@ -69,9 +73,20 @@ npm run worker:dev
 Compila (`npm run build`) y levanta `wrangler dev`, que sirve el Worker + los assets tal como los serviría Cloudflare. Con el backend de desarrollo corriendo en el puerto 4000:
 
 ```
-curl http://127.0.0.1:8787/p/1          # debe traer las meta tags og:* en el <head>
-curl http://127.0.0.1:8787/feed         # debe servir el SPA igual que siempre, sin tocarlo
+curl http://127.0.0.1:8787/p/1                       # meta tags og:* en el <head>, og:type=article
+curl http://127.0.0.1:8787/forum/senadito-420        # meta tags og:* del subforo, og:type=website
+curl http://127.0.0.1:8787/forum/no-existe           # ficha genérica, 200, sin tronar
+curl http://127.0.0.1:8787/forum/senadito-420/post/13 # CERO og:* — el SPA tal cual (ver la trampa del 9A)
+curl http://127.0.0.1:8787/feed                      # el SPA igual que siempre, sin tocarlo
 ```
+
+`curl -I` (HEAD) **no** sirve para inspeccionar estos headers: el Worker solo actúa sobre `GET`, así que un HEAD pasa de largo a los assets y devuelve el `Cache-Control` de ellos (`max-age=0, must-revalidate`), no el de la ficha. Para ver los headers reales que recibe el cliente, usa un GET descartando el cuerpo:
+
+```
+curl -sD- -o /dev/null http://127.0.0.1:8787/forum/senadito-420
+```
+
+Debe traer `Cache-Control: public, max-age=300` (el TTL corto del cliente) y **ningún** `X-Wt-Cached-At` — ese header es interno de la caché del borde y no debe salir al navegador.
 
 ### Desplegar
 
@@ -91,7 +106,7 @@ En la práctica **nadie corre `npm run deploy` a mano en producción**: Cloudfla
    npx wrangler deploy --env production
    ```
 
-**Por qué el flag es obligatorio en los dos:** sin `--env production`, `wrangler deploy` toma `vars` de la raíz de `wrangler.jsonc` — el valor de desarrollo de `PREVIEW_API_URL` (`http://localhost:4000`), inalcanzable desde el edge de Cloudflare (ver la sección "Variables" arriba y el comentario de `src/worker.js:62-69`). El Worker no falla ni avisa: cae a la ficha genérica en silencio para *todo* `/p/:id`.
+**Por qué el flag es obligatorio en los dos:** sin `--env production`, `wrangler deploy` toma `vars` de la raíz de `wrangler.jsonc` — el valor de desarrollo de `PREVIEW_API_URL` (`http://localhost:4000`), inalcanzable desde el edge de Cloudflare (ver la sección "Variables" arriba y el comentario de `src/worker.js:62-69`). El Worker no falla ni avisa: cae a la ficha genérica en silencio para *todo* `/p/:id` y `/forum/:slug`.
 
 **Esto ya pasó.** El campo del dashboard llegó a tener el comando sin el flag, y `weedtown.social` sirvió la ficha genérica para todos los posteos hasta que se corrigió (2026-08-07). Si vuelves a configurar este Worker desde cero, o si Cloudflare alguna vez resetea la configuración de build al reconectar el repositorio, **revisa este campo primero** — es la causa más probable si las fichas de `/p/:id` dejan de traer datos reales sin que nada más haya cambiado.
 

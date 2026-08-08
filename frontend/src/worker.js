@@ -1,5 +1,5 @@
-// Worker de Cloudflare para la ficha de previsualización de /p/:id
-// (HU-SHR-002, ciclo 7B).
+// Worker de Cloudflare para las fichas de previsualización de /p/:id
+// (HU-SHR-002, ciclo 7B) y /forum/:slug (HU-SHR-004, ciclo 9A).
 //
 // ¿POR QUÉ EXISTE ESTE ARCHIVO? (Trampa T7 del plan — léelo antes de
 // "simplificar" esto de vuelta a solo `assets` en wrangler.jsonc)
@@ -12,17 +12,18 @@
 // hay forma de arreglar esto desde React (`react-helmet`/`useEffect` se ven
 // perfectos en el navegador y no existen para el rastreador).
 //
-// Este Worker intercepta SOLO /p/:id: le pide la ficha al backend, inyecta
-// meta tags Open Graph/Twitter Card en el <head> del index.html real (con
-// HTMLRewriter, en streaming, sin cargar el documento completo en memoria) y
-// sirve eso en lugar del index.html genérico. Todo lo demás — /feed, /login,
-// /auth/callback, cualquier archivo estático — pasa de largo a
-// `env.ASSETS.fetch()`, que es EXACTAMENTE lo que Workers Static Assets
-// hacía antes de que este archivo existiera. El fallback de SPA
-// (`not_found_handling`) sigue viviendo en wrangler.jsonc, intacto.
+// Este Worker intercepta SOLO /p/:id y /forum/:slug: le pide la ficha al
+// backend, inyecta meta tags Open Graph/Twitter Card en el <head> del
+// index.html real (con HTMLRewriter, en streaming, sin cargar el documento
+// completo en memoria) y sirve eso en lugar del index.html genérico. Todo lo
+// demás — /feed, /login, /auth/callback, /forum/:slug/post/:id, cualquier
+// archivo estático — pasa de largo a `env.ASSETS.fetch()`, que es EXACTAMENTE
+// lo que Workers Static Assets hacía antes de que este archivo existiera. El
+// fallback de SPA (`not_found_handling`) sigue viviendo en wrangler.jsonc,
+// intacto.
 //
 // Si alguien quita `main` de wrangler.jsonc y deja solo `assets`, las fichas
-// desaparecen SIN QUE NADA FALLE NI AVISE: /p/:id vuelve a servir el
+// desaparecen SIN QUE NADA FALLE NI AVISE: esas rutas vuelven a servir el
 // index.html genérico, indistinguible de un error de configuración menor.
 // Ese silencio es la trampa — por eso esta nota vive también en
 // wrangler.jsonc y en frontend/README.md, no solo aquí.
@@ -53,6 +54,24 @@ const CLIENTE_CACHE_CONTROL = 'public, max-age=300';
 
 const RUTA_POST = /^\/p\/(\d+)\/?$/;
 
+// Ciclo 9A — LA TRAMPA NUEVA DE ESTE ARCHIVO, y es de las que se ven bien:
+// bajo /forum/ viven DOS rutas del SPA, no una (ver App.jsx):
+//
+//   /forum/:slug            → el subforo        ← esta ficha
+//   /forum/:slug/post/:id   → un hilo suelto    ← NO, es otro ciclo
+//
+// `[^/]+` (no `.+`) es lo único que separa una de la otra: prohíbe la barra
+// dentro del slug, así que `/forum/cultivo/post/42` no puede colarse por aquí
+// y sigue de largo al SPA como siempre. Con `.+` capturaría "cultivo/post/42"
+// como si fuera un slug, le pediría al backend una ficha que no existe y
+// serviría la genérica — o sea, ROMPERÍA las tarjetas de los hilos en vez de
+// dejarlas intactas, y sin ningún error visible. Hay una prueba por cada uno
+// de los dos casos en worker.test.js; si alguien afloja esta regex, fallan.
+//
+// `/forum` a secas (el directorio) tampoco entra: el patrón exige un segmento
+// no vacío después de la barra.
+const RUTA_SUBFORO = /^\/forum\/([^/]+)\/?$/;
+
 // URL del backend: CONFIGURABLE, nunca incrustada (criterio 8 de
 // HU-SHR-002). Vive en `vars.PREVIEW_API_URL` de wrangler.jsonc; en
 // producción apunta a weedtown-api.onrender.com, en `wrangler dev` local cae
@@ -76,7 +95,7 @@ function urlBackend(env) {
       `⚠️ PREVIEW_API_URL apunta a una dirección local (${url}). ` +
       'Es normal en `wrangler dev`. Si ves esto en producción, el Worker ' +
       'desplegado NUNCA puede alcanzar esa URL desde el edge de Cloudflare: ' +
-      'todas las fichas de /p/:id van a caer en la genérica, sin ningún ' +
+      'todas las fichas (/p/:id y /forum/:slug) van a caer en la genérica, sin ningún ' +
       'error visible. Revisa `env.production.vars.PREVIEW_API_URL` en ' +
       'wrangler.jsonc y que el deploy haya usado `--env production`.'
     );
@@ -96,17 +115,42 @@ function fichaGenerica(url) {
   };
 }
 
+// ---------- Qué recurso se está sirviendo ----------
+//
+// Ciclo 9A: lo ÚNICO que cambia entre la ficha de un posteo y la de un
+// subforo. Todo lo demás —timeout, tabla de caché, escapado, inyección— es
+// idéntico y sigue existiendo una sola vez: la tabla de caché de abajo está
+// verificada en vivo y duplicarla para el segundo recurso era garantizar que
+// las dos copias se separaran en el tercer ciclo.
+//
+//   ruta:    la ruta canónica en weedtown.social. Es también la clave de
+//            caché, así que /p/1 y /forum/1 nunca se pisan.
+//   api:     el endpoint del backend que arma la ficha.
+//   tipoOg:  `article` para un posteo (una pieza publicada en una fecha),
+//            `website` para un subforo (un lugar que sigue existiendo).
+function recursoPost(id) {
+  return { ruta: `/p/${id}`, api: `/api/posts/${id}/preview`, tipoOg: 'article' };
+}
+
+// `slug` llega TAL CUAL vino en el pathname, o sea ya percent-encoded: es un
+// segmento de URL válido, y volver a codificarlo lo rompería (`%20` pasaría a
+// `%2520`). Express lo decodifica del otro lado al leer `req.params.slug`.
+function recursoSubforo(slug) {
+  return { ruta: `/forum/${slug}`, api: `/api/forum/subforums/${slug}/preview`, tipoOg: 'website' };
+}
+
 // ---------- Pedirle la ficha al backend, con timeout duro (Trampa T2) ----------
 //
 // Tres resultados posibles, y la distinción entre los dos últimos es la que
 // gobierna la última fila de la tabla de caché: un 404 EXPLÍCITO del backend
-// (el posteo no existe, es privado, o está oculto) no es lo mismo que un
-// fallo de red o un timeout (T8: el backend probablemente está dormido).
-async function pedirFicha(id, env) {
+// (el posteo no existe, es privado, o está oculto; el subforo no existe o
+// está archivado) no es lo mismo que un fallo de red o un timeout (T8: el
+// backend probablemente está dormido).
+async function pedirFicha(recurso, env) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_BACKEND_MS);
   try {
-    const res = await fetch(`${urlBackend(env)}/api/posts/${id}/preview`, { signal: controller.signal });
+    const res = await fetch(`${urlBackend(env)}${recurso.api}`, { signal: controller.signal });
     if (res.status === 404) return { estado: 'no_encontrado' };
     if (!res.ok) return { estado: 'fallo' };
     return { estado: 'ok', ficha: await res.json() };
@@ -176,6 +220,12 @@ function construirMetaTags(datos) {
   const imagen = escaparAtributo(datos.imagen);
   const imagenAlt = escaparAtributo(datos.imagenAlt);
   const ogUrl = escaparAtributo(datos.url);
+  // Ciclo 9A: `og:type` deja de ser una constante incrustada porque ahora hay
+  // dos tipos de recurso (article/website). Pasa por `escaparAtributo` igual
+  // que todo lo demás — la regla de arriba no admite excepciones "porque solo
+  // puede valer una de dos cosas fijas"; esa excepción es exactamente la que
+  // se rompería el día que el valor venga de otro lado.
+  const tipo = escaparAtributo(datos.tipo || 'article');
   const dimensiones = datos.dimensionesConocidas
     ? '<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n'
     : '';
@@ -185,7 +235,7 @@ function construirMetaTags(datos) {
 <meta property="og:image" content="${imagen}">
 ${dimensiones}<meta property="og:image:alt" content="${imagenAlt}">
 <meta property="og:url" content="${ogUrl}">
-<meta property="og:type" content="article">
+<meta property="og:type" content="${tipo}">
 <meta property="og:site_name" content="WeedTown">
 <meta property="og:locale" content="es_MX">
 <meta name="twitter:card" content="summary_large_image">
@@ -206,7 +256,7 @@ class InyectarMeta {
   }
 }
 
-function datosMeta(ficha, url, id) {
+function datosMeta(ficha, url, recurso) {
   const generica = fichaGenerica(url);
   return {
     titulo: ficha.titulo || generica.titulo,
@@ -216,10 +266,11 @@ function datosMeta(ficha, url, id) {
     // Solo la imagen de campaña (o la genérica, que también lo es) tiene
     // dimensiones conocidas de antemano — ver la nota en construirMetaTags.
     dimensionesConocidas: !ficha.tieneImagen,
+    tipo: recurso.tipoOg,
     // Canónica y sin los parámetros con que haya llegado (criterio 3): se
     // arma con el origen real de la petición + la ruta limpia, nunca con
     // `url.href` tal cual llegó.
-    url: `${url.origin}/p/${id}`
+    url: `${url.origin}${recurso.ruta}`
   };
 }
 
@@ -288,7 +339,8 @@ function prepararParaCliente(respuesta) {
 //                   a la genérica (sin guardarla: el próximo intento
 //                   reintenta solo)
 //   backend 404   → invalida cualquier caché vieja y sirve la genérica,
-//                   para que un posteo borrado/oculto no sobreviva 24h
+//                   para que un posteo borrado/oculto (o un subforo
+//                   archivado) no sobreviva 24h
 //
 // El límite aceptado (documentado en el plan, no se resuelve aquí): un
 // enlace que NUNCA se expandió antes cae en la genérica si el backend está
@@ -306,9 +358,9 @@ function prepararParaCliente(respuesta) {
 // vez de devolver la rancia con latencia cero — el CONTENIDO servido siempre
 // fue el correcto (la rancia, no la recién refrescada), solo la latencia
 // observada localmente no fue tan baja como debería ser en el edge real.
-async function servirFichaDePost(id, env, ctx, url) {
+async function servirFicha(recurso, env, ctx, url) {
   const cache = caches.default;
-  const cacheKey = new Request(`${url.origin}/p/${id}`, { method: 'GET' });
+  const cacheKey = new Request(`${url.origin}${recurso.ruta}`, { method: 'GET' });
   const cacheada = await cache.match(cacheKey);
 
   if (cacheada) {
@@ -318,7 +370,7 @@ async function servirFichaDePost(id, env, ctx, url) {
       return prepararParaCliente(cacheada);
     }
     if (edadMs < UN_DIA_MS) {
-      ctx.waitUntil(refrescarEnSegundoPlano(id, env, cache, cacheKey, url));
+      ctx.waitUntil(refrescarEnSegundoPlano(recurso, env, cache, cacheKey, url));
       return prepararParaCliente(cacheada);
     }
     // >= 24h: se guardó con max-age=86400, así que en la práctica la Cache
@@ -327,56 +379,71 @@ async function servirFichaDePost(id, env, ctx, url) {
     // día de antigüedad.
   }
 
-  const resultado = await pedirFicha(id, env);
+  const resultado = await pedirFicha(recurso, env);
 
   if (resultado.estado === 'no_encontrado') {
     ctx.waitUntil(cache.delete(cacheKey));
-    return armarHtmlConMeta(env, url, datosMeta(fichaGenerica(url), url, id));
+    return armarHtmlConMeta(env, url, datosMeta(fichaGenerica(url), url, recurso));
   }
   if (resultado.estado === 'fallo') {
-    return armarHtmlConMeta(env, url, datosMeta(fichaGenerica(url), url, id));
+    return armarHtmlConMeta(env, url, datosMeta(fichaGenerica(url), url, recurso));
   }
 
-  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, id));
+  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, recurso));
   ctx.waitUntil(cache.put(cacheKey, prepararParaEdge(base)));
   return prepararParaCliente(base);
 }
 
-async function refrescarEnSegundoPlano(id, env, cache, cacheKey, url) {
-  const resultado = await pedirFicha(id, env);
+async function refrescarEnSegundoPlano(recurso, env, cache, cacheKey, url) {
+  const resultado = await pedirFicha(recurso, env);
   if (resultado.estado === 'no_encontrado') {
     await cache.delete(cacheKey);
     return;
   }
   if (resultado.estado === 'fallo') return; // sigue fallando: se deja la rancia como está
 
-  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, id));
+  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, recurso));
   await cache.put(cacheKey, prepararParaEdge(base));
+}
+
+// Decide qué recurso —si alguno— corresponde a esta petición. Devolver `null`
+// es el caso NORMAL y mayoritario: /feed, /login, /forum, /forum/x/post/42,
+// cualquier archivo estático.
+function recursoDeLaPeticion(request, url) {
+  if (request.method !== 'GET') return null;
+
+  const post = RUTA_POST.exec(url.pathname);
+  if (post) return recursoPost(post[1]);
+
+  const subforo = RUTA_SUBFORO.exec(url.pathname);
+  if (subforo) return recursoSubforo(subforo[1]);
+
+  return null;
 }
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const match = request.method === 'GET' ? RUTA_POST.exec(url.pathname) : null;
+    const recurso = recursoDeLaPeticion(request, url);
 
-    // Todo lo que no sea GET /p/:id pasa de largo — MISMO comportamiento y
-    // MISMA latencia que Workers Static Assets sin este archivo (criterio 7:
-    // verificado con wrangler dev, no asumido). Nada de detectar User-Agent
-    // (criterio 1): las meta tags son inocuas para un navegador, y
-    // sniffear UA para decidir qué servir es frágil y se considera cloaking.
-    if (!match) {
+    // Todo lo que no sea GET /p/:id o GET /forum/:slug pasa de largo — MISMO
+    // comportamiento y MISMA latencia que Workers Static Assets sin este
+    // archivo (criterio 7: verificado con wrangler dev, no asumido). Nada de
+    // detectar User-Agent (criterio 1): las meta tags son inocuas para un
+    // navegador, y sniffear UA para decidir qué servir es frágil y se
+    // considera cloaking.
+    if (!recurso) {
       return env.ASSETS.fetch(request);
     }
 
-    const id = match[1];
     try {
-      return await servirFichaDePost(id, env, ctx, url);
+      return await servirFicha(recurso, env, ctx, url);
     } catch (e) {
       // Trampa T4: cualquier fallo responde 200 con el SPA, nunca un error.
       // Esto es la red de seguridad para lo verdaderamente inesperado (la
       // Cache API o HTMLRewriter truenan) — los fallos previstos (backend
       // caído, 404, timeout) ya se resuelven arriba con la ficha genérica.
-      console.error(`Error armando la ficha de /p/${id}, sirviendo el SPA sin meta tags:`, e);
+      console.error(`Error armando la ficha de ${recurso.ruta}, sirviendo el SPA sin meta tags:`, e);
       return env.ASSETS.fetch(request);
     }
   }
@@ -387,4 +454,15 @@ export default {
 // Workers (HTMLRewriter, caches, ASSETS), así que se pueden importar y
 // probar con Jest normal — sin levantar `wrangler dev` ni agregar
 // dependencias nuevas. No las importa nada más que el propio test.
-export { escaparAtributo, construirMetaTags, datosMeta, fichaGenerica };
+// `recursoDeLaPeticion` (y los dos constructores de recurso) se exportan por
+// el mismo motivo desde el ciclo 9A: es pura también (request+url -> objeto o
+// null) y es donde vive la regex que NO debe capturar /forum/:slug/post/:id.
+export {
+  escaparAtributo,
+  construirMetaTags,
+  datosMeta,
+  fichaGenerica,
+  recursoDeLaPeticion,
+  recursoPost,
+  recursoSubforo
+};

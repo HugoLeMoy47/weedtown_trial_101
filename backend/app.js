@@ -121,18 +121,22 @@ log('arranque_api_limiter', {
   origen: process.env.API_LIMITER_MAX ? 'env (API_LIMITER_MAX)' : 'default',
   blindadoPorNegativo: limiteApiConfigurado !== API_LIMITER_MAX
 });
-// GET /api/posts/:id/preview queda fuera de este limitador (T3, ciclo 7B):
-// todas las peticiones del Worker de Cloudflare llegan desde un rango chico
-// de IPs, así que un enlace popular agotaría el cupo general y devolvería
-// 429 a TODA la API, no solo a la ficha. Tiene su propio limitador, más alto,
-// en postRoutes.js.
-const RUTA_PREVIEW_SIN_LIMITE_GENERAL = /^\/posts\/\d+\/preview$/;
+// Las fichas de previsualización quedan fuera de este limitador (T3, ciclo
+// 7B; extendido a subforos en el 9A): todas las peticiones del Worker de
+// Cloudflare llegan desde un rango chico de IPs, así que un enlace popular
+// agotaría el cupo general y devolvería 429 a TODA la API, no solo a la
+// ficha. Cada una tiene su propio limitador, más alto, junto a su ruta
+// (postRoutes.js y forumRoutes.js).
+//
+// `req.path` aquí es relativo al montaje `/api`, de ahí que los patrones no
+// lo incluyan.
+const RUTAS_PREVIEW_SIN_LIMITE_GENERAL = /^\/(?:posts\/\d+|forum\/subforums\/[^/]+)\/preview$/;
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: API_LIMITER_MAX,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skip: (req) => RUTA_PREVIEW_SIN_LIMITE_GENERAL.test(req.path),
+  skip: (req) => RUTAS_PREVIEW_SIN_LIMITE_GENERAL.test(req.path),
   message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
   handler: alTocarLimite('api')
 });
