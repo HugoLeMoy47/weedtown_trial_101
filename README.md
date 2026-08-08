@@ -74,8 +74,8 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 ├── backend/            API REST (Express + Prisma)
 │   ├── app.js          Entrada: middlewares, rutas, Swagger UI, /health
 │   ├── prisma/         schema.prisma + migraciones
-│   ├── scripts/        rol.js — asigna el primer MOD/ADMIN (`npm run rol`)
-│   │                   subforos.js — siembra el catálogo institucional de subforos (`npm run subforos`)
+│   ├── scripts/        Utilerías de operación y taller del avatar — ver scripts/README.md
+│   │                   rol.js · subforos.js · avatar-hoja.js · avatar-plantillas.js · avatar-convertidor.html
 │   ├── src/
 │   │   ├── lib/          Prisma, geogrid, reacciones, bloqueos, amistad, moderación, socket,
 │   │   │                 storage, avatar, handle, webauthn, mailer
@@ -297,6 +297,14 @@ npm run subforos -- --creador=otrohandle  # o a cualquier otra cuenta ya existen
 ```
 
 El script **no crea usuarios**: la cuenta creadora (`@weedtown` por defecto) se da de alta primero por el flujo normal, o el script falla con un mensaje claro. Es idempotente — correrlo de nuevo no duplica subforos ni pisa una descripción que la comunidad ya haya editado — y no siembra contenido dentro de ellos: nacen vacíos.
+
+### Utilerías y herramientas de trabajo
+
+Además de esos dos, `backend/scripts/` guarda las herramientas que se han ido construyendo para pruebas de concepto y mejora continua del producto — hoy, el **taller del avatar**: una hoja de contactos para ver el catálogo en grande, un generador de plantillas de trazo, y un convertidor de PNG a la lista de rectángulos que consume `avatar.js`.
+
+Se versionan a propósito: una herramienta que solo vive en la máquina de quien la escribió se pierde, y la siguiente persona la vuelve a construir peor. Sus **salidas** generadas sí están ignoradas, porque se reconstruyen del catálogo vivo.
+
+Están documentadas en **[`backend/scripts/README.md`](backend/scripts/README.md)**, junto con el criterio para agregar una nueva.
 
 ---
 

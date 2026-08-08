@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Convertidor de piezas — avatares WeedTown</title>
+<!--
+  Convierte un PNG de pixel art a la lista de rectángulos que consume
+  src/lib/avatar.js: [x, y, w, h, rol].
+
+  Por qué existe: las piezas del avatar no son imágenes, son arreglos de
+  rectángulos escritos a mano. Redibujar el catálogo a mano en coordenadas es
+  inviable; dibujar en un editor de pixel art y convertir, no.
+
+  Se abre directo en el navegador (doble clic). No necesita servidor, no tiene
+  dependencias y no manda el archivo a ningún lado: el PNG se lee con canvas,
+  en tu máquina.
+-->
+<style>
+  :root { --bg:#f4f4ef; --raised:#fff; --sunken:#eaebe3; --ink:#1b1f19; --muted:#545c50;
+          --line:#d9dcd0; --accent:#4f6b34; --warn:#8a6412; --warn-soft:#f5ecd6; --warn-line:#e0cb96; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14170f; --raised:#1c2018; --sunken:#101309; --ink:#e8eae2; --muted:#9ba394;
+            --line:#2d332a; --accent:#9dc072; --warn:#d7ac57; --warn-soft:#322712; --warn-line:#554120; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .page { max-width:940px; margin:0 auto; padding:2.5rem 1.25rem 5rem; }
+  h1 { font-size:1.55rem; margin:0 0 .3rem; font-weight:600; }
+  .sub { color:var(--muted); margin:0 0 1.8rem; font-size:.93rem; max-width:64ch; }
+  h2 { font-size:1.05rem; margin:2rem 0 .7rem; font-weight:600; }
+
+  #zona { border:2px dashed var(--line); background:var(--raised); border-radius:6px;
+          padding:2.5rem 1.5rem; text-align:center; cursor:pointer; transition:border-color .15s,background .15s; }
+  #zona:hover, #zona.activa { border-color:var(--accent); background:var(--sunken); }
+  #zona p { margin:.3rem 0; }
+  #zona .grande { font-size:1.05rem; font-weight:600; }
+  #zona .chico { font-size:.85rem; color:var(--muted); }
+  input[type=file] { display:none; }
+
+  .aviso { background:var(--warn-soft); border:1px solid var(--warn-line); color:var(--warn);
+           padding:.7rem .95rem; border-radius:4px; margin:1rem 0; font-size:.9rem; }
+  .oculto { display:none; }
+
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; align-items:start; }
+  @media (max-width:720px) { .cols { grid-template-columns:1fr; } }
+
+  .panel { background:var(--raised); border:1px solid var(--line); padding:1rem 1.1rem; border-radius:4px; }
+  .panel h3 { margin:0 0 .7rem; font-size:.92rem; font-weight:650; }
+  canvas { image-rendering:pixelated; display:block; width:100%; max-width:288px; height:auto;
+           border:1px solid var(--line); background:
+           repeating-conic-gradient(#0000 0% 25%, #8883 0% 50%) 50%/16px 16px; }
+
+  table { width:100%; border-collapse:collapse; font-size:.88rem; }
+  th,td { text-align:left; padding:.4rem .5rem; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .swatch { width:22px; height:22px; border:1px solid var(--line); border-radius:3px; display:inline-block; vertical-align:middle; }
+  select { font:inherit; font-size:.85rem; padding:.2rem .35rem; background:var(--bg); color:var(--ink);
+           border:1px solid var(--line); border-radius:3px; }
+  code { font-family:ui-monospace,Consolas,monospace; font-size:.85em; }
+
+  .stats { display:flex; gap:1.5rem; flex-wrap:wrap; font-size:.86rem; color:var(--muted); margin:.8rem 0; }
+  .stats b { color:var(--ink); font-variant-numeric:tabular-nums; }
+
+  textarea { width:100%; min-height:190px; font-family:ui-monospace,Consolas,monospace; font-size:.8rem;
+             background:var(--sunken); color:var(--ink); border:1px solid var(--line); border-radius:4px;
+             padding:.7rem; resize:vertical; line-height:1.5; }
+  button { font:inherit; font-size:.88rem; padding:.5rem .9rem; border-radius:4px; cursor:pointer;
+           border:1px solid var(--accent); background:var(--accent); color:var(--bg); font-weight:600; }
+  button.sec { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .fila-botones { display:flex; gap:.6rem; margin-top:.7rem; flex-wrap:wrap; align-items:center; }
+  .ok { color:var(--accent); font-size:.85rem; }
+
+  details { margin-top:2.5rem; border-top:1px solid var(--line); padding-top:1.2rem; }
+  summary { cursor:pointer; font-weight:600; font-size:.95rem; }
+  details ul { font-size:.9rem; color:var(--muted); }
+  details li { margin-bottom:.4rem; }
+</style></head>
+<body><div class="page">
+
+<h1>Convertidor de piezas → rectángulos</h1>
+<p class="sub">Dibuja la pieza en tu editor de pixel art, expórtala como PNG con fondo transparente, y aquí sale el arreglo <code>[x, y, w, h, rol]</code> que consume <code>src/lib/avatar.js</code>. Todo pasa en tu navegador: el archivo no sale de tu máquina.</p>
+
+<div id="zona">
+  <p class="grande">Arrastra un PNG aquí</p>
+  <p class="chico">o haz clic para elegirlo · cuadrado, con transparencia, idealmente 32×32</p>
+</div>
+<input type="file" id="archivo" accept="image/png,image/*">
+
+<div id="avisoTam" class="aviso oculto"></div>
+
+<div id="resultado" class="oculto">
+  <h2>1 · Asigna un rol a cada color</h2>
+  <p class="sub">Dibuja con los colores que quieras: aquí le dices a cada uno qué papel juega. Los roles son los que ya usa el catálogo, así que las 6 paletas siguen funcionando sin repintar nada.</p>
+  <div class="cols">
+    <div class="panel">
+      <h3>Colores encontrados</h3>
+      <table><thead><tr><th>Color</th><th>Píxeles</th><th>Rol</th></tr></thead>
+      <tbody id="tablaColores"></tbody></table>
+    </div>
+    <div class="panel">
+      <h3>Original · reconstruido</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+        <canvas id="lienzoOrig"></canvas>
+        <canvas id="lienzoRecon"></canvas>
+      </div>
+      <div class="stats">
+        <span>Rejilla <b id="statTam">—</b></span>
+        <span>Píxeles <b id="statPx">—</b></span>
+        <span>Rectángulos <b id="statRects">—</b></span>
+      </div>
+      <p class="sub" style="margin:0;font-size:.82rem">Si el reconstruido no es idéntico al original, algún color quedó en <i>ignorar</i>.</p>
+    </div>
+  </div>
+
+  <h2>2 · Copia el resultado</h2>
+  <textarea id="salida" readonly spellcheck="false"></textarea>
+  <div class="fila-botones">
+    <button id="btnCopiar">Copiar</button>
+    <button class="sec" id="btnNombre">Cambiar nombre de la pieza</button>
+    <span class="ok oculto" id="copiado">Copiado</span>
+  </div>
+</div>
+
+<details>
+  <summary>Los siete roles, y por qué se dibuja por rol y no por color</summary>
+  <ul>
+    <li><code>b</code> — <b>base</b>: el relleno principal (piel, cuerpo del animal).</li>
+    <li><code>s</code> — <b>sombra</b>: el tono oscuro de la base, para los costados.</li>
+    <li><code>p</code> — <b>pelo</b>: cabello y equivalentes (plumas, melena).</li>
+    <li><code>r</code> — <b>ropa</b>: hombros y prendas.</li>
+    <li><code>a</code> — <b>acento</b>: el color vivo de la paleta — accesorios, detalles.</li>
+    <li><code>o</code> — <b>oscuro</b>: negro fijo <code>#1a1a1a</code>, no depende de la paleta (ojos, boca).</li>
+    <li><code>l</code> — <b>luz</b>: hueso fijo <code>#f2efe6</code>, tampoco depende de la paleta (brillos, cráneo, lentes).</li>
+  </ul>
+  <p style="font-size:.9rem;color:var(--muted)">Cada pieza se dibuja una sola vez y se pinta seis veces, una por paleta. Por eso se asignan roles y no colores literales: <code>b</code> es "el color de piel de esta paleta", sea el que sea. Los roles <code>o</code> y <code>l</code> son la excepción a propósito — son fijos, para que los ojos sean negros y el cráneo sea hueso en las seis.</p>
+</details>
+
+<script>
+const ROLES = [
+  ['b','b · base'], ['s','s · sombra'], ['p','p · pelo'], ['r','r · ropa'],
+  ['a','a · acento'], ['o','o · oscuro (fijo)'], ['l','l · luz (fija)'], ['','— ignorar —']
+];
+// Paleta de autoría: los colores exactos que emite scripts/avatar-plantillas.js
+// (Terracota + los dos roles fijos). Si dibujas sobre la plantilla sin cambiar
+// los colores, el rol se asigna solo y no hay nada que corregir a mano.
+const PALETA_AUTORIA = {
+  'c98a63':'b', 'a86a48':'s', '3b2a21':'p', '3f6f62':'r',
+  'd9a441':'a', '1a1a1a':'o', 'f2efe6':'l'
+};
+const aHex = (r,g,b) => [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+
+// Si el color no es de la paleta de autoría, se estima por luminosidad. Acierta
+// seguido, y el menú siempre queda para corregir.
+function rolSugerido(r, g, b) {
+  const exacto = PALETA_AUTORIA[aHex(r,g,b)];
+  if (exacto) return exacto;
+  const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+  if (lum < 45) return 'o';
+  if (lum > 225) return 'l';
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  if (max - min < 24) return 's';        // gris → sombra
+  if (r > g && g > b) return 'b';        // cálido → base
+  return 'a';                             // cualquier otro → acento
+}
+
+let W = 0, H = 0, px = null, colores = [], nombrePieza = 'Nueva';
+
+const $ = id => document.getElementById(id);
+const zona = $('zona'), input = $('archivo');
+
+zona.onclick = () => input.click();
+zona.ondragover = e => { e.preventDefault(); zona.classList.add('activa'); };
+zona.ondragleave = () => zona.classList.remove('activa');
+zona.ondrop = e => { e.preventDefault(); zona.classList.remove('activa'); if (e.dataTransfer.files[0]) cargar(e.dataTransfer.files[0]); };
+input.onchange = () => { if (input.files[0]) cargar(input.files[0]); };
+
+function cargar(file) {
+  nombrePieza = file.name.replace(/\.[^.]+$/, '').replace(/[^\w áéíóúñÁÉÍÓÚÑ-]/g, '') || 'Nueva';
+  const img = new Image();
+  img.onload = () => { leer(img); URL.revokeObjectURL(img.src); };
+  img.onerror = () => alert('No se pudo leer la imagen.');
+  img.src = URL.createObjectURL(file);
+}
+
+function leer(img) {
+  W = img.naturalWidth; H = img.naturalHeight;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0);
+  px = ctx.getImageData(0, 0, W, H).data;
+
+  const av = $('avisoTam');
+  const msgs = [];
+  if (W !== H) msgs.push(`La imagen es ${W}×${H} y las piezas son cuadradas.`);
+  if (![16,24,32,48,64].includes(W)) msgs.push(`Rejilla de ${W} px: el catálogo actual es 16 y el brief propone 32.`);
+  if (msgs.length) { av.textContent = msgs.join(' '); av.classList.remove('oculto'); }
+  else av.classList.add('oculto');
+
+  // Colores únicos con alfa significativo
+  const mapa = new Map();
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i+3] < 128) continue;
+    const k = `${px[i]},${px[i+1]},${px[i+2]}`;
+    mapa.set(k, (mapa.get(k) || 0) + 1);
+  }
+  colores = [...mapa.entries()]
+    .sort((a,b) => b[1] - a[1])
+    .map(([k, n]) => {
+      const [r,g,b] = k.split(',').map(Number);
+      return { k, r, g, b, n, rol: rolSugerido(r,g,b) };
+    });
+
+  pintarTabla();
+  $('resultado').classList.remove('oculto');
+  dibujarOriginal();
+  generar();
+}
+
+function pintarTabla() {
+  $('tablaColores').innerHTML = colores.map((c, i) => `
+    <tr>
+      <td><span class="swatch" style="background:rgb(${c.r},${c.g},${c.b})"></span>
+          <code>#${[c.r,c.g,c.b].map(v=>v.toString(16).padStart(2,'0')).join('')}</code></td>
+      <td>${c.n}</td>
+      <td><select data-i="${i}">${ROLES.map(([v,t]) =>
+        `<option value="${v}"${v===c.rol?' selected':''}>${t}</option>`).join('')}</select></td>
+    </tr>`).join('');
+  $('tablaColores').querySelectorAll('select').forEach(s => {
+    s.onchange = () => { colores[+s.dataset.i].rol = s.value; generar(); };
+  });
+}
+
+function dibujarOriginal() {
+  const c = $('lienzoOrig');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  const d = ctx.createImageData(W, H);
+  d.data.set(px);
+  ctx.putImageData(d, 0, 0);
+}
+
+// Descomposición codiciosa en rectángulos: corre a lo ancho, luego extiende
+// hacia abajo mientras la fila completa siga disponible. Menos rectángulos que
+// un píxel por rect, y el resultado es idéntico al original.
+function aRectangulos(mascara) {
+  const usado = new Uint8Array(W * H);
+  const rects = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y*W + x;
+      if (usado[i] || !mascara[i]) continue;
+      let w = 1;
+      while (x + w < W && mascara[i + w] && !usado[i + w]) w++;
+      let h = 1;
+      crecer: while (y + h < H) {
+        for (let k = 0; k < w; k++) {
+          const j = (y + h)*W + x + k;
+          if (!mascara[j] || usado[j]) break crecer;
+        }
+        h++;
+      }
+      for (let dy = 0; dy < h; dy++)
+        for (let dx = 0; dx < w; dx++) usado[(y+dy)*W + x + dx] = 1;
+      rects.push([x, y, w, h]);
+    }
+  }
+  return rects;
+}
+
+function generar() {
+  const porRol = new Map();
+  for (const c of colores) {
+    if (!c.rol) continue;
+    if (!porRol.has(c.rol)) porRol.set(c.rol, new Uint8Array(W * H));
+  }
+  let pintados = 0;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const p = (y*W + x) * 4;
+      if (px[p+3] < 128) continue;
+      const k = `${px[p]},${px[p+1]},${px[p+2]}`;
+      const c = colores.find(c => c.k === k);
+      if (!c || !c.rol) continue;
+      porRol.get(c.rol)[y*W + x] = 1;
+      pintados++;
+    }
+  }
+
+  const salida = [];
+  for (const [rol, mascara] of porRol) {
+    for (const [x, y, w, h] of aRectangulos(mascara)) salida.push([x, y, w, h, rol]);
+  }
+
+  $('statTam').textContent = `${W}×${H}`;
+  $('statPx').textContent = pintados;
+  $('statRects').textContent = salida.length;
+
+  reconstruir(salida);
+
+  const cuerpo = salida.map(([x,y,w,h,r]) => `[${x}, ${y}, ${w}, ${h}, '${r}']`);
+  const lineas = [];
+  for (let i = 0; i < cuerpo.length; i += 4) lineas.push('        ' + cuerpo.slice(i, i+4).join(', '));
+  $('salida').value =
+    `{ n: '${nombrePieza}', r: [\n${lineas.join(',\n')}\n      ] },`;
+}
+
+// Repinta desde los rectángulos generados usando los colores originales de cada
+// rol: si esto no coincide con el original, algo se perdió en la conversión.
+function reconstruir(rects) {
+  const c = $('lienzoRecon');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const colorDeRol = {};
+  for (const col of colores) if (col.rol && !colorDeRol[col.rol]) colorDeRol[col.rol] = `rgb(${col.r},${col.g},${col.b})`;
+  for (const [x, y, w, h, rol] of rects) {
+    ctx.fillStyle = colorDeRol[rol] || '#f0f';
+    ctx.fillRect(x, y, w, h);
+  }
+}
+
+$('btnCopiar').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('salida').value);
+    const ok = $('copiado'); ok.classList.remove('oculto');
+    setTimeout(() => ok.classList.add('oculto'), 1600);
+  } catch { $('salida').select(); document.execCommand('copy'); }
+};
+
+$('btnNombre').onclick = () => {
+  const n = prompt('Nombre de la pieza (el que aparece en el estudio):', nombrePieza);
+  if (n) { nombrePieza = n.trim(); generar(); }
+};
+</script>
+</div></body></html>
