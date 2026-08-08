@@ -10,6 +10,7 @@ Se versionan a propósito. Una herramienta que solo vive en la máquina de quien
 |---|---|---|
 | [`rol.js`](#roljs) | Asigna `USER` / `MOD` / `ADMIN` a una cuenta | Al montar un entorno, o para promover a alguien |
 | [`subforos.js`](#subforosjs) | Siembra el catálogo inicial de subforos | Una vez por entorno, después del alta de la cuenta creadora |
+| [`sembrar-dev.js`](#sembrar-devjs) | Escenario de desarrollo: cuentas, amistad, bloqueo y posteos | Al estrenar o vaciar la base de desarrollo |
 | [`avatar-hoja.js`](#avatar-hojajs) | Hoja de contactos del catálogo de avatares | Al revisar o rediseñar el arte del avatar |
 | [`avatar-plantillas.js`](#avatar-plantillasjs) | Plantillas de 32×32 para redibujar piezas | Al redibujar el catálogo (`wt2`) |
 | [`avatar-convertidor.html`](#avatar-convertidorhtml) | PNG de pixel art → arreglo de rectángulos | Al integrar cada pieza dibujada |
@@ -40,6 +41,37 @@ Prerrequisito: la cuenta creadora (por defecto `@weedtown`) debe existir. El scr
 npm run subforos
 npm run subforos -- --creador=weedtown
 ```
+
+### `sembrar-dev.js`
+
+```bash
+node scripts/sembrar-dev.js            # siembra (no hace nada si ya está)
+node scripts/sembrar-dev.js --rehacer  # borra lo sembrado y lo vuelve a crear
+node scripts/sembrar-dev.js --borrar   # solo borra
+```
+
+Desde que desarrollo y producción usan bases distintas, la de desarrollo arranca vacía — correcto, pero deja la app sin nada que mostrar. Y varias verificaciones no se pueden hacer con una sola cuenta: *"este posteo lo ve una amistad pero no un extraño"* necesita una amistad **y** un extraño **y** un bloqueo, montados a mano cada vez.
+
+El reparto está diseñado contra **lo que hay que poder verificar**, no contra una idea de "usuarios de ejemplo". Cada cuenta existe para cubrir un caso:
+
+| Cuenta | Para qué |
+|---|---|
+| `@luna` | La protagonista: perfil lleno (bio, sobre mí, edad, género) y posteos de ambas visibilidades |
+| `@mora` | Su amistad — ve los posteos de solo-amigos |
+| `@tuco` | Extraño con sesión — no los ve |
+| `@nube` | Bloqueada por luna — para ella, luna no existe |
+| `@sol` | Solicitud de amistad pendiente hacia luna |
+
+Trae también posteos con y sin hashtags (incluida grafía en camello, para ver `displayTag`) y celdas de Cerca en zonas vecinas.
+
+**Se puede entrar como cualquiera de ellas.** Cada cuenta lleva una identidad de correo `<handle>@dev.local` — un dominio reservado por RFC 6761, así que ningún correo real puede caer ahí. Pides el enlace mágico desde `/login` y, con `MAIL_DRIVER=log`, el enlace se imprime en la consola del backend en vez de enviarse.
+
+**Dos guardianes**, y el segundo es el que importa:
+
+1. Se niega si `NODE_ENV=production`.
+2. Se niega si encuentra **una sola cuenta que él no creó** — sin importar a qué base apunte el `.env`. Es la defensa real: aunque alguien apunte el `.env` a una base con datos de gente, el script no toca nada. Aplica también con `--rehacer`, que es la bandera peligrosa.
+
+Los subforos van aparte, con su propio script: `npm run subforos -- --creador=luna`.
 
 ---
 
