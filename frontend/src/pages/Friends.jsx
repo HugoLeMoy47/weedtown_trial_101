@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Container, Card, CardContent, Typography, List, ListItem, ListItemAvatar, ListItemButton,
   ListItemText, Avatar, Button, CircularProgress, Box, Alert, Stack, TextField, InputAdornment
 } from '@mui/material';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import SearchIcon from '@mui/icons-material/Search';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
 
@@ -19,6 +20,7 @@ const POLL_MS = 20000;
 // "propio contenido" apunta al perfil ajeno (/perfil/:id) — ahí vive el
 // detalle y las mismas acciones, esto es solo el resumen.
 const Friends = () => {
+  const navigate = useNavigate();
   const [amigos, setAmigos] = useState(null);
   const [recibidas, setRecibidas] = useState(null);
   const [enviadas, setEnviadas] = useState(null);
@@ -72,6 +74,30 @@ const Friends = () => {
   };
 
   const cargando = amigos === null || recibidas === null || enviadas === null;
+
+  const nombre = (u) => u.displayName || u.name;
+
+  // Abrir chat con alguien: MISMO mecanismo que "Cerca" (Nearby.jsx), no uno
+  // nuevo. `Chat.jsx` ya lee `location.state.withUser` y hace el POST a
+  // /chat/conversations por su cuenta, así que aquí no se pide nada al backend
+  // — solo se navega. Dos formas distintas de abrir una conversación serían dos
+  // lugares donde arreglar el mismo bug, y quien lo arregle va a encontrar una
+  // sola.
+  //
+  // El objeto se arma campo por campo (no `{...u}`) por la misma razón que en
+  // Nearby: lo que viaja en el estado del router queda explícito y no se
+  // amplía solo el día que /api/friends agregue un campo.
+  //
+  // La cuarentena de cuentas nuevas (HU-SEG-006/007) tampoco se maneja aquí:
+  // el 403 lo produce ese POST, que vive en Chat.jsx, y ahí ya se traduce con
+  // `mensajeCuarentena()` — el aviso que dice CUÁNDO va a poder, no "error".
+  // Adelantar el POST a esta pantalla solo para mostrar el mismo mensaje antes
+  // sería justamente inventar la segunda forma de abrir un chat.
+  const abrirChat = (u) => {
+    navigate('/chat', {
+      state: { withUser: { id: u.id, name: u.name, displayName: u.displayName, avatar: u.avatar, handle: u.handle } }
+    });
+  };
 
   const Persona = ({ user, secondary, right }) => (
     <ListItem disableGutters secondaryAction={right}>
@@ -186,7 +212,22 @@ const Friends = () => {
                   </Typography>
                 ) : (
                   <List disablePadding>
-                    {amigos.map(a => <Persona key={a.user.id} user={a.user} />)}
+                    {amigos.map(a => (
+                      <Persona
+                        key={a.user.id}
+                        user={a.user}
+                        right={
+                          <Button
+                            size="small"
+                            startIcon={<ChatBubbleOutlineIcon />}
+                            onClick={() => abrirChat(a.user)}
+                            aria-label={`Mandar mensaje a ${nombre(a.user)}`}
+                          >
+                            Mensaje
+                          </Button>
+                        }
+                      />
+                    ))}
                   </List>
                 )}
               </CardContent>
