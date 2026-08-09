@@ -11,7 +11,7 @@ Se versionan a propósito. Una herramienta que solo vive en la máquina de quien
 | [`rol.js`](#roljs) | Asigna `USER` / `MOD` / `ADMIN` a una cuenta | Al montar un entorno, o para promover a alguien |
 | [`subforos.js`](#subforosjs) | Siembra el catálogo inicial de subforos | Una vez por entorno, después del alta de la cuenta creadora |
 | [`sembrar-dev.js`](#sembrar-devjs) | Escenario de desarrollo: cuentas, amistad, bloqueo y posteos | Al estrenar o vaciar la base de desarrollo |
-| [`respaldo.js`](#respaldojs) | Copia la base entera a un JSON | **Producción no tiene respaldos automáticos** — con la frecuencia que aguantes perder |
+| [`respaldo.js`](#respaldojs) | Copia a un JSON cualquiera de las dos bases, entera o por tablas/grupos | **Producción no tiene respaldos automáticos** — con la frecuencia que aguantes perder |
 | [`restaurar.js`](#restaurarjs) | Carga un respaldo y verifica que quedó igual | Al probar un respaldo, y el día de una recuperación real |
 | [`avatar-hoja.js`](#avatar-hojajs) | Hoja de contactos del catálogo de avatares | Al revisar o rediseñar el arte del avatar |
 | [`avatar-plantillas.js`](#avatar-plantillasjs) | Plantillas de 32×32 para redibujar piezas | Al redibujar el catálogo (`wt2`) |
@@ -86,10 +86,51 @@ Los subforos van aparte, con su propio script: `npm run subforos -- --creador=lu
 ### `respaldo.js`
 
 ```bash
-npm run respaldo -- --destino "D:/respaldos-weedtown"
+npm run respaldo -- --listar                                              # qué tablas y grupos hay
+npm run respaldo -- --base produccion --destino "D:\respaldos-weedtown"   # respaldo completo
+npm run respaldo -- --base dev        --destino "D:\respaldos-weedtown"
 ```
 
-Recorre las 25 tablas en orden de dependencia y las escribe en un JSON con manifiesto: cuándo se tomó, de qué host, **con qué migración** y cuántas filas por tabla.
+Recorre las tablas en orden de dependencia y las escribe en un JSON con manifiesto: cuándo se tomó, de qué proyecto, **con qué migración**, si es completo y cuántas filas por tabla.
+
+**`--base` nombra la base y no hay que adivinar cuál salió.** `produccion` toma `RESPALDO_DATABASE_URL` de `.env.produccion`; `dev` toma `DATABASE_URL` de `.env`. Si pides `produccion` y falta la variable, se detiene en vez de caer a desarrollo.
+
+#### Respaldo selectivo
+
+```bash
+npm run respaldo -- --base produccion --destino "..." --solo cuentas,feed --acepto-parcial
+npm run respaldo -- --base produccion --destino "..." --excepto chats     --acepto-parcial
+npm run respaldo -- --base dev        --destino "..." --solo User,Post,Comment
+```
+
+`--solo` y `--excepto` aceptan **tablas y grupos mezclados**. Los grupos existen para no tener que acordarse de qué tablas componen una idea:
+
+| Grupo | Tablas |
+|---|---|
+| `cuentas` | `User`, `Identity`, `Passkey`, `MagicLink` |
+| `feed` | `Post`, `Hashtag`, `HashtagOnPost`, `Comment`, `Reaction`, `Media` |
+| `foros` | `SubForum`, `SubForumFollow`, `ForumPost`, `ForumComment` |
+| `social` | `Block`, `FriendRequest`, `Notification` |
+| `chats` | `Chat`, `Message` |
+| `moderacion` | `Report`, `ModerationAction`, `PalabraDescartada`, `PrivacyAction` |
+
+**La selección se valida contra las llaves foráneas antes de conectar.** Pedir `--solo feed` falla, y dice por qué:
+
+```
+✖ La selección deja fuera tablas de las que otras dependen:
+      Post necesita User
+      Comment necesita User
+    Selección que sí funciona:
+      --solo User,Post,Hashtag,HashtagOnPost,Comment,Reaction,Media
+```
+
+Sin esa comprobación el archivo se generaría sin quejarse y reventaría por violación de FK **durante la recuperación**, que es el peor momento posible para descubrirlo.
+
+**Un parcial no es un respaldo de recuperación, y el sistema entero lo trata así:** se exige `--acepto-parcial` cuando el origen es producción, el nombre del archivo lleva el sufijo `-parcial`, el manifiesto guarda `completo: false` con la lista de omitidas, y **`restaurar.js` se niega a cargarlo**. La razón es concreta: restaurar vacía el destino, así que cargar un recorte dejaría en blanco las tablas que no venían — eso no es recuperar, es perder.
+
+Solo las FK **obligatorias** cuentan como dependencia. Una `Reaction` apunta a `Post` o a `Comment` o a `ForumPost`, nunca a todos; tratarlas como duras obligaría a incluir el esquema completo en cualquier selección y el respaldo selectivo dejaría de existir.
+
+**Si el esquema crece y nadie actualiza la lista de tablas, el script se detiene.** Compara los modelos del cliente de Prisma contra los suyos: una tabla nueva sin registrar quedaría fuera de todos los respaldos, en silencio y para siempre.
 
 Para respaldar producción, pon la cadena en `RESPALDO_DATABASE_URL` dentro de `backend/.env.produccion` — `.gitignore` ya lo excluye por el patrón `.env.*` — en vez de pasarla por `--url`, donde queda en el historial de la terminal. Usa el **puerto 5432** (conexión directa), no el 6543 del pooler: para una lectura masiva es más confiable.
 

@@ -74,7 +74,23 @@ async function main() {
   console.log(`            tomado ${respaldo.tomadoEn} del proyecto ${respaldo.origen.proyecto || respaldo.origen.host} · ${totalRespaldo} filas`);
   console.log(`            migración de origen: ${respaldo.migracion}`);
   console.log(`  destino : proyecto ${destino.proyecto}  ·  ${destino.host}/${destino.base} (schema ${destino.schema})`);
-  console.log(`  modo    : ${soloVerificar ? 'solo verificar (no escribe)' : 'RESTAURAR (borra el destino)'}\n`);
+  console.log(`  modo    : ${soloVerificar ? 'solo verificar (no escribe)' : 'RESTAURAR (borra el destino)'}`);
+  console.log(`  alcance : ${respaldo.completo === false ? `PARCIAL — sin ${(respaldo.omitidas || []).join(', ')}` : 'completo'}\n`);
+
+  // Un respaldo parcial NO se puede usar como restauración: vaciar el destino
+  // y cargar solo unas tablas deja la base con las demás en blanco. Es la
+  // forma más fácil de destruir datos creyendo que se están recuperando, y el
+  // nombre del archivo (`-parcial`) no basta si el script no lo comprueba.
+  if (respaldo.completo === false && !soloVerificar) {
+    abortar(
+      'Este respaldo es PARCIAL y restaurar vacía el destino por completo.\n\n' +
+      `    Solo trae: ${respaldo.orden.join(', ')}\n` +
+      `    Le faltan: ${(respaldo.omitidas || []).join(', ')}\n\n` +
+      '    Cargarlo dejaría las tablas faltantes VACÍAS: eso no es recuperar, es\n' +
+      '    perder lo que no venía en el recorte.\n\n' +
+      '    Usa --solo-verificar para inspeccionarlo, o restaura un respaldo completo.'
+    );
+  }
 
   // La guardia que importa: no restaurar encima del origen por accidente.
   // Restaurar es borrar primero, así que equivocarse aquí es el peor caso
