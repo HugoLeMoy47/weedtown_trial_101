@@ -19,6 +19,16 @@ npm run build
 
 Genera `build/`, que es lo que sirve tanto `serve -s build` en local como Cloudflare en producción.
 
+### `public/robots.txt`
+
+Copiado tal cual al build. Excluye las superficies con datos de personas (`/@`, `/perfil/`, `/chat`, `/admin`, `/profile`, `/amigos`, `/cerca`) y permite las que sí son para compartirse (`/p/`, `/forum`), que son justo las dos que tienen ficha propia servida desde el borde.
+
+No es la defensa: la defensa es el 401 del backend, y un rastreador que no ejecuta JavaScript no vería nada de una SPA de todos modos. Le ahorra el viaje a quien respeta el archivo y deja escrita la intención.
+
+> **En producción se ve distinto, y está bien.** Cloudflare **antepone** su preámbulo de *content signals* en vez de reemplazar el archivo. Al hacer `curl https://weedtown.social/robots.txt` lo primero que aparece no es este contenido — hay que leer hasta abajo para encontrar las reglas propias. Costó un susto durante la verificación del ciclo 10: parecía que el archivo del build no se había desplegado.
+
+Cuando exista la ficha de previsualización de perfiles (ciclo 11B), el Worker será el que distinga perfil público de privado y emita `noindex` por perfil; hasta entonces se excluyen todos, y la línea `Disallow: /@` es lo que ese ciclo tendrá que revisar.
+
 ## El Worker de fichas: `/p/:id` y `/forum/:slug` (HU-SHR-002, ciclo 7B; HU-SHR-004, ciclo 9A)
 
 **Por qué existe.** Un enlace de WeedTown pegado en WhatsApp, Telegram, Facebook o X necesita mostrar una ficha con imagen, título y descripción — lo que se conoce como meta tags Open Graph. El problema es que **esto no se puede resolver desde React**: los rastreadores de esas apps no ejecutan JavaScript, así que nunca ven lo que `react-helmet` o un `useEffect` escribirían en el `<head>` después de que la página cargó. Necesitan HTML crudo, servido por el servidor, ya con las meta tags puestas.

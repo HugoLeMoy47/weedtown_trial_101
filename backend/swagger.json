@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "WeedTown API",
-    "version": "2.6.0",
-    "description": "API de WeedTown, red social de la comunidad cannábica de México. Identidad federada con Mastodon (OAuth 2.0) y sesión mediante JWT propio en el header Authorization. Seguridad: headers via helmet, CORS restringido al frontend, rate limiting (300 peticiones/15 min general; 20/15 min en el flujo OAuth), payload JSON limitado a 100 kB e imágenes a 5 MB. El perfil público (GET /api/profile/{id}) no expone PII (email, teléfono, nombre real, edad, nacimiento ni género). Las rutas de mercado y admin son stubs pendientes de implementación."
+    "version": "2.7.0",
+    "description": "API de WeedTown, red social de la comunidad cannábica de México. Tres métodos de acceso a la misma cuenta (Mastodon OAuth 2.0, llave de acceso/WebAuthn y enlace mágico por correo) y sesión mediante JWT propio en el header Authorization. Seguridad: headers via helmet, CORS restringido al frontend, rate limiting (300 peticiones/15 min general; 20/15 min en OAuth y passkeys; 10/15 min en enlace mágico), payload JSON limitado a 100 kB e imágenes a 5 MB. PRIVACIDAD DEL PERFIL (ciclo 10B): la PII dura —email, teléfono, nombre real y fecha de nacimiento— nunca sale de /api/profile/me y no hay interruptor que la publique. Bio, sobre mí, edad y género son configurables por dato (TODOS/AMIGOS/NADIE) y se recortan según quién pregunta; el interruptor de perfil público nunca amplía lo que la visibilidad por dato ya restringió. Las rutas de mercado son stubs pendientes; las de moderación y panóptico ya están implementadas y exigen rol MOD o ADMIN."
   },
   "servers": [
     {
@@ -308,9 +308,6 @@
       "description": "El identificador público es User.handle, propio de WeedTown. Cómo entra cada persona vive en Identity, separado de quién es."
     },
     {
-      "name": "Posts"
-    },
-    {
       "name": "Reacciones",
       "description": "Reacciones cannábicas: Me gusta, Me rola, Me interesa, Me molesta — una por usuario por objeto"
     },
@@ -355,6 +352,21 @@
     {
       "name": "Pendientes",
       "description": "Stubs sin lógica real todavía (market). Ya exige sesión."
+    },
+    {
+      "name": "Posteos"
+    },
+    {
+      "name": "Chat",
+      "description": "Chat 1 a 1: el envío entra por REST (hereda auth, rate limit y validación) y la entrega en vivo sale por Socket.IO."
+    },
+    {
+      "name": "Cerca",
+      "description": "Descubrimiento por zonas de ~2 km. El servidor nunca recibe coordenadas: el navegador manda la celda ya calculada."
+    },
+    {
+      "name": "Panóptico",
+      "description": "Indicadores agregados sobre la red, nunca sobre personas. Ningún desglose expone un grupo de menos de 5 elementos."
     }
   ],
   "paths": {
@@ -373,11 +385,25 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "example": "ok" },
-                    "db": { "type": "string", "example": "ok" },
-                    "storage": { "type": "string", "example": "local" },
-                    "mailer": { "type": "string", "example": "log" },
-                    "uptimeSegundos": { "type": "integer" }
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "db": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "storage": {
+                      "type": "string",
+                      "example": "local"
+                    },
+                    "mailer": {
+                      "type": "string",
+                      "example": "log"
+                    },
+                    "uptimeSegundos": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
@@ -464,7 +490,9 @@
         "summary": "Opciones para registrar una llave de acceso (passkey)",
         "description": "Con `Authorization: Bearer` agrega la llave a la cuenta de la sesión. Sin él, da de alta una cuenta nueva (`handle` en el body es una sugerencia opcional). El reto no se guarda en el servidor: viaja firmado en `regToken` (5 min) y hay que devolverlo tal cual en /register/verify.",
         "security": [
-          { "bearerAuth": [] },
+          {
+            "bearerAuth": []
+          },
           {}
         ],
         "requestBody": {
@@ -473,7 +501,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "handle": { "type": "string", "description": "Solo se usa si no hay sesión (alta nueva)" }
+                  "handle": {
+                    "type": "string",
+                    "description": "Solo se usa si no hay sesión (alta nueva)"
+                  }
                 }
               }
             }
@@ -487,8 +518,13 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "options": { "type": "object", "description": "PublicKeyCredentialCreationOptionsJSON" },
-                    "regToken": { "type": "string" }
+                    "options": {
+                      "type": "object",
+                      "description": "PublicKeyCredentialCreationOptionsJSON"
+                    },
+                    "regToken": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -505,7 +541,9 @@
         "summary": "Verifica el registro de una llave de acceso",
         "description": "Con sesión (regToken en modo \"add\") agrega la llave y responde `{ identityId }`. Sin sesión (modo \"signup\") crea la cuenta y responde `{ token }`, igual que el callback de Mastodon.",
         "security": [
-          { "bearerAuth": [] },
+          {
+            "bearerAuth": []
+          },
           {}
         ],
         "requestBody": {
@@ -514,20 +552,36 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["attResp", "regToken"],
+                "required": [
+                  "attResp",
+                  "regToken"
+                ],
                 "properties": {
-                  "attResp": { "type": "object", "description": "RegistrationResponseJSON de @simplewebauthn/browser" },
-                  "regToken": { "type": "string" }
+                  "attResp": {
+                    "type": "object",
+                    "description": "RegistrationResponseJSON de @simplewebauthn/browser"
+                  },
+                  "regToken": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Llave agregada, o cuenta creada con `{ token }`" },
+          "200": {
+            "description": "Llave agregada, o cuenta creada con `{ token }`"
+          },
           "400": {
             "description": "Reto expirado/inválido, modo no corresponde a la sesión, o verificación fallida",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -547,8 +601,13 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "options": { "type": "object", "description": "PublicKeyCredentialRequestOptionsJSON" },
-                    "loginToken": { "type": "string" }
+                    "options": {
+                      "type": "object",
+                      "description": "PublicKeyCredentialRequestOptionsJSON"
+                    },
+                    "loginToken": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -569,10 +628,18 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["authResp", "loginToken"],
+                "required": [
+                  "authResp",
+                  "loginToken"
+                ],
                 "properties": {
-                  "authResp": { "type": "object", "description": "AuthenticationResponseJSON de @simplewebauthn/browser" },
-                  "loginToken": { "type": "string" }
+                  "authResp": {
+                    "type": "object",
+                    "description": "AuthenticationResponseJSON de @simplewebauthn/browser"
+                  },
+                  "loginToken": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -583,13 +650,26 @@
             "description": "Sesión abierta",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "properties": { "token": { "type": "string" } } }
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           },
           "400": {
             "description": "Reto expirado, llave no reconocida o verificación fallida",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -602,7 +682,9 @@
         "summary": "Pide un enlace mágico por correo",
         "description": "Con sesión abierta, el enlace agrega ese correo como respaldo de la cuenta actual en vez de iniciar sesión. Responde 200 igual sin importar si el correo ya tiene cuenta o no. Con MAIL_DRIVER=log (default) el enlace se imprime en la consola del backend en vez de mandarse.",
         "security": [
-          { "bearerAuth": [] },
+          {
+            "bearerAuth": []
+          },
           {}
         ],
         "requestBody": {
@@ -611,19 +693,36 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["email"],
-                "properties": { "email": { "type": "string", "format": "email" } }
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "El enlace se mandó (o no había nada que mandar por el enfriamiento anti-spam)" },
+          "200": {
+            "description": "El enlace se mandó (o no había nada que mandar por el enfriamiento anti-spam)"
+          },
           "400": {
             "description": "Correo con formato inválido",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "429": { "description": "Demasiadas solicitudes desde esta IP" }
+          "429": {
+            "description": "Demasiadas solicitudes desde esta IP"
+          }
         }
       }
     },
@@ -635,10 +734,19 @@
         "summary": "Clic en el enlace del correo (uso interno del flujo)",
         "description": "Token de un solo uso, caduca en 15 minutos. Entra a la cuenta existente con ese correo, la crea si es la primera vez, o la agrega como respaldo si se pidió con sesión abierta. Redirige a {FRONTEND_URL}/auth/callback#token=... (misma pantalla que usa Mastodon) o a /login?error=... si el enlace ya no es válido.",
         "parameters": [
-          { "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "302": { "description": "Redirección al frontend" }
+          "302": {
+            "description": "Redirección al frontend"
+          }
         }
       }
     },
@@ -686,7 +794,9 @@
         "summary": "Registra el origen de una alta reciente (HU-CTA-002)",
         "description": "Puramente observacional: escribe una línea en el log estructurado (evento `alta_atribuida`, solo con `ref` — HU-ATR-001 le quitó `userId` y `pid` para no reconstruir un grafo de reclutamiento), no guarda nada en la base — cero migraciones. `ref` fuera de la lista blanca se descarta en silencio. Solo deja rastro si la cuenta se creó hace pocos minutos; nunca decide autorización. Limitador propio: 5 peticiones / 15 min.",
         "security": [
-          { "bearerAuth": [] }
+          {
+            "bearerAuth": []
+          }
         ],
         "requestBody": {
           "content": {
@@ -694,41 +804,77 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "ref": { "type": "string", "enum": ["post", "perfil", "directo"] }
+                  "ref": {
+                    "type": "string",
+                    "enum": [
+                      "post",
+                      "perfil",
+                      "directo"
+                    ]
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "204": { "description": "Siempre, incluso si el ref no era válido o no se registró nada" },
-          "401": { "description": "Sin token o token inválido" },
-          "429": { "description": "Límite propio del endpoint (5/15min) excedido" }
+          "204": {
+            "description": "Siempre, incluso si el ref no era válido o no se registró nada"
+          },
+          "401": {
+            "description": "Sin token o token inválido"
+          },
+          "429": {
+            "description": "Límite propio del endpoint (5/15min) excedido"
+          }
         }
       }
     },
     "/api/auth/identities/{id}": {
       "delete": {
         "tags": [
-          "Auth"
+          "Identidad"
         ],
         "summary": "Quita un método de acceso propio",
         "description": "Genérica para los tres proveedores (Mastodon, llave de acceso, correo): todos son una fila de Identity. Rechaza quitar el último método de una cuenta, porque la dejaría sin forma de entrar.",
         "security": [
-          { "bearerAuth": [] }
+          {
+            "bearerAuth": []
+          }
         ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Método de acceso eliminado" },
+          "200": {
+            "description": "Método de acceso eliminado"
+          },
           "400": {
             "description": "Es el último método de acceso de la cuenta",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
             "description": "No existe o no es de esta cuenta",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -736,7 +882,7 @@
     "/api/posts": {
       "get": {
         "tags": [
-          "Posts"
+          "Posteos"
         ],
         "summary": "Feed paginado de posteos (20 por página)",
         "parameters": [
@@ -781,7 +927,7 @@
       },
       "post": {
         "tags": [
-          "Posts"
+          "Posteos"
         ],
         "summary": "Crear posteo (el autor sale del token)",
         "security": [
@@ -859,7 +1005,7 @@
     "/api/posts/search": {
       "get": {
         "tags": [
-          "Posts"
+          "Posteos"
         ],
         "summary": "Buscar posteos por contenido o nombre de autor",
         "parameters": [
@@ -972,7 +1118,9 @@
         "summary": "Eliminar (anonimizar) mi cuenta",
         "description": "HU-PRIV-001. No borra la fila ni el contenido propio (posts, comentarios, mensajes): los anonimiza, poniendo el User en un estado donde deja de identificar a nadie — todo lo que referencia esa cuenta se muestra como \"Cuenta eliminada\" sin tocar una sola fila de contenido. Borra las identidades (no se puede volver a entrar por ningún método), los bloqueos, los follows de subforo y las notificaciones propias. Un JWT emitido antes de esta llamada deja de autenticar de inmediato. Queda registrado en PrivacyAction.",
         "security": [
-          { "bearerAuth": [] }
+          {
+            "bearerAuth": []
+          }
         ],
         "requestBody": {
           "required": true,
@@ -980,23 +1128,42 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["confirm"],
+                "required": [
+                  "confirm"
+                ],
                 "properties": {
-                  "confirm": { "type": "string", "description": "Debe ser exactamente el handle actual de la cuenta" }
+                  "confirm": {
+                    "type": "string",
+                    "description": "Debe ser exactamente el handle actual de la cuenta"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Cuenta anonimizada" },
+          "200": {
+            "description": "Cuenta anonimizada"
+          },
           "400": {
             "description": "\"confirm\" no coincide con el handle",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "No autenticado",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1009,13 +1176,23 @@
         "summary": "Exportar mis datos",
         "description": "HU-PRIV-001, derecho de acceso/portabilidad. Junta perfil, métodos de acceso (sin datos internos de una llave, como su clave pública), posts, comentarios, contenido de foro, bloqueos, reportes hechos, subforos creados/seguidos, mensajes ENVIADOS (no los recibidos, que son en parte contenido de alguien más) y notificaciones. Queda registrado en PrivacyAction.",
         "security": [
-          { "bearerAuth": [] }
+          {
+            "bearerAuth": []
+          }
         ],
         "responses": {
-          "200": { "description": "Volcado JSON de los datos propios" },
+          "200": {
+            "description": "Volcado JSON de los datos propios"
+          },
           "401": {
             "description": "No autenticado",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1025,10 +1202,12 @@
         "tags": [
           "Perfil"
         ],
-        "summary": "Perfil público por id",
+        "summary": "Perfil ajeno por id",
         "security": [
           {},
-          { "bearerAuth": [] }
+          {
+            "bearerAuth": []
+          }
         ],
         "parameters": [
           {
@@ -1047,13 +1226,21 @@
               "application/json": {
                 "schema": {
                   "allOf": [
-                    { "$ref": "#/components/schemas/User" },
+                    {
+                      "$ref": "#/components/schemas/User"
+                    },
                     {
                       "type": "object",
                       "properties": {
                         "friendStatus": {
                           "type": "string",
-                          "enum": ["none", "pending_sent", "pending_received", "friends", "self"],
+                          "enum": [
+                            "none",
+                            "pending_sent",
+                            "pending_received",
+                            "friends",
+                            "self"
+                          ],
                           "description": "\"self\" solo cuando quien consulta es el propio dueño del perfil"
                         },
                         "friendRequestId": {
@@ -1072,7 +1259,7 @@
             "description": "Usuario no encontrado, o hay un bloqueo entre quien consulta y esa cuenta"
           }
         },
-        "description": "Ya no expone la instancia de Mastodon: era un dato de origen que decía en qué servidor del fediverso está esa persona, y con un handle propio dejó de hacer falta. Sin sesión, friendStatus siempre es \"none\"."
+        "description": "Enlace conservado: la ruta canónica desde el ciclo 10A es /api/profile/handle/{handle}. Ya no expone la instancia de Mastodon. Los cuatro campos configurables (bio, aboutMe, age, gender) se recortan con camposVisibles() según la relación de quien pregunta — desde el ciclo 10B aboutMe ya no es \"solo amigos\" por regla, sino por default. Sin sesión, friendStatus siempre es \"none\"."
       }
     },
     "/api/posts/{id}/preview": {
@@ -1100,12 +1287,30 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "titulo": { "type": "string", "description": "Extracto del contenido, ~70 caracteres, cortado en palabra completa y ya escapado" },
-                    "descripcion": { "type": "string", "description": "Invitación fija a la red, no contenido del posteo (D8)" },
-                    "imagen": { "type": "string", "description": "URL absoluta https: propia del posteo o de campaña" },
-                    "imagenAlt": { "type": "string", "nullable": true, "description": "Solo con imagen de campaña; null con imagen propia del posteo" },
-                    "handleAutor": { "type": "string" },
-                    "tieneImagen": { "type": "boolean", "description": "true si la imagen es propia del posteo, false si es de campaña" }
+                    "titulo": {
+                      "type": "string",
+                      "description": "Extracto del contenido, ~70 caracteres, cortado en palabra completa y ya escapado"
+                    },
+                    "descripcion": {
+                      "type": "string",
+                      "description": "Invitación fija a la red, no contenido del posteo (D8)"
+                    },
+                    "imagen": {
+                      "type": "string",
+                      "description": "URL absoluta https: propia del posteo o de campaña"
+                    },
+                    "imagenAlt": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Solo con imagen de campaña; null con imagen propia del posteo"
+                    },
+                    "handleAutor": {
+                      "type": "string"
+                    },
+                    "tieneImagen": {
+                      "type": "boolean",
+                      "description": "true si la imagen es propia del posteo, false si es de campaña"
+                    }
                   }
                 }
               }
@@ -1113,7 +1318,13 @@
           },
           "404": {
             "description": "No existe, es FRIENDS, está oculto por moderación, o su autor está suspendido — mismo 404 en los cuatro casos",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2097,19 +2308,6 @@
         }
       }
     },
-    "/api/chat/contacts": {
-      "get": {
-        "tags": [
-          "Pendientes"
-        ],
-        "summary": "Contactos de chat (stub)",
-        "responses": {
-          "200": {
-            "description": "Stub: responde mensaje fijo"
-          }
-        }
-      }
-    },
     "/api/market": {
       "get": {
         "tags": [
@@ -2130,6 +2328,22 @@
           }
         ],
         "description": "Cerrado a sesiones válidas mientras es stub. En la Fase 2 el catálogo se abrirá al público."
+      },
+      "post": {
+        "tags": [
+          "Pendientes"
+        ],
+        "summary": "Publicar en el mercado (stub)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Stub: responde mensaje fijo. El mercado comunitario es Fase 2"
+          }
+        }
       }
     },
     "/api/admin/users": {
@@ -3664,6 +3878,672 @@
         "responses": {
           "200": {
             "description": "Catálogo versionado"
+          }
+        }
+      }
+    },
+    "/api/profile/handle/{handle}": {
+      "get": {
+        "tags": [
+          "Perfil"
+        ],
+        "summary": "Perfil ajeno por handle (ciclo 10A)",
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Sin la arroba"
+          }
+        ],
+        "description": "Lo que resuelve /@handle en la web. Los cuatro campos configurables (bio, aboutMe, age, gender) se recortan con camposVisibles() según la relación de quien pregunta: dueña, amistad, con sesión o anónima. ANTIENUMERACIÓN: sin sesión y sin perfil público responde 401 exista o no el handle. Distinguir \"no existe\" de \"existe pero es privado\" convertiría esta ruta en un verificador de handles para cualquiera con un diccionario y tiempo. Las preferencias de visibilidad NO viajan aquí: qué decidió esconder alguien es a su vez información sobre esa persona, y solo sale por /api/profile/me.",
+        "responses": {
+          "200": {
+            "description": "Perfil recortado a lo que puede ver quien consulta, con friendStatus"
+          },
+          "401": {
+            "description": "Mismo cuerpo para un handle inexistente y para uno privado sin sesión"
+          },
+          "404": {
+            "description": "Hay un bloqueo entre quien consulta y esa cuenta"
+          }
+        }
+      }
+    },
+    "/api/posts/de/{handle}": {
+      "get": {
+        "tags": [
+          "Posteos"
+        ],
+        "summary": "Feed de una sola persona (ciclo 10A)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Página, 20 por página"
+          }
+        ],
+        "description": "Lo que se pinta bajo /@handle. Reusa alcanceWhere/soloVisible/excludeBlocked, así que hereda el alcance de amistad, la moderación y el bloqueo sin lógica propia — no hay una segunda definición de \"qué posteos puede ver esta persona\" que se pueda desincronizar de la del feed.",
+        "responses": {
+          "200": {
+            "description": "Posteos visibles de esa persona"
+          },
+          "404": {
+            "description": "Handle inexistente o bloqueo de por medio"
+          }
+        }
+      }
+    },
+    "/api/posts/hashtag/{tag}": {
+      "get": {
+        "tags": [
+          "Posteos"
+        ],
+        "summary": "Posteos de un tema (ciclo 10D)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "La llave, en minúsculas; sin el #"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Página"
+          }
+        ],
+        "description": "Base de /tema/:tag. Se agrupa por la llave en minúsculas (por eso #Rolar y #rolar son el mismo tema) y la respuesta trae displayTag para pintar el título con la grafía original. Mismo triple filtro que el feed.",
+        "responses": {
+          "200": {
+            "description": "Posteos del tema, con su displayTag"
+          }
+        }
+      }
+    },
+    "/api/posts/{id}": {
+      "get": {
+        "tags": [
+          "Posteos"
+        ],
+        "summary": "Un posteo por id",
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "Base de /p/:id. Funciona sin sesión si el posteo es PUBLIC. Devuelve 404 —nunca 403— si está oculto por moderación, si es de amistades y quien pregunta no lo es, o si hay un bloqueo de por medio: el código de respuesta no debe permitir deducir cuál de los tres casos es.",
+        "responses": {
+          "200": {
+            "description": "El posteo"
+          },
+          "404": {
+            "description": "No accesible, por cualquiera de las causas"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Posteos"
+        ],
+        "summary": "Editar posteo propio",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "Solo su autora. Editar contenido propio oculto por moderación sigue permitido.",
+        "responses": {
+          "200": {
+            "description": "Posteo actualizado"
+          },
+          "403": {
+            "description": "No es tuyo"
+          },
+          "404": {
+            "description": "No existe"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Posteos"
+        ],
+        "summary": "Eliminar posteo propio",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "Borra también el archivo de imagen del storage, no solo la fila.",
+        "responses": {
+          "204": {
+            "description": "Eliminado"
+          },
+          "403": {
+            "description": "No es tuyo"
+          },
+          "404": {
+            "description": "No existe"
+          }
+        }
+      }
+    },
+    "/api/comments/{id}": {
+      "put": {
+        "tags": [
+          "Comentarios"
+        ],
+        "summary": "Editar comentario propio del feed",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comentario actualizado"
+          },
+          "403": {
+            "description": "No es tuyo"
+          },
+          "404": {
+            "description": "No existe"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Comentarios"
+        ],
+        "summary": "Eliminar comentario propio del feed",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Eliminado"
+          },
+          "403": {
+            "description": "No es tuyo"
+          },
+          "404": {
+            "description": "No existe"
+          }
+        }
+      }
+    },
+    "/api/forum/subforums/{slug}": {
+      "get": {
+        "tags": [
+          "Foros"
+        ],
+        "summary": "Un subforo del directorio",
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Abierto igual que el listado (HU-FOR-012): el directorio es público, el contenido no. `creator` solo viaja con sesión. Un subforo archivado responde el mismo 404 que uno inexistente.",
+        "responses": {
+          "200": {
+            "description": "Datos del subforo"
+          },
+          "404": {
+            "description": "No existe o está archivado"
+          }
+        }
+      }
+    },
+    "/api/forum/subforums/{slug}/preview": {
+      "get": {
+        "tags": [
+          "Foros"
+        ],
+        "summary": "Ficha Open Graph de un subforo (HU-SHR-004, ciclo 9A)",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "La consume el Worker de Cloudflare para /forum/:slug, no el frontend. NUNCA devuelve creator, ni con sesión. El JSON llega SIN escapar: el escapado de HTML vive en el Worker y en un solo lugar (HU-SEC-001). Fuera del apiLimiter general; tiene limitador propio.",
+        "responses": {
+          "200": {
+            "description": "titulo, descripcion, imagen, imagenAlt, tieneImagen"
+          },
+          "404": {
+            "description": "No existe o está archivado — el mismo cuerpo para ambos"
+          }
+        }
+      }
+    },
+    "/api/nearby/intent": {
+      "put": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Declarar intención (ciclo 10C)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "intencion",
+                  "horas"
+                ],
+                "properties": {
+                  "intencion": {
+                    "type": "string",
+                    "enum": [
+                      "ROLAR",
+                      "CONECTAR",
+                      "MIRANDO"
+                    ]
+                  },
+                  "horas": {
+                    "type": "integer",
+                    "enum": [
+                      2,
+                      4,
+                      8
+                    ],
+                    "description": "Horas, nunca días: la celda dice dónde sueles estar; la intención, cómo andas ahora"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Exige tener celda vigente. LA REGLA: la intención nunca sobrevive a la celda — si la celda caduca o se borra, la intención deja de verse aunque su propia fecha no haya llegado. A los demás les viaja solo el valor, nunca la fecha de caducidad: cuánto le queda es mecánica interna, y saberlo permitiría deducir a qué hora exacta se declaró.",
+        "responses": {
+          "200": {
+            "description": "Intención vigente y hasta cuándo (solo para su dueña)"
+          },
+          "400": {
+            "description": "Valor u horas fuera de la lista"
+          },
+          "409": {
+            "description": "No estás compartiendo zona"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Retirar la intención antes de que caduque",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retirada; idempotente"
+          }
+        }
+      }
+    },
+    "/api/admin/indicadores": {
+      "get": {
+        "tags": [
+          "Panóptico"
+        ],
+        "summary": "Catálogo de indicadores agregados — solo ADMIN",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dias",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30,
+                90
+              ]
+            },
+            "description": "Ventana: 7, 30 o 90"
+          }
+        ],
+        "description": "Mide qué pasa en la red, no qué hace cada persona. Cuenta mensajes, jamás los muestra. Todo sale de columnas que ya existen — cero tablas nuevas. El día se trunca en America/Mexico_City, no en UTC: date_trunc ingenuo corta el pico nocturno al día siguiente y las gráficas se ven igual de razonables estando mal. Ningún desglose expone un segmento de menos de 5 elementos. Caché en memoria de 10 minutos; la respuesta trae calculadoEn para que la pantalla no invite a leer datos viejos como si fueran en vivo.",
+        "responses": {
+          "200": {
+            "description": "Catálogo completo de indicadores + calculadoEn"
+          },
+          "403": {
+            "description": "Requiere ADMIN"
+          }
+        }
+      }
+    },
+    "/api/admin/indicadores/carga-moderacion": {
+      "get": {
+        "tags": [
+          "Panóptico"
+        ],
+        "summary": "Carga de moderación — MOD ve una versión recortada",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dias",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30,
+                90
+              ]
+            },
+            "description": "Ventana: 7, 30 o 90"
+          }
+        ],
+        "description": "La única pieza del panóptico visible a MOD, y solo como su número propio más el promedio del equipo. El desglose por persona es ADMIN: una herramienta de trabajo no debe convertirse en un tablero de comparación entre compañeros.",
+        "responses": {
+          "200": {
+            "description": "Carga propia + promedio; con ADMIN, el desglose por moderadora"
+          }
+        }
+      }
+    },
+    "/api/admin/tendencias": {
+      "get": {
+        "tags": [
+          "Panóptico"
+        ],
+        "summary": "Temas más usados en la ventana (ciclo 10D) — solo ADMIN",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dias",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30,
+                90
+              ]
+            },
+            "description": "Ventana: 7, 30 o 90"
+          }
+        ],
+        "description": "Cuatro reglas encadenadas: nada oculto por moderación, nada de cuentas suspendidas o eliminadas, las palabras del diccionario de descarte fuera, y HAVING count(DISTINCT authorId) >= 5 (el mismo UMBRAL_SUPRESION del resto del panóptico) para que ninguna persona sola pueda fabricar una tendencia ni quede identificable a través de ella. La respuesta no lleva authorId en ninguna parte. NOTA DE ALCANCE: no filtra la visibilidad del posteo — un tema usado en un posteo \"solo amigos\" cuenta para el agregado. Es deliberado y seguro mientras esto sea solo para ADMIN; si algún día las tendencias se vuelven visibles a la comunidad, esta decisión hay que rehacerla.",
+        "responses": {
+          "200": {
+            "description": "dias, umbralCuentas y la lista de tendencias (tag, displayTag, cuentas, posteos)"
+          },
+          "403": {
+            "description": "Requiere ADMIN"
+          }
+        }
+      }
+    },
+    "/api/admin/salud-tecnica": {
+      "get": {
+        "tags": [
+          "Panóptico"
+        ],
+        "summary": "Estado técnico dentro de /admin — solo ADMIN",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Re-expone lo que /health ya calculaba (base, storage, mailer, uptime) más el enlace a observabilidad externa de OBSERVABILITY_URL. Historial de errores y latencia en el tiempo es trabajo de despliegue —conectar un log drain al logger.js que ya emite JSON estructurado—, no una tabla nueva en Postgres.",
+        "responses": {
+          "200": {
+            "description": "Estado de base, storage, mailer, uptime y enlace de observabilidad"
+          },
+          "403": {
+            "description": "Requiere ADMIN"
+          }
+        }
+      }
+    },
+    "/api/admin/diccionario": {
+      "get": {
+        "tags": [
+          "Moderación"
+        ],
+        "summary": "Diccionario de descarte de hashtags (ciclo 10D)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Las palabras que no generan tema: preposiciones, artículos, conjunciones. No es censura — el texto del posteo no se toca jamás, solo no se crea el chip. Desde el 10D la lista vive en la tabla PalabraDescartada en vez de estar hardcodeada; la original quedó en el código como SEMILLA.",
+        "responses": {
+          "200": {
+            "description": "Palabras, con quién las agregó y cuándo"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Moderación"
+        ],
+        "summary": "Agregar una palabra al diccionario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "palabra"
+                ],
+                "properties": {
+                  "palabra": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Queda en la bitácora de moderación (AGREGAR_PALABRA_DESCARTADA). Agregar una palabra no borra el pasado —las filas de Hashtag viejas siguen ahí— pero sí la saca de las tendencias.",
+        "responses": {
+          "201": {
+            "description": "Agregada"
+          },
+          "409": {
+            "description": "Ya estaba"
+          }
+        }
+      }
+    },
+    "/api/admin/diccionario/{id}": {
+      "delete": {
+        "tags": [
+          "Moderación"
+        ],
+        "summary": "Quitar una palabra del diccionario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "Queda en la bitácora (QUITAR_PALABRA_DESCARTADA).",
+        "responses": {
+          "204": {
+            "description": "Quitada"
+          },
+          "404": {
+            "description": "No existe"
+          }
+        }
+      }
+    },
+    "/api/market/{id}": {
+      "get": {
+        "tags": [
+          "Pendientes"
+        ],
+        "summary": "Artículo del mercado (stub)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Stub: responde mensaje fijo"
           }
         }
       }

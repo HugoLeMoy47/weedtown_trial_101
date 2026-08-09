@@ -43,6 +43,10 @@
 | "Cerca": mapa de comunidad por zonas de ~2 km con toque 👋 (ofuscación en el cliente, recíproco, caduca en 7 días); distingue amistades en la lista y permite filtrar solo por ellas | ✅ Funcionando |
 | Bloquear personas (efecto mutuo en feed, foros, chat y Cerca; silencioso y reversible) | ✅ Funcionando |
 | Amistad (solicitud + aceptación mutua), posteos "solo amigos", perfil ajeno con "sobre mí" y búsqueda de personas | ✅ Funcionando |
+| Perfil por handle (`/@handle`) con feed propio de esa persona; sin sesión responde el mismo 401 exista o no el handle (antienumeración) | ✅ Funcionando |
+| Visibilidad por dato del perfil (bio, sobre mí, edad, género → `TODOS`/`AMIGOS`/`NADIE`) más interruptor de "perfil público" opt-in, compuestos en una sola función que nunca amplía lo restringido | ✅ Funcionando |
+| "Cerca" con intención declarada (🌿 rolar · 👋 conectar · 👀 mirando), caduca sola a las 2/4/8 h y solo se ve si ya compartes zona | ✅ Funcionando |
+| Navegación por tema (`/tema/:tag`) desde cualquier chip de hashtag, tendencias agregadas en el panóptico (con supresión bajo 5 autoras) y gestión del diccionario de descarte desde `/admin` | ✅ Funcionando |
 | Rol de cuenta (`USER`/`MOD`/`ADMIN`) y superficie `/api/admin` cerrada por rol | ✅ Funcionando |
 | Panóptico: indicadores agregados de crecimiento, actividad, salud social, foros y moderación dentro de `/admin` (solo `ADMIN`), sobre columnas ya existentes — cero migraciones | ✅ Funcionando |
 | Almacenamiento de imágenes intercambiable (disco local en dev, Supabase Storage en prod) con borrado real al eliminar contenido | ✅ Funcionando |
@@ -212,9 +216,9 @@ Llaves de acceso y correo con enlace mágico (etapa 2, ver más abajo) confirmar
 - **Límites de payload**: body JSON ≤ 100 kB; imágenes ≤ 5 MB por multipart (multer, solo JPG/PNG/WebP, nombre aleatorio); el handshake de Socket.IO ≤ 20 kB (el chat no sube payloads propios del cliente, solo el JWT de auth).
 - **Límites de contenido**: post del feed ≤ 2000 caracteres, comentario ≤ 1000; post de foro ≤ 10000, comentario de foro ≤ 2000; máximo 10 hashtags de ≤ 30 caracteres; bio ≤ 500. El campo `image` debe ser URL http(s).
 - **Hashtags: la llave y la grafía son dos cosas** (ciclo 9C). `Hashtag.tag` es la llave de agrupación, siempre en minúsculas — es lo que hace que `#Rolar` y `#rolar` sean el mismo tema. `Hashtag.displayTag` es cómo se escribió, y es lo único que se pinta: antes se guardaba solo la llave, así que `#RolarEnLaTarde` se mostraba como `rolarenlatarde`. **Gana la grafía de la primera vez que se vio el tag** — quien lo estrenó decide cómo se ve, y no cambia después (sale gratis del `connectOrCreate`: si la fila existe, conecta y no actualiza). Los tags anteriores a la migración se quedaron en minúsculas; su grafía original se perdió antes de que la columna existiera. La API manda **los dos campos** en `postInclude`, y `PostCard.jsx` pinta `displayTag` pero agrupa por `tag`.
-- **Diccionario de descarte de hashtags** (`src/lib/diccionarioDescarte.js`, ciclo 9C): preposiciones, artículos y conjunciones no entran al índice de hashtags — no es censura, es no ensuciar el índice que en la Ola 2 va a alimentar agrupación y tendencias. **El texto del posteo no se toca jamás**: quien escribe `#de` sigue viendo su posteo igual, solo que esa palabra no genera un tema. El descarte es silencioso (el posteo se publica con 200) porque el resultado ya es visible — el chip simplemente no aparece — y porque los otros recortes del mismo campo (tope de 10 tags, tope de 30 caracteres, deduplicado) también lo son. La lista está hardcodeada; gestionarla desde `/admin` es Ola 2.
+- **Diccionario de descarte de hashtags** (`src/lib/diccionarioDescarte.js`, ciclo 9C): preposiciones, artículos y conjunciones no entran al índice de hashtags — no es censura, es no ensuciar el índice que desde el ciclo 10D alimenta la agrupación por tema y las tendencias del panóptico. **El texto del posteo no se toca jamás**: quien escribe `#de` sigue viendo su posteo igual, solo que esa palabra no genera un tema. El descarte es silencioso (el posteo se publica con 200) porque el resultado ya es visible — el chip simplemente no aparece — y porque los otros recortes del mismo campo (tope de 10 tags, tope de 30 caracteres, deduplicado) también lo son. Desde el ciclo 10D la lista **vive en la base** (`PalabraDescartada`) y se gestiona desde `/admin`; la lista original quedó en el código como `SEMILLA`, y el módulo mantiene una caché síncrona con refresco por TTL para no volver asíncrono el camino de publicar un posteo.
 - **Control de spam** (`src/lib/antiSpam.js`): un posteo o comentario (feed o foro) con más de 5 enlaces se rechaza con 400; repetir el mismo texto exacto en menos de 10 minutos se rechaza con 429. No sustituye al rate limit por IP — lo complementa mirando el contenido, no solo la frecuencia.
-- **Privacidad**: el perfil público (`GET /api/profile/:id`) no expone email, teléfono, nombre real, edad, fecha de nacimiento ni género — esos datos solo los ve su dueño en `/api/profile/me`.
+- **Privacidad**: hay dos grupos de datos y se comportan distinto. **PII dura** —email, teléfono, nombre real, fecha de nacimiento— **nunca** sale de `/api/profile/me`: no hay interruptor que la publique, ni siquiera para su dueña. **Bio, «sobre mí», edad y género** son configurables desde el ciclo 10B: cada uno tiene su propia visibilidad (`TODOS`/`AMIGOS`/`NADIE`) y salen o no según quién pregunte — ver [Quién ve qué de un perfil](#quién-ve-qué-de-un-perfil-ciclo-10b). Los defaults son conservadores (edad y género en `NADIE`), pero eso es un default, no una garantía estructural: la garantía estructural aplica solo al primer grupo.
 - **Errores sanitizados**: el detalle (stack, Prisma) solo se registra en el servidor; el cliente recibe mensajes genéricos salvo en errores de validación.
 - **Rol de cuenta**: `User.role` (`USER` por defecto, `MOD`, `ADMIN`). El middleware `requireRole` lee el rol **de la base en cada petición**, no del JWT, para que revocarlo surta efecto de inmediato en vez de esperar a que caduque el token (7 días). Todo `/api/admin` exige sesión + `MOD`/`ADMIN`; `/api/market` exige sesión mientras sea stub. El portón vive **dentro de cada router**, no en el punto de montaje, para que la protección viaje con el código.
 - **Logging estructurado** (`src/lib/logger.js`): una línea JSON por evento — login exitoso (los tres proveedores, alta/login/agregar), bloqueo creado, reporte creado, acción de moderación, exportar/eliminar cuenta, límite de tasa alcanzado. Cada request lleva un id de correlación (`X-Request-Id`, generado por `src/middlewares/requestId.js` si el cliente no manda uno) que también sale en la línea de morgan de esa misma petición. Nunca se registra contenido de posts/mensajes, tokens ni PII completa — solo ids y lo mínimo para reconstruir qué pasó. No sustituye a morgan, que sigue dando la traza legible de cada request en desarrollo.
@@ -237,10 +241,39 @@ Antes de esto, cualquier persona registrada era "lo mismo" para efectos de audie
 - **Alcance de post de dos niveles**: `PUBLIC` (default) o `FRIENDS`. Un post `FRIENDS` no aparece en el feed, la búsqueda ni el conteo de nadie que no sea el autor o su amigo — y tampoco se puede comentar desde afuera, aunque se conozca el id.
 - **Bloquear deshace cualquier amistad o solicitud pendiente** con esa persona, en cualquier dirección — mismo criterio que ya limpia notificaciones al bloquear: un bloqueo no debe dejar un vínculo corriendo por debajo.
 - **Enviar una solicitud exige cuenta establecida** (`requireEstablished`, HU-SEG-006): es contacto directo hacia una persona concreta, mismo criterio que el toque de Cerca y abrir un chat nuevo.
-- **Perfil ajeno** (`/perfil/:id`, `frontend/src/pages/PublicProfile.jsx`): datos públicos siempre; el bloque "Sobre mí" (`aboutMe`, hasta 1000 caracteres, editable desde `/profile`) solo aparece si `friendStatus` es `friends` o es tu propio perfil — el backend decide qué manda, el frontend solo pinta lo que llega. El botón de relación cambia según `friendStatus` (`none` → Agregar amigo, `pending_sent`/`pending_received` → cancelar o aceptar/rechazar, `friends` → dejar de ser amigos), y trae también Reportar/Bloquear.
+- **Perfil ajeno** (`/@handle` desde el ciclo 10A, con `/perfil/:id` conservado como enlace viejo; `frontend/src/pages/PublicProfile.jsx`): datos públicos siempre; el bloque "Sobre mí" (`aboutMe`, hasta 1000 caracteres, editable desde `/profile`) aparece según la visibilidad que su dueña le haya puesto — **`AMIGOS` es el default**, así que el comportamiento de origen se conserva, pero ya no es una regla fija (ciclo 10B, ver [Quién ve qué de un perfil](#quién-ve-qué-de-un-perfil-ciclo-10b)). En los dos casos el backend decide qué manda y el frontend solo pinta lo que llega. El botón de relación cambia según `friendStatus` (`none` → Agregar amigo, `pending_sent`/`pending_received` → cancelar o aceptar/rechazar, `friends` → dejar de ser amigos), y trae también Reportar/Bloquear.
 - **Bandeja de amistad** (`/amigos`, `frontend/src/pages/Friends.jsx`): solicitudes recibidas, enviadas y lista de amigos. El link "Amigos" del menú lleva un badge con el conteo de solicitudes pendientes (mismo patrón de polling que la campana de notificaciones).
-- **Se llega a un perfil ajeno desde el feed**: el nombre/avatar de cada post en `PostCard` enlaza a `/perfil/:id` (o a `/profile` si el post es tuyo).
-- **Descubribilidad**: la página `/amigos` trae un buscador de personas por nombre o handle que **reusa `GET /api/chat/users?q=`** — ya existía para abrir chats nuevos y no expone PII, así que en vez de duplicar esa consulta se le agregó un segundo consumidor. Cada resultado lleva a `/perfil/:id`. En `/cerca`, el nombre de cada persona de la lista también enlaza a su perfil — la sugerencia geográfica y la búsqueda por handle terminan en el mismo lugar: el botón de relación de la Fase 2.
+- **Se llega a un perfil ajeno desde el feed**: el nombre/avatar de cada post en `PostCard` enlaza al perfil de esa persona (o a `/profile` si el post es tuyo). A dónde lleva exactamente lo decide `frontend/src/lib/rutaPerfil.js` y **no** cada pantalla por su cuenta: prefiere `/@handle` porque es la forma compartible —`/@luna` se puede dictar por teléfono, `/perfil/37` no— y cae a `/perfil/:id` solo si la respuesta no trae handle. Si no hay ninguno de los dos devuelve `null`, para que quien la llame pinte el nombre sin enlace en vez de un enlace roto.
+- **Descubribilidad**: la página `/amigos` trae un buscador de personas por nombre o handle que **reusa `GET /api/chat/users?q=`** — ya existía para abrir chats nuevos y no expone PII, así que en vez de duplicar esa consulta se le agregó un segundo consumidor. Cada resultado lleva al perfil por la misma `rutaPerfil()`. En `/cerca`, el nombre de cada persona de la lista también enlaza a su perfil — la sugerencia geográfica y la búsqueda por handle terminan en el mismo lugar, donde está el botón de relación.
+
+### Quién ve qué de un perfil (ciclo 10B)
+
+Antes de esto un perfil tenía dos niveles fijos: lo público y el "sobre mí", que era para amistades. Ahora hay **dos controles independientes**, y lo delicado es cómo se combinan.
+
+- **Visibilidad por dato.** Bio, sobre mí, edad y género tienen cada uno su propio valor: `TODOS`, `AMIGOS` o `NADIE`. Los defaults conservan el comportamiento anterior — bio en `TODOS`, sobre mí en `AMIGOS`, edad y género en `NADIE`, así que a nadie le cambió lo que mostraba.
+- **Interruptor de perfil público**, apagado por default. Encendido, el perfil se resuelve **sin sesión**; apagado, responde 401 a quien no la tenga.
+
+**La regla dura, y por qué vive en una sola función.** El interruptor de perfil público **nunca amplía lo que la visibilidad por dato ya restringió**: expone únicamente lo que ya estaba en `TODOS`. Un campo en `AMIGOS` no sale hacia afuera —fuera de la red no hay amistades que valer— y `NADIE` sigue siendo nadie. Sin esa regla los dos controles se contradicen y la persona pierde la certeza de qué está mostrando.
+
+La composición está en `backend/src/lib/visibilidadPerfil.js`, en `campoVisible()`, y **no se calcula en ningún otro lado**. Son dos controles cuya interacción es fácil de equivocar justo en la dirección peligrosa, y calcularla en dos lugares es exactamente cómo se producen las fugas que este proyecto lleva varios ciclos cazando. El `default` del `switch` devuelve `false`: ante un valor desconocido —una migración a medias, un dato corrupto— se calla, porque un campo de menos es un error recuperable y uno de más no.
+
+El mapa `CAMPOS` es lo que hace que agregar un quinto campo configurable no exija tocar tres archivos ni permita olvidarse de filtrar en alguno: las rutas lo recorren en vez de nombrar campos sueltos.
+
+**Antienumeración.** `GET /api/profile/handle/:handle` responde **el mismo 401** sin sesión, exista o no ese handle y sea público o no. Distinguir "no existe" de "existe pero es privado" convertiría la ruta en un verificador de handles para cualquiera con un diccionario y tiempo. Las preferencias de visibilidad, además, **solo viajan por `/me`**: qué decidió esconder alguien es a su vez información sobre esa persona.
+
+**Reversibilidad, dicha claramente porque no es total.** Apagar el perfil público deja de servirlo de inmediato, pero lo que ya salió, salió: cachés, capturas y rastreadores no se pueden retirar. La interfaz lo advierte en vez de sugerir que el interruptor deshace el pasado.
+
+**`robots.txt`** (`frontend/public/robots.txt`) excluye `/@`, `/perfil/`, `/chat`, `/admin`, `/profile`, `/amigos` y `/cerca`, y permite `/p/` y `/forum`. No es la defensa —la defensa es el 401 del servidor, y un rastreador que no ejecuta JavaScript no vería nada de una SPA de todos modos—: le ahorra el viaje a quien respeta el archivo y deja escrita la intención. Cuando exista la ficha de previsualización de perfiles, el Worker del borde será el que distinga público de privado y emita `noindex` por perfil; hasta entonces se excluyen todos. **Nota de despliegue:** Cloudflare **antepone** su preámbulo de *content signals* al archivo en vez de reemplazarlo, así que en producción `robots.txt` se ve distinto al del build aunque las reglas propias sigan ahí.
+
+### Navegación por tema (ciclo 10D)
+
+Los hashtags ya se guardaban con llave y grafía separadas desde el 9C, pero eran texto muerto: no llevaban a ninguna parte. Ahora cada chip enlaza a `/tema/:tag`, que lista los posteos de ese tema reusando `alcanceWhere`/`soloVisible`/`excludeBlocked` — o sea, hereda alcance de amistad, moderación y bloqueo sin lógica propia. Se agrupa por `tag` (minúsculas) y se pinta el `displayTag`.
+
+**Tendencias, y por qué son solo para `ADMIN`.** `GET /api/admin/tendencias` aplica el mismo criterio del panóptico: un tema aparece solo si lo usaron **5 autoras distintas o más** (`UMBRAL_SUPRESION`), para que ninguna persona sola pueda fabricar una tendencia ni quedar identificable a través de ella. Fuera quedan lo oculto por moderación, las cuentas suspendidas o eliminadas y las palabras del diccionario. La respuesta no lleva `authorId` en ninguna parte: dice qué tema está activo, nunca quién lo publicó.
+
+> **Nota de alcance, explícita para que no se lea como un descuido:** la consulta de tendencias filtra moderación y suspensión, pero **no** el alcance del posteo — un `#tema` usado en un posteo "solo amigos" cuenta para el agregado. Es deliberado: con el umbral de 5 autoras distintas y sin ningún identificador en la respuesta, el agregado no revela nada de ningún posteo ni de ninguna persona en particular, y excluirlos sesgaría la lectura de qué se habla en la red. Si algún día las tendencias se vuelven visibles a la comunidad, **esta decisión hay que rehacerla**, porque el cálculo de riesgo cambia por completo.
+
+**Diccionario de descarte gestionable.** La lista del 9C dejó de estar hardcodeada: vive en `PalabraDescartada` y se administra desde `/admin`. El módulo mantiene una caché síncrona con refresco por TTL para no volver asíncrono el camino de publicar un posteo, y cada alta y baja queda en la bitácora de moderación. Agregar una palabra **no borra el pasado** —las filas viejas siguen ahí— pero sí la saca de las tendencias.
 
 ### Avatares generados
 
@@ -369,7 +402,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son 542 y cubren estas áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son **644** (28 suites) y cubren estas áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -384,6 +417,11 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Amistad** | Ciclo solicitud→aceptación, solicitudes cruzadas que se auto-aceptan, rechazar y reintentar, que bloquear deshaga el vínculo, y el alcance `FRIENDS` en feed, búsqueda y comentarios |
 | **Notificaciones** | `REPLY_POST`/`REACTION` en el feed principal, que quitar una reacción no notifique, que nunca te notifiques a ti mismo, y que una ráfaga de mensajes de chat se colapse en una sola notificación sin leer |
 | **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
+| **Cerca-Amigos** / **CercaIntencion** | La lista de Cerca con `isFriend`, y la intención del ciclo 10C: que caduque sola, que **no sobreviva a la celda** (borrar la zona la apaga aunque su fecha no haya llegado), que solo se acepten 2/4/8 horas y los tres valores del enum, y que a los demás les viaje el valor **sin** la fecha de caducidad. Incluye la aserción de forma de respuesta que atrapó una fuga de `nearbyUpdatedAt` al construir el ciclo |
+| **PerfilPorHandle** | Ciclo 10A: `/api/profile/handle/:handle` y `/api/posts/de/:handle`; que un handle inexistente y uno privado den **el mismo 401** sin sesión (antienumeración), y que el feed por persona herede alcance, moderación y bloqueo |
+| **VisibilidadPerfil** | Ciclo 10B: la matriz completa de `campoVisible` (4 visibilidades × 4 relaciones), que el interruptor público **no amplíe** lo que estaba en `AMIGOS` o `NADIE`, que las preferencias solo viajen por `/me`, y que un valor desconocido se calle en vez de exponer |
+| **HashtagsAgrupacion** | Ciclo 10D: `/api/posts/hashtag/:tag` agrupando por la llave en minúsculas, las cuatro reglas de `/admin/tendencias` (incluida la supresión bajo 5 autoras distintas) y el alta/baja del diccionario con su línea en la bitácora |
+| **Panóptico** | Los indicadores agregados: las 13 consultas del catálogo, el truncado del día en `America/Mexico_City` (con la regresión que siembra a las 23:00 hora de México), la supresión de segmentos bajo 5 elementos y el recorte por rol de la carga de moderación |
 | **Acceso** | Alta y login con llave de acceso (con un autenticador de software real, no un mock — ver `tests/webauthnAuthenticator.js`), agregar/quitar métodos, enlace mágico (alta, reingreso, respaldo, un solo uso) y la cuarentena de cuentas nuevas en toque y chat |
 | **Privacidad** | Exportar datos, anonimizar cuenta (handle, PII, identidades, bloqueos), que el contenido se quede pero muestre "Cuenta eliminada", y que un JWT emitido antes de eliminar deje de servir |
 | **PublicShare** | `/p/:id`: un posteo `PUBLIC` se ve sin sesión; uno `FRIENDS` da 404; un posteo oculto por moderación da 404 incluso a su propia autora (H1); los comentarios solo se listan con sesión (HU-PRV-001) |
@@ -396,15 +434,17 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
 
-Sin Docker ni Postgres local, la forma más simple de tener una base separada es **el mismo proyecto de Supabase con un esquema aparte**: se copian las cadenas de `.env` y se les agrega `?schema=weedtown_test`. Prisma crea ahí su propio juego de tablas; la app de desarrollo usa `public` y no las ve. Si prefieres aislamiento estricto, apunta `.env.test` a un segundo proyecto de Supabase o a un Postgres local — no cambia nada más.
+**Antes de copiar nada, comprueba a dónde apunta tu `.env`.** La receta "copia las cadenas de `.env` y agrégales `?schema=weedtown_test`" es cómoda y es exactamente cómo `.env.test` terminó apuntando a producción el 2026-08-08 — con una suite que borra datos. Los tres guardias del runner no la habrían atrapado: la URL era distinta de la de `.env` (otro schema) y declaraba un schema distinto de `public`, así que los tres pasaban. La comprobación que sí sirve es mirar el host: la línea `arranque_base_de_datos` del backend lo dice al levantar.
+
+Con `.env` apuntando a un proyecto de desarrollo —que es como debe estar—, un **esquema aparte dentro de ese mismo proyecto** es la opción más simple: se copian sus cadenas y se les agrega `?schema=weedtown_test`. Prisma crea ahí su propio juego de tablas; la app de desarrollo usa `public` y no las ve. Si prefieres aislamiento estricto, apunta `.env.test` a un tercer proyecto de Supabase o a un Postgres local — no cambia nada más.
 
 **Scripts disponibles** (`backend/package.json`):
 
 | Script | Qué hace |
 |---|---|
-| `npm test` | Las 542 pruebas de integración |
+| `npm test` | Las 644 pruebas de integración |
 | `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
-| `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las 292 |
+| `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las demás |
 | `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
 
 ### 5. Pruebas E2E (navegador real)
@@ -496,6 +536,7 @@ Después, desde cualquier equipo de la red: `http://<IP-LAN>:3000`.
 | `RESEND_API_KEY` · `RESEND_FROM` | Solo con el driver `resend`. `RESEND_FROM` necesita un dominio propio verificado en Resend |
 | `SIGNUP_QUARANTINE_HOURS_EMAIL` · `SIGNUP_QUARANTINE_HOURS_PASSKEY` | Horas que una cuenta dada de alta por correo (default 3) o por llave de acceso (default 24) debe esperar antes de mandar un toque o abrir un chat nuevo — Mastodon no tiene variable, su cuarentena es 0h. Una cuenta con varias identidades toma la más corta. Ver [Cuarentena de cuentas nuevas](#cuarentena-de-cuentas-nuevas-diferenciada-por-método-hu-seg-006007) |
 | `API_LIMITER_MAX` | **Solo para pruebas** — sube el límite general de la API (300/15min por default, el presupuesto de una persona real) para que la suite de integración no choque contra su propio tráfico. **No definir en producción** |
+| `SUBFORUM_SEED_CREATOR` | Handle al que se le atribuyen los subforos institucionales que siembra `npm run subforos` (default `weedtown`). Solo la usa ese script — el backend nunca la lee |
 | `OBSERVABILITY_URL` | URL del panel externo de observabilidad (logs/errores/latencia). Si no está definida, la tarjeta de estado técnico en `/admin` dice que no hay observabilidad conectada en vez de mostrar un enlace roto |
 
 > ⚠️ `.env` está en `.gitignore` y nunca debe commitearse. `backend/.env.example` trae la lista completa con comentarios — es el punto de partida para configurar un entorno nuevo (`cp .env.example .env`). Si el `redirect_uri` cambia (p. ej. al desplegar), borra las filas de `MastodonApp` para que las apps se re-registren con la nueva URL.
@@ -523,14 +564,19 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/posts/:id` | opcional | Un posteo por id; funciona sin sesión si es `PUBLIC` (base de `/p/:id`). 404 si está oculto por moderación, es de amistades sin ser amiga, o hay bloqueo de por medio |
 | GET | `/api/posts/:id/preview` | — | Ficha de previsualización Open Graph (HU-SHR-001): `titulo`, `descripcion`, `imagen`, `imagenAlt`, `handleAutor`, `tieneImagen`. Sin `optionalAuth` — no importa quién pregunta. 200 solo si es `PUBLIC`, no está oculto y su autor no está suspendido; todo lo demás, el mismo 404 (nunca 403). La consume el Worker de `frontend/src/worker.js` (HU-SHR-002), no el frontend directamente. Fuera del `apiLimiter` general; limitador propio |
 | GET | `/api/posts/search?q=` | — | Búsqueda por contenido o autor |
+| GET | `/api/posts/de/:handle` | 🔒 | Feed de una sola persona (ciclo 10A), lo que se pinta bajo `/@handle`. Reusa `alcanceWhere`/`soloVisible`/`excludeBlocked`, así que hereda alcance, moderación y bloqueo sin lógica propia |
+| GET | `/api/posts/hashtag/:tag` | 🔒 | Posteos de un tema (ciclo 10D), base de `/tema/:tag`. La llave se busca en minúsculas; la respuesta trae el `displayTag` para el título |
+| PUT/DELETE | `/api/posts/:id` | 🔒 | Editar / eliminar posteo propio |
 | POST | `/api/posts/:id/reaction` | 🔒 | Reaccionar (`type`: LIKE/ROLA/INTERESA/MOLESTA; misma = quitar, distinta = reemplazar) |
 | DELETE | `/api/posts/:id/reaction` | 🔒 | Quitar la reacción propia |
 | POST | `/api/posts/:id/like` | 🔒 | Alias de compatibilidad → reacción LIKE |
 | POST | `/api/posts/:id/comment` | 🔒 | Comentar un posteo; 404 si está oculto por moderación (HU-MOD-001) |
 | GET | `/api/posts/:id/comments` | opcional | Comentarios con conteos de reacciones; sin sesión, `comments` vuelve vacío con `restricted: true` (el conteo real ya viaja en el posteo) |
 | POST/DELETE | `/api/comments/:id/reaction` | 🔒 | Reaccionar / quitar reacción en un comentario; reaccionar a uno oculto → 404 (HU-MOD-001) |
+| PUT/DELETE | `/api/comments/:id` | 🔒 | Editar / eliminar comentario propio del feed |
 | POST | `/api/media/upload` | 🔒 | Subir imagen (multipart, ≤5 MB, JPG/PNG/WebP) → devuelve URL |
 | GET/POST | `/api/forum/subforums` | —/🔒 | Directorio de subforos / crear (máx. 3 por usuario). El GET es abierto a propósito (HU-FOR-012): `creator` solo viaja con sesión |
+| GET | `/api/forum/subforums/:slug` | — | Un subforo del directorio. Abierto igual que el listado (HU-FOR-012): `creator` solo viaja con sesión |
 | GET | `/api/forum/subforums/:slug/preview` | — | Ficha de previsualización Open Graph de un subforo (HU-SHR-004, ciclo 9A): `titulo`, `descripcion`, `imagen`, `imagenAlt`, `tieneImagen`. **Nunca `creator`**, ni con sesión — es una ruta abierta (HU-FOR-012). Un subforo archivado responde el mismo 404 que uno inexistente. La consume el Worker de `frontend/src/worker.js` para `/forum/:slug`. Fuera del `apiLimiter` general; limitador propio |
 | POST/DELETE | `/api/forum/subforums/:slug/follow` | 🔒 | Seguir / dejar de seguir un subforo |
 | GET/POST | `/api/forum/subforums/:slug/posts` | 🔒 | Posts del subforo (`?sort=hot\|new\|top&period=`) / publicar. Contenido de la comunidad: exige sesión (HU-FOR-012) |
@@ -544,7 +590,8 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio (incluye `aboutMe`, hasta 1000 caracteres) |
 | GET | `/api/profile/me/export` | 🔒 | Descargar mis datos (perfil, contenido propio, bloqueos, reportes, mensajes enviados…) |
 | DELETE | `/api/profile/me` | 🔒 | Eliminar (anonimizar) mi cuenta — exige `{ confirm: "mi-handle" }` |
-| GET | `/api/profile/:id` | opcional | Perfil público por id + `friendStatus` (`none`\|`pending_sent`\|`pending_received`\|`friends`\|`self`); `aboutMe` solo si son amigos. 404 si hay bloqueo de por medio |
+| GET | `/api/profile/:id` | opcional* | Perfil ajeno por id + `friendStatus` (`none`\|`pending_sent`\|`pending_received`\|`friends`\|`self`). Los cuatro campos configurables se recortan con `camposVisibles()` según la relación de quien pregunta. 404 si hay bloqueo de por medio |
+| GET | `/api/profile/handle/:handle` | opcional* | Lo mismo, pero por handle — es lo que resuelve `/@handle` (ciclo 10A). **Sin sesión y sin perfil público responde 401 exista o no el handle**: distinguir "no existe" de "existe pero es privado" convierte la ruta en un verificador de handles para cualquiera |
 | GET | `/api/blocks` | 🔒 | Cuentas que bloqueé |
 | POST | `/api/blocks` | 🔒 | Bloquear (`userId`); idempotente |
 | DELETE | `/api/blocks/:userId` | 🔒 | Desbloquear; idempotente |
@@ -574,6 +621,9 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/admin/stats` · `/api/admin/log` | Panorama y bitácora de acciones |
 | GET | `/api/admin/indicadores?dias=7\|30\|90` | Panóptico: catálogo de indicadores agregados — **solo `ADMIN`** |
 | GET | `/api/admin/indicadores/carga-moderacion?dias=` | Carga de moderación — accesible a `MOD`, recortada por rol (ver abajo) |
+| GET | `/api/admin/tendencias?dias=7\|30\|90` | Temas más usados en la ventana (ciclo 10D) — **solo `ADMIN`**. Cuatro reglas encadenadas: nada oculto por moderación, nada de cuentas suspendidas o eliminadas, las palabras del diccionario fuera, y `HAVING count(DISTINCT authorId) >= 5` — el mismo `UMBRAL_SUPRESION` del panóptico. Ver la nota de alcance abajo |
+| GET/POST | `/api/admin/diccionario` | Ver / agregar palabras al diccionario de descarte de hashtags (ciclo 10D). Cada alta y baja queda en la bitácora de moderación |
+| DELETE | `/api/admin/diccionario/:id` | Quitar una palabra del diccionario |
 | GET | `/api/admin/salud-tecnica` | Lo que `/health` ya reporta, re-expuesto dentro de `/admin` — **solo `ADMIN`** |
 
 | GET | `/api/chat/users?q=` | 🔒 | Buscar personas para chatear (datos públicos) |
@@ -582,7 +632,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/chat/conversations/:id/messages?before=` | 🔒 | Hilo de mensajes (50 por página, `before` para historial) |
 | POST | `/api/chat/conversations/:id/messages` | 🔒 | Enviar mensaje (≤1000 caracteres; entrega en vivo por socket) |
 
-🔒 = requiere header `Authorization: Bearer <jwt>`. Las rutas de mercado y admin existen como stubs y responden mensajes fijos hasta su implementación.
+🔒 = requiere header `Authorization: Bearer <jwt>`. **`opcional*`** = el middleware es `optionalAuth`, pero la ruta decide a mano si responde: sin sesión y sin perfil público devuelve 401 — ver [Quién ve qué de un perfil](#quién-ve-qué-de-un-perfil-ciclo-10b). Las rutas de **mercado** (`/api/market`) siguen siendo stubs que responden mensajes fijos; las de moderación y panóptico ya están implementadas.
 
 ### Panóptico: indicadores, no vigilancia
 
@@ -602,11 +652,20 @@ La moderación (`/api/admin`) ya existía; lo que faltaba eran indicadores y ten
 | PUT | `/api/nearby/location` | 🔒 | Activar/actualizar mi zona (`cell`: celda de cuadrícula ~2 km; rechaza coordenadas) |
 | POST | `/api/nearby/poke` | 🔒 | Mandar un toque 👋 (`userId`); exige compartir zona y que la persona esté en tu cuadrícula; 1 por persona cada 12 h |
 | DELETE | `/api/nearby/location` | 🔒 | Dejar de compartir (borra la celda) |
-| GET | `/api/nearby` | 🔒 | Personas y zonas cercanas (requiere compartir: recíproco); cada persona trae `isFriend` |
+| GET | `/api/nearby` | 🔒 | Personas y zonas cercanas (requiere compartir: recíproco); cada persona trae `isFriend` y, si la declaró y sigue vigente, su `intencion` |
+| PUT | `/api/nearby/intent` | 🔒 | Declarar intención (`intencion`: `ROLAR`\|`CONECTAR`\|`MIRANDO`; `horas`: 2, 4 u 8). Exige tener celda activa |
+| DELETE | `/api/nearby/intent` | 🔒 | Retirarla antes de que caduque |
 
 Diseño de privacidad: el navegador convierte el GPS a una **celda de cuadrícula fija de ~2 km (0.02°) antes de enviar nada** (el servidor nunca ve coordenadas; el endpoint las rechaza explícitamente). La cuadrícula es fija — todos los de una celda son indistinguibles, no hay nada que triangular. Solo ves a otros si compartes tu zona, la celda **caduca a los 7 días** y puede borrarse en un clic. El mapa (Leaflet + OpenStreetMap) muestra zonas agregadas con conteo, nunca pins individuales. La consulta busca en una cuadrícula 11×11 de celdas (~11 km de radio efectivo) y tiene rate limit propio anti-scraping.
 
 **Amigos cerca:** la lista distingue quién de tu zona ya es una amistad aceptada (`isFriend`, resuelto con `friendIds()` en una sola consulta) y las sube al principio, conservando el orden por cercanía dentro de cada grupo. En `/cerca` se puede filtrar para ver solo amistades — el filtro es del lado del cliente, sobre datos que la respuesta ya trae, para no abrir un parámetro nuevo en un endpoint con rate limit anti-scraping. Es deliberadamente lo único que se agrega: nada de "amigos en común" (revelaría el grafo social de terceros) ni notificación de "un amigo llegó a tu zona" (convertiría una consulta puntual e inocua en un flujo de avisos que reconstruye el patrón de movimientos de alguien). Bloquear rompe la amistad (`romperVinculo`) y desbloquear no la restaura sola, así que `isFriend` hereda esa semántica sin trabajo adicional.
+
+**Intención declarada (ciclo 10C).** Una zona compartida dice *dónde*, no *si tienes ganas*. La intención agrega eso último, en tres valores fijos —🌿 *ando para rolar*, 👋 *abierto a conectar*, 👀 *solo mirando*— y con dos reglas que la mantienen inofensiva:
+
+- **Caduca sola, en horas y nunca en días** (2, 4 u 8). La celda vive 7 días porque describe dónde *sueles* estar; la intención describe cómo andas *ahora*. Una intención que dura días deja de ser información y pasa a ser una invitación que ya nadie sostiene, sin que quien la ve tenga cómo saberlo.
+- **Nunca sobrevive a la celda.** `intencionVigente()` comprueba las dos cosas juntas y en un solo lugar: si la celda caducó o se borró, la intención desaparece aunque su propia fecha no haya llegado. No existe un camino donde una intención se muestre sin celda vigente detrás.
+
+A los demás les viaja **solo el valor**, nunca la fecha de caducidad — cuánto le queda es mecánica interna, y saberlo permitiría deducir a qué hora exacta alguien la declaró. Los tres textos viven en `frontend/src/lib/intencionCerca.js`, en primera y en tercera persona, porque los usan el selector propio, la lista y el mapa: una etiqueta distinta en cada lugar haría que la misma intención se lea como tres cosas.
 
 El **toque 👋** invita a interactuar sin abrir chat: llega como notificación in-app. Hereda las dos reglas de Cerca — solo lo manda quien comparte zona, y solo llega a quien cae dentro de esa cuadrícula — más el rate limit del mapa y un cooldown de 12 h por persona. Un destino inexistente, lejano, que no comparte zona o bloqueado devuelven **la misma respuesta (404)**: el resultado no debe permitir deducir dónde está alguien ni si su cuenta existe. Sin esas comprobaciones el endpoint era un "ping a cualquier `userId`" y, como los ids son enteros consecutivos, bastaba recorrerlos para notificar a toda la base.
 
@@ -660,7 +719,7 @@ Cambiar de Feed a Chat —la acción más frecuente del producto— costaba esti
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 542 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 644 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 
