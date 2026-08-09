@@ -86,12 +86,24 @@ console.log('  migraciones al día');
 
 let servidor = null;
 
-async function esperarSalud(intentos = 40) {
+// 120 intentos × 500 ms = 60 s. Eran 40 (20 s) y quedaba JUSTO en el filo:
+// levantar el backend en frío tarda ~19 s en una máquina Windows sin caché de
+// disco caliente, y de eso 8 s son `require('swagger-ui-express')` y 2.4 s
+// `chatSocket`. La suite fallaba de forma intermitente con "el backend no
+// respondió", que suena a un bug del backend y no lo era.
+//
+// Lo que se mide aquí es "¿está arriba?", no "¿arrancó rápido?": un techo
+// generoso no hace más lenta ninguna corrida exitosa —se sale en cuanto
+// responde— y elimina un falso negativo que cuesta media hora de diagnóstico
+// cada vez que aparece.
+async function esperarSalud(intentos = 120) {
   for (let i = 0; i < intentos; i++) {
     try {
       const res = await fetch(`http://localhost:${PORT}/health`);
       if (res.ok) return true;
     } catch { /* todavía no responde */ }
+    // Señal de vida a los 20 s, para que una espera larga no se vea colgada.
+    if (i === 40) console.log('  (tarda más de lo normal; sigue intentando)');
     await new Promise(r => setTimeout(r, 500));
   }
   return false;
@@ -108,11 +120,25 @@ function apagarServidor() {
 
 async function main() {
   console.log('\nLevantando el backend de pruebas…');
-  servidor = spawn('node', ['app.js'], { cwd: ROOT, env: entornoHijo, stdio: 'ignore' });
+  // `pipe` y no `ignore`: la salida del backend se guarda pero NO se imprime
+  // mientras todo va bien (ensuciaría el reporte de la suite). Solo se muestra
+  // si no arranca — antes se descartaba, así que un fallo de arranque decía
+  // únicamente "no respondió" y había que reproducirlo a mano para ver por qué.
+  servidor = spawn('node', ['app.js'], { cwd: ROOT, env: entornoHijo, stdio: ['ignore', 'pipe', 'pipe'] });
+  let salidaBackend = '';
+  const recolectar = (d) => { salidaBackend += d; };
+  servidor.stdout.on('data', recolectar);
+  servidor.stderr.on('data', recolectar);
   servidor.on('error', e => abortar(`No se pudo iniciar el backend: ${e.message}`));
 
   if (!await esperarSalud()) {
     apagarServidor();
+    if (salidaBackend.trim()) {
+      console.error('\n  Lo que alcanzó a decir el backend:\n');
+      console.error(salidaBackend.split('\n').map(l => `    ${l}`).join('\n'));
+    } else {
+      console.error('\n  El backend no imprimió NADA: se quedó cargando módulos o murió al instante.');
+    }
     abortar(`El backend no respondió en http://localhost:${PORT}/health`);
   }
   console.log('  backend listo');

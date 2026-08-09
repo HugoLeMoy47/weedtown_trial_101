@@ -8,11 +8,22 @@
 # está en el servidor, que responde 401 sin sesión. Esto le ahorra el viaje a
 # quien respeta el archivo, y deja escrita la intención.
 #
-# Cuando exista la ficha de previsualización de perfiles (ciclo 11B), el Worker
-# del borde será el que distinga perfil público de privado y emita `noindex`
-# por perfil. Hasta entonces, se excluyen todos.
+# CICLO 11B — POR QUÉ `/@` YA NO ESTÁ EN Disallow, que es lo contrario de lo
+# que uno haría por instinto:
+#
+# `Disallow` y `noindex` son MUTUAMENTE EXCLUYENTES. Una ruta en `Disallow`
+# nunca la lee el rastreador, así que nunca ve el `noindex` — y la URL puede
+# seguir apareciendo en resultados como enlace pelón, sin contenido. Para tener
+# control POR PERFIL (público → indexable, privado → no) hay que PERMITIR el
+# rastreo y dejar que el Worker decida, que es quien sabe si el perfil es
+# público. Vive en `construirMetaTags` de frontend/src/worker.js.
+#
+# Un perfil que no es público sigue respondiendo 401 en el servidor y su ficha
+# sale genérica y con `noindex`. Permitir el rastreo no lo expone: lo que
+# decide qué se ve nunca fue este archivo.
 User-agent: *
-Disallow: /@
+# La ruta por id no es la compartible y no tiene ficha propia: no hay nada que
+# rastrear ahí, así que se queda excluida.
 Disallow: /perfil/
 Disallow: /chat
 Disallow: /admin
@@ -20,7 +31,9 @@ Disallow: /profile
 Disallow: /amigos
 Disallow: /cerca
 
-# Los posteos públicos y el directorio de subforos sí son para compartirse:
-# tienen ficha propia servida desde el borde (ciclos 7B y 9A).
+# Los posteos públicos, el directorio de subforos y los perfiles sí son para
+# compartirse: tienen ficha propia servida desde el borde (ciclos 7B, 9A y 11B).
+# En los perfiles, el `noindex` por perfil lo pone el Worker.
 Allow: /p/
 Allow: /forum
+Allow: /@

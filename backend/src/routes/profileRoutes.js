@@ -1,5 +1,6 @@
 // Rutas para perfil de usuario
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
@@ -12,6 +13,7 @@ const { isBlockedBetween } = require('../lib/blocks');
 const { friendStatusBetween } = require('../lib/friends');
 const { camposVisibles, CAMPOS, esVisibilidadValida } = require('../lib/visibilidadPerfil');
 const { cubetaInvitaciones } = require('../lib/invitaciones');
+const { armarFichaPerfil, armarFichaPerfilGenerica } = require('../lib/preview');
 const avatar = require('../lib/avatar');
 const handleLib = require('../lib/handle');
 const privacy = require('../lib/privacy');
@@ -335,6 +337,66 @@ router.get('/handle/:handle', optionalAuth, async (req, res) => {
   const handle = handleLib.normalizar(req.params.handle);
   if (!handle) return res.status(404).json({ error: 'Usuario no encontrado' });
   return responderPerfil(req, res, { handle });
+});
+
+// GET /api/profile/handle/:handle/preview — ficha Open Graph de un perfil
+// (HU-SHR-005, ciclo 11B). La consume el Worker de Cloudflare en nombre de un
+// rastreador anónimo. Sin `optionalAuth`: no importa quién pregunta.
+//
+// Mismo criterio de límite que las otras dos fichas (7B, 9A): fuera del
+// apiLimiter general, porque el Worker llega desde un rango chico de IPs de
+// Cloudflare y un perfil popular agotaría el cupo compartido de TODA la API.
+const perfilPreviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 2000,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
+});
+
+// SIEMPRE 200, y el mismo cuerpo salvo que el perfil sea público.
+//
+// No hay 404 aquí a propósito, y es la decisión que sostiene el ciclo. Un 404
+// para "no existe" y un 200 para "existe pero es privado" convertirían esta
+// ruta en un verificador de handles: cualquiera con un diccionario mapea quién
+// está en la red. 10A cierra esa puerta en la web respondiendo el mismo 401;
+// acá no se puede —el rastreador necesita algo que mostrar—, así que la
+// indistinguibilidad vive en el CUERPO, que es idéntico byte por byte para:
+// handle inexistente, perfil no público, cuenta suspendida y cuenta eliminada.
+router.get('/handle/:handle/preview', perfilPreviewLimiter, async (req, res) => {
+  try {
+    const handle = handleLib.normalizar(req.params.handle);
+    const user = handle
+      ? await prisma.user.findUnique({
+        where: { handle },
+        select: {
+          ...perfilConVisibilidadSelect,
+          name: true, displayName: true, deletedAt: true, suspendedUntil: true
+        }
+      })
+      : null;
+
+    const suspendida = user?.suspendedUntil && new Date(user.suspendedUntil) > new Date();
+    const puedeFichaRica = user && user.perfilPublico && !user.deletedAt && !suspendida;
+
+    // Caché explícito y corto: esta respuesta la consume el Worker, que trae
+    // su propia estrategia. Más corta que la de posteos y subforos porque un
+    // perfil se puede APAGAR, y lo que ya salió sigue circulando.
+    res.set('Cache-Control', 'public, max-age=120');
+
+    if (!puedeFichaRica) return res.json(armarFichaPerfilGenerica());
+
+    // La regla de composición del 10B no se reimplementa: se llama. El
+    // contexto es el del extremo —sin dueña, sin amistad, sin sesión—, que es
+    // exactamente la rama `anonima` que `campoVisible` ya tenía escrita.
+    const visibles = camposVisibles(user, { esDueña: false, esAmistad: false, tieneSesion: false });
+    // JSON plano, sin escapar (HU-SEC-001): el escapado vive en el Worker.
+    res.json(armarFichaPerfil(user, visibles));
+  } catch (e) {
+    console.error('Error al armar la ficha del perfil:', e);
+    // Ni siquiera un error interno puede delatar que el handle existe.
+    res.json(armarFichaPerfilGenerica());
+  }
 });
 
 router.get('/:id', optionalAuth, async (req, res) => {

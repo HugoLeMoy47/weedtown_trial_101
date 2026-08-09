@@ -163,9 +163,10 @@ const PrivacidadPerfil = ({ valores, onCambio }) => {
               fuera de la red no hay amistades.
             </Typography>
             <Typography variant="body2" color="warning.main">
-              <strong>Apagarlo después no deshace todo.</strong> Los buscadores tardan en
-              dejar de mostrarlo, quien ya haya guardado una captura la conserva, y el enlace
-              puede seguir viéndose hasta un día por la caché.
+              <strong>Apagarlo después no deshace todo.</strong> La ficha que se ve al pegar
+              tu enlace deja de mostrar tus datos en menos de una hora, pero los buscadores
+              tardan más en quitarlo, WhatsApp y las demás apps guardan su propia copia por
+              días, y quien ya haya hecho una captura la conserva.
             </Typography>
           </DialogContentText>
         </DialogContent>

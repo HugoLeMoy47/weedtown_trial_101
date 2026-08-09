@@ -62,7 +62,8 @@
 | Posteo no accesible (de amistades o inexistente) sin sesión → redirige a iniciar sesión y regresa al mismo enlace tras el alta, sin bucles ni distinguir "privado" de "no existe" | ✅ Funcionando |
 | Comentarios de un posteo público: el contenido solo se lista con sesión (recorte en el servidor); sin sesión se ve el conteo, no el texto | ✅ Funcionando |
 | Subforos temáticos institucionales sembrados vía script idempotente (`npm run subforos`) | ✅ Funcionando |
-| Ficha de previsualización (Open Graph/Twitter Card) al pegar `/p/:id` o `/forum/:slug` en WhatsApp, Telegram, Facebook o X: título, descripción, imagen (propia o de campaña) — armada en el borde con un Worker de Cloudflare, sin depender de que React ni el backend respondan a tiempo. Los hilos (`/forum/:slug/post/:id`) todavía no tienen ficha propia | ✅ Funcionando |
+| Ficha de previsualización (Open Graph/Twitter Card) al pegar `/p/:id`, `/forum/:slug` o `/@handle` en WhatsApp, Telegram, Facebook o X: título, descripción, imagen (propia o de campaña) — armada en el borde con un Worker de Cloudflare, sin depender de que React ni el backend respondan a tiempo. Los hilos (`/forum/:slug/post/:id`) **no** tienen ficha, y es una decisión: su título es contenido que exige sesión | ✅ Funcionando |
+| Invitaciones con contador ciego: el enlace de tu perfil, quien llega ve quién la invitó y puede mandarle solicitud; el contador se publica en cubetas y **no existe ningún vínculo persistido** entre las dos cuentas | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -263,7 +264,43 @@ El mapa `CAMPOS` es lo que hace que agregar un quinto campo configurable no exij
 
 **Reversibilidad, dicha claramente porque no es total.** Apagar el perfil público deja de servirlo de inmediato, pero lo que ya salió, salió: cachés, capturas y rastreadores no se pueden retirar. La interfaz lo advierte en vez de sugerir que el interruptor deshace el pasado.
 
-**`robots.txt`** (`frontend/public/robots.txt`) excluye `/@`, `/perfil/`, `/chat`, `/admin`, `/profile`, `/amigos` y `/cerca`, y permite `/p/` y `/forum`. No es la defensa —la defensa es el 401 del servidor, y un rastreador que no ejecuta JavaScript no vería nada de una SPA de todos modos—: le ahorra el viaje a quien respeta el archivo y deja escrita la intención. Cuando exista la ficha de previsualización de perfiles, el Worker del borde será el que distinga público de privado y emita `noindex` por perfil; hasta entonces se excluyen todos. **Nota de despliegue:** Cloudflare **antepone** su preámbulo de *content signals* al archivo en vez de reemplazarlo, así que en producción `robots.txt` se ve distinto al del build aunque las reglas propias sigan ahí.
+**`robots.txt`** (`frontend/public/robots.txt`) excluye `/perfil/`, `/chat`, `/admin`, `/profile`, `/amigos` y `/cerca`, y permite `/p/`, `/forum` y `/@`. No es la defensa —la defensa es el 401 del servidor, y un rastreador que no ejecuta JavaScript no vería nada de una SPA de todos modos—: le ahorra el viaje a quien respeta el archivo y deja escrita la intención.
+
+**`/@` dejó de estar excluido en el ciclo 11B, y el motivo es contraintuitivo:** `Disallow` y `noindex` son **mutuamente excluyentes**. Una ruta en `Disallow` nunca la lee el rastreador, así que nunca ve el `noindex` — y la URL puede seguir apareciendo en resultados como enlace pelón. Para tener control **por perfil** (público → indexable, privado → no) hay que permitir el rastreo y que el Worker emita el `noindex`, que es quien sabe si ese perfil es público. Ver [Ficha de previsualización de perfiles](#ficha-de-previsualización-de-perfiles-ciclo-11b).
+
+**Nota de despliegue:** Cloudflare **antepone** su preámbulo de *content signals* al archivo en vez de reemplazarlo, así que en producción `robots.txt` se ve distinto al del build aunque las reglas propias sigan ahí.
+
+### Invitaciones con contador ciego (ciclo 11A)
+
+El enlace de invitación es el perfil de quien invita: `/@handle`. Sin sesión cae en el muro de login, que recuerda a dónde iba (HU-CTA-003) y regresa ahí tras el alta. Al volver, la persona ve **quién la invitó** y puede mandarle solicitud de amistad.
+
+**No hay amistad automática.** La amistad da acceso a los posteos "solo amigos", y otorgarla por hacer clic en un enlace la vuelve cosechable: cualquiera que reparta su enlace en un grupo se llenaría de acceso a contenido restringido de gente que no conoce.
+
+**No existe ningún vínculo persistido entre las dos cuentas.** Ni tabla de referidos, ni llave foránea, ni un `invitadoPorId`: solo un contador que sube. Ese registro reconstruiría la red social real detrás de los seudónimos, que es la pieza más golosa de toda la base. Hay una prueba que **asierta sobre el esquema** —consulta `information_schema`— y falla si aparece cualquier columna o tabla que ate a una cuenta con la otra: si alguien la agrega "para poder auditarlo", la prueba obliga a la conversación.
+
+**El incremento es silencioso.** La línea del log sigue siendo `{ref, requestId}`, sin el handle de quien invitó. Si se registrara, el alta de la cuenta nueva deja su propia línea con marca de tiempo cercana y **el grafo se reconstruye por correlación aunque la base no lo guarde**. Verificado con un alta real, mirando el log completo.
+
+**Y el contador se publica en cubetas** (`algunas`, `5+`, `20+`, `50+`), nunca exacto. El número exacto es un canal de correlación por sí solo: verlo pasar de 3 a 4 a las 14:32 y ver una cuenta nueva a esa hora reconstruye la arista sin que la base la guarde. Con una red de este tamaño las altas son lo bastante escasas como para que baste mirar dos veces al día. Las cubetas dejan el canal en un bit por frontera cruzada. Su dueña sí ve el número: ella repartió el enlace.
+
+**Quién lo ve lo decide la visibilidad por dato del 10B**, sin un control nuevo — el mapa `CAMPOS` se escribió para eso. Default `NADIE`.
+
+**Es reconocimiento, no moneda:** no desbloquea nada. En el momento en que otorgue algo, inflarlo se vuelve rentable, y las defensas actuales están calibradas para molestia, no para incentivo económico. Convertirlo en moneda exige diseñar la defensa **antes**; no es un pendiente, es una precondición.
+
+### Ficha de previsualización de perfiles (ciclo 11B)
+
+Pegar `/@handle` en WhatsApp, Telegram, Facebook o X muestra una ficha. Mismo Worker y mismo patrón que `/p/:id` (7B) y `/forum/:slug` (9A), con tres diferencias que salen de que **ésta es la superficie más externa a la red que existe**: un rastreador la pide sin sesión, sin cookies y sin ninguna relación con nadie.
+
+**1. Solo lo que estaba en `TODOS`.** La ficha rica se sirve únicamente si el perfil es público, y con los campos que su dueña puso en `TODOS`. Un campo en `AMIGOS` no sale, porque afuera no hay amistades que valer. **La regla no se reimplementa**: la ruta llama a `camposVisibles()` con el contexto del extremo (sin dueña, sin amistad, sin sesión), que es la rama `anonima` que el 10B ya tenía escrita.
+
+**2. Siempre 200, y el mismo cuerpo salvo que el perfil sea público.** No hay 404 aquí, y es lo que sostiene el ciclo: un 404 para "no existe" y un 200 para "existe pero es privado" convertirían la ruta en un **verificador de handles**. El 10A cierra esa puerta en la web respondiendo el mismo 401; acá no se puede —el rastreador necesita algo que mostrar—, así que la indistinguibilidad vive en el **cuerpo**, idéntico byte por byte para handle inexistente, perfil no público, cuenta suspendida y cuenta eliminada. La prueba lo asierta comparando los cuatro cuerpos **entre sí**, no contra un literal, para que siga sirviendo si el genérico cambia. Y el genérico **no menciona el handle**: decir "el perfil de @fulano" confirmaría que ese handle existe.
+
+**3. La caché dura menos, porque un perfil se puede apagar.** 10 min fresco / 1 h máximo en el borde, contra las 24 h de las otras dos fichas. Un posteo es casi inmutable; un perfil no, y el interruptor tiene que sentirse como que apaga algo. El aviso de la interfaz dice exactamente eso y no promete más: lo que las redes ya cachearon de su lado no se puede recoger.
+
+**La imagen es de campaña, no el avatar.** El avatar se sirve como SVG dibujado al vuelo, y los rastreadores de WhatsApp, Telegram y X no renderizan SVG en `og:image`: la tarjeta saldría sin imagen. Ponerlo exigiría generarlo también en PNG, que es otro ciclo.
+
+**Y si el backend está dormido, el perfil cae en `noindex`.** No sabemos si es público, y suponer que sí indexaría un perfil privado — mismo criterio *fail-closed* que el `default` de `campoVisible`.
+
+> **La ficha de hilos del foro se evaluó y se descartó, a propósito.** `ForumPost.title` es **contenido**, no metadato del directorio: `GET /api/forum/posts/:id` exige sesión (HU-FOR-012). Una ficha con el título lo pondría delante de cualquiera sin cuenta. La alternativa —una ficha que solo diga "un hilo en Cultivo"— no salva nada: si dijera eso para un hilo real y la genérica para uno inexistente, sería un **oráculo de existencia de hilos**; y si responde igual en ambos casos, es la genérica y no aporta nada. No hay versión que valga la pena.
 
 ### Navegación por tema (ciclo 10D)
 
@@ -402,7 +439,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son **644** (28 suites) y cubren estas áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son **706** (30 suites) y cubren estas áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -425,6 +462,8 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Acceso** | Alta y login con llave de acceso (con un autenticador de software real, no un mock — ver `tests/webauthnAuthenticator.js`), agregar/quitar métodos, enlace mágico (alta, reingreso, respaldo, un solo uso) y la cuarentena de cuentas nuevas en toque y chat |
 | **Privacidad** | Exportar datos, anonimizar cuenta (handle, PII, identidades, bloqueos), que el contenido se quede pero muestre "Cuenta eliminada", y que un JWT emitido antes de eliminar deje de servir |
 | **PublicShare** | `/p/:id`: un posteo `PUBLIC` se ve sin sesión; uno `FRIENDS` da 404; un posteo oculto por moderación da 404 incluso a su propia autora (H1); los comentarios solo se listan con sesión (HU-PRV-001) |
+| **Invitaciones** | Ciclo 11A: que el contador suba solo con `ref=perfil` y dentro de la ventana, que nadie se pueda auto-invitar, las cinco cubetas con sus fronteras exactas, y **una aserción sobre el esquema** de que no existe ninguna columna ni tabla que ate a quien invitó con quien llegó |
+| **PreviewPerfil** | Ciclo 11B: que la ficha rica traiga solo lo que estaba en `TODOS` (y que "sobre mí", género, correo, teléfono y nombre real **no** salgan), y que los cuatro casos sin ficha rica —inexistente, privado, suspendido, eliminado— respondan **cuerpos idénticos entre sí**, sin mencionar el handle |
 | **Preview** / **PreviewSubforo** | Las dos fichas Open Graph que consume el Worker. En la de posteos: extracto del título, imagen de campaña determinista, y 404 para `FRIENDS`/oculto/autor suspendido. En la de subforos (ciclo 9A): que **nunca** salga `creator` —ni con sesión—, que un subforo archivado dé el 404 exacto de "no existe", y que el JSON llegue **sin escapar** (el escapado vive en el Worker, HU-SEC-001) |
 | **Subforos** | `slugify` para los 10 nombres del catálogo institucional (con aserción sobre los casos límite #9 y #10); el script `subforos.js` es idempotente y no crea usuarios |
 | **Atribucion** | HU-CTA-002/HU-ATR-001: `ref` fuera de la lista blanca se descarta en silencio, exige sesión, y el limitador propio (5/15min) corta antes que el general |
@@ -442,7 +481,7 @@ Con `.env` apuntando a un proyecto de desarrollo —que es como debe estar—, u
 
 | Script | Qué hace |
 |---|---|
-| `npm test` | Las 644 pruebas de integración |
+| `npm test` | Las 706 pruebas de integración |
 | `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
 | `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las demás |
 | `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
@@ -500,7 +539,7 @@ El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin d
 | Trabajo | Qué hace |
 |---|---|
 | **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` (integración) |
-| **Frontend** | `npm test` (unitarias — `worker.test.js`, `rutaInterna.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
+| **Frontend** | `npm test` (70 unitarias — `worker.test.js`, `rutaInterna.test.js`, `intencionCerca.test.js`, `recorte.test.js`, `invitador.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
 
 El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se pisarían. El Postgres del runner nace y muere con el trabajo, así que tampoco hay secretos que guardar — el `JWT_SECRET` se genera con `openssl rand` al vuelo. No hace falta configurar nada en el repositorio para que funcione.
 
@@ -591,6 +630,7 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | GET | `/api/profile/me/export` | 🔒 | Descargar mis datos (perfil, contenido propio, bloqueos, reportes, mensajes enviados…) |
 | DELETE | `/api/profile/me` | 🔒 | Eliminar (anonimizar) mi cuenta — exige `{ confirm: "mi-handle" }` |
 | GET | `/api/profile/:id` | opcional* | Perfil ajeno por id + `friendStatus` (`none`\|`pending_sent`\|`pending_received`\|`friends`\|`self`). Los cuatro campos configurables se recortan con `camposVisibles()` según la relación de quien pregunta. 404 si hay bloqueo de por medio |
+| GET | `/api/profile/handle/:handle/preview` | — | Ficha Open Graph de un perfil (HU-SHR-005, ciclo 11B). La consume el Worker. **Siempre 200**: ficha rica solo si el perfil es público —y solo con los campos en `TODOS`—; en cualquier otro caso el **mismo cuerpo genérico**, que no menciona el handle. Trae `indexable`, que es lo que el Worker mira para emitir `noindex`. Fuera del `apiLimiter`; limitador propio |
 | GET | `/api/profile/handle/:handle` | opcional* | Lo mismo, pero por handle — es lo que resuelve `/@handle` (ciclo 10A). **Sin sesión y sin perfil público responde 401 exista o no el handle**: distinguir "no existe" de "existe pero es privado" convierte la ruta en un verificador de handles para cualquiera |
 | GET | `/api/blocks` | 🔒 | Cuentas que bloqueé |
 | POST | `/api/blocks` | 🔒 | Bloquear (`userId`); idempotente |
@@ -719,7 +759,7 @@ Cambiar de Feed a Chat —la acción más frecuente del producto— costaba esti
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 644 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 706 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 
