@@ -203,24 +203,15 @@ const emailLimiter = rateLimit({
   message: { error: 'Demasiadas solicitudes de enlace. Intenta de nuevo en unos minutos.' },
   handler: alTocarLimite('email')
 });
-// HU-ATR-001: sin `userId` en el log ya no se puede deduplicar al contar, así
-// que una cuenta recién creada podría llamar este endpoint hasta agotar el
-// apiLimiter general (300/15 min) e inflar la métrica que justamente valida
-// la hipótesis del ciclo. No es una defensa de seguridad —el endpoint no
-// decide nada—, es higiene de la métrica.
-const attributionLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 5,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
-  handler: alTocarLimite('attribution')
-});
+// El limitador de /attribution ya no vive aquí: se movió a su ruta en el
+// ciclo 11A para poder llavearlo POR CUENTA en vez de por IP. Ver el porqué
+// en `src/routes/authRoutes.js` — resumido, desde que el endpoint incrementa
+// el contador de invitaciones dejó de ser solo higiene de una métrica, y por
+// IP castigaba a todo un wifi compartido.
 app.use('/api', apiLimiter);
 app.use('/api/auth/mastodon', authLimiter);
 app.use('/api/auth/passkey', passkeyLimiter);
 app.use('/api/auth/email', emailLimiter);
-app.use('/api/auth/attribution', attributionLimiter);
 
 
 // Health check: proceso vivo + dependencias críticas (BD, storage, mailer).

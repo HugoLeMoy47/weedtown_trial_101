@@ -21,15 +21,15 @@ Genera `build/`, que es lo que sirve tanto `serve -s build` en local como Cloudf
 
 ### `public/robots.txt`
 
-Copiado tal cual al build. Excluye las superficies con datos de personas (`/@`, `/perfil/`, `/chat`, `/admin`, `/profile`, `/amigos`, `/cerca`) y permite las que sí son para compartirse (`/p/`, `/forum`), que son justo las dos que tienen ficha propia servida desde el borde.
+Copiado tal cual al build. Excluye las superficies con datos de personas (`/perfil/`, `/chat`, `/admin`, `/profile`, `/amigos`, `/cerca`) y permite las que sí son para compartirse (`/p/`, `/forum`, `/@`), que son justo las tres que tienen ficha propia servida desde el borde.
 
 No es la defensa: la defensa es el 401 del backend, y un rastreador que no ejecuta JavaScript no vería nada de una SPA de todos modos. Le ahorra el viaje a quien respeta el archivo y deja escrita la intención.
 
+> **`/@` está en `Allow`, y es a propósito (ciclo 11B).** `Disallow` y `noindex` son **mutuamente excluyentes**: una ruta excluida nunca la lee el rastreador, así que nunca ve el `noindex` — y la URL puede seguir apareciendo en resultados como enlace pelón. Para decidir **por perfil** (público → indexable, privado → no) hay que permitir el rastreo y emitir el `noindex` desde el Worker, que es quien sabe si ese perfil es público. Vive en `construirMetaTags`.
+
 > **En producción se ve distinto, y está bien.** Cloudflare **antepone** su preámbulo de *content signals* en vez de reemplazar el archivo. Al hacer `curl https://weedtown.social/robots.txt` lo primero que aparece no es este contenido — hay que leer hasta abajo para encontrar las reglas propias. Costó un susto durante la verificación del ciclo 10: parecía que el archivo del build no se había desplegado.
 
-Cuando exista la ficha de previsualización de perfiles (ciclo 11B), el Worker será el que distinga perfil público de privado y emita `noindex` por perfil; hasta entonces se excluyen todos, y la línea `Disallow: /@` es lo que ese ciclo tendrá que revisar.
-
-## El Worker de fichas: `/p/:id` y `/forum/:slug` (HU-SHR-002, ciclo 7B; HU-SHR-004, ciclo 9A)
+## El Worker de fichas: `/p/:id`, `/forum/:slug` y `/@handle` (HU-SHR-002, ciclo 7B; HU-SHR-004, ciclo 9A; HU-SHR-005, ciclo 11B)
 
 **Por qué existe.** Un enlace de WeedTown pegado en WhatsApp, Telegram, Facebook o X necesita mostrar una ficha con imagen, título y descripción — lo que se conoce como meta tags Open Graph. El problema es que **esto no se puede resolver desde React**: los rastreadores de esas apps no ejecutan JavaScript, así que nunca ven lo que `react-helmet` o un `useEffect` escribirían en el `<head>` después de que la página cargó. Necesitan HTML crudo, servido por el servidor, ya con las meta tags puestas.
 
@@ -42,7 +42,12 @@ Sin este archivo, `weedtown.social` sirve el mismo `index.html` para cualquier r
 3. Toma el `index.html` real del binding de assets (`env.ASSETS`) y usa `HTMLRewriter` para inyectar las meta tags en streaming — sin cargar el documento completo en memoria.
 4. Guarda el resultado en caché y responde.
 
-Los dos recursos comparten TODO salvo tres datos (ruta canónica, endpoint del backend y `og:type`: `article` para un posteo, `website` para un subforo). La tabla de caché de abajo, el escapado y la inyección existen una sola vez.
+Los tres recursos comparten TODO salvo lo que los distingue (ruta canónica, endpoint del backend y `og:type`: `article` para un posteo, `website` para un subforo, `profile` para un perfil). La tabla de caché de abajo, el escapado y la inyección existen una sola vez.
+
+**El perfil (ciclo 11B) agrega las dos únicas cosas que no comparte con los otros dos:**
+
+- **`noindex` por perfil.** Si el backend responde que ese perfil no es público, el Worker inyecta `<meta name="robots" content="noindex, nofollow">`. Si el backend no responde, también — no sabemos si es público, y suponer que sí indexaría un perfil privado. Falla cerrado.
+- **Caché más corta: 10 min fresco / 1 h máximo**, contra 1 h / 24 h. Un posteo es casi inmutable; un perfil se puede **apagar**, y el interruptor tiene que sentirse como que apaga algo. Con 24 h, quien quita "perfil público" seguiría con su ficha rica circulando un día entero. El aviso de la interfaz dice exactamente esto.
 
 Todo lo que **no** sea `/p/:id` ni `/forum/:slug` pasa de largo a `env.ASSETS.fetch(request)` — el mismo comportamiento (incluido el fallback SPA de `not_found_handling`) que tenía el proyecto antes de que este Worker existiera. No hay detección de User-Agent: las meta tags son inocuas para un navegador, y sniffear UA para decidir qué servir es frágil y se considera *cloaking*.
 

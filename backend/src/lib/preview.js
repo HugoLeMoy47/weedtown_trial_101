@@ -153,11 +153,89 @@ function armarFichaSubforo(subforum) {
   };
 }
 
+// ---------- Ficha de PERFIL (HU-SHR-005, ciclo 11B) ----------
+//
+// Es la superficie MÁS EXTERNA a la red que existe. Un rastreador la pide sin
+// sesión, sin cookies y sin ninguna relación con nadie: todo lo que salga aquí
+// es público de verdad, para siempre, y con caché de por medio.
+//
+// LA FICHA GENÉRICA ES UNA CONSTANTE, y eso es el diseño, no una comodidad.
+// Se sirve IDÉNTICA en los cuatro casos en que no hay ficha rica —el handle no
+// existe, el perfil no es público, la cuenta está suspendida, la cuenta fue
+// eliminada—. Si el genérico de "no existe" difiriera en algo del de "existe
+// pero es privado", esta ruta sería un verificador de handles para cualquiera
+// con un diccionario y tiempo: justo lo que 10A evita respondiendo el mismo
+// 401. Aquí no se puede responder 401 —el rastreador necesita algo que
+// mostrar—, así que la indistinguibilidad tiene que estar en el CONTENIDO.
+//
+// Y no menciona el handle. Está decidido en la Ola 3: el handle es
+// información. "Un perfil de WeedTown", nunca "el perfil de @fulano" — lo
+// segundo confirma que ese handle existe, a cualquiera, sin sesión.
+const FICHA_PERFIL_GENERICA = Object.freeze({
+  titulo: 'WeedTown',
+  descripcion: 'La red social de la comunidad cannábica de México. Un espacio seguro, con respeto y sin estigma.',
+  imagen: null, // la resuelve `armarFichaPerfilGenerica` con la URL del frontend
+  imagenAlt: 'WeedTown — la red social de la comunidad cannábica de México',
+  tieneImagen: false,
+  // Lo que el Worker mira para emitir `noindex`. Ver la nota sobre por qué
+  // `Disallow` y `noindex` son mutuamente excluyentes en frontend/public/robots.txt.
+  indexable: false
+});
+
+const DESCRIPCION_PERFIL_SIN_BIO = 'Un perfil de WeedTown, la red social de la comunidad cannábica de México. Únete a la conversación.';
+const DESCRIPCION_PERFIL_MAX = 160;
+
+// Siempre la MISMA imagen por defecto, no una de campaña elegida por id: la
+// ficha genérica no puede depender de nada del recurso, o dejaría de ser
+// idéntica entre "no existe" y "existe pero es privado".
+function armarFichaPerfilGenerica() {
+  return {
+    ...FICHA_PERFIL_GENERICA,
+    imagen: `${urlBaseFrontend()}/${IMAGEN_POR_DEFECTO.archivo}`
+  };
+}
+
+/**
+ * Ficha rica de un perfil PÚBLICO. La ruta ya validó que `perfilPublico` esté
+ * encendido, que la cuenta no esté suspendida ni eliminada, y ya recortó los
+ * campos con `camposVisibles()` — aquí solo se arma el contenido.
+ *
+ * Lo que puede salir es lo que ya estaba en TODOS, y nada más. La regla de
+ * composición del 10B no se reimplementa aquí: llega resuelta.
+ *
+ * @param {{id:number, handle:string, displayName:string|null, name:string}} user
+ * @param {{bio:string|null}} visibles campos ya recortados por camposVisibles()
+ */
+function armarFichaPerfil(user, visibles) {
+  const campania = imagenDeCampania(user.id);
+  return {
+    // El handle SÍ va aquí: este perfil es público por decisión de su dueña,
+    // así que su nombre y su handle son justamente lo que quiso compartir.
+    titulo: truncarTitulo(`${user.displayName || user.name} (@${user.handle})`),
+    // La bio solo si su dueña la puso en TODOS. En cualquier otro caso, texto
+    // fijo: NO se cae a `aboutMe` ni a nada más "para que la tarjeta se vea
+    // llena" — eso sería exactamente la fuga que este ciclo tiene que evitar.
+    descripcion: truncar(visibles.bio, DESCRIPCION_PERFIL_MAX) || DESCRIPCION_PERFIL_SIN_BIO,
+    // Imagen de campaña, no el avatar. El avatar se sirve como SVG dibujado al
+    // vuelo, y los rastreadores de WhatsApp, Telegram y X no renderizan SVG en
+    // og:image: la tarjeta saldría sin imagen. Poner el avatar exigiría
+    // generarlo en PNG, que es otro ciclo.
+    imagen: campania.url,
+    imagenAlt: campania.alt,
+    tieneImagen: false,
+    // Perfil público = su dueña pidió que se viera fuera de la red.
+    indexable: true
+  };
+}
+
 module.exports = {
   armarFicha,
   armarFichaSubforo,
+  armarFichaPerfil,
+  armarFichaPerfilGenerica,
   truncarTitulo,
   DESCRIPCION_INVITACION,
   DESCRIPCION_SUBFORO_SIN_TEXTO,
+  DESCRIPCION_PERFIL_SIN_BIO,
   SITE_NAME
 };

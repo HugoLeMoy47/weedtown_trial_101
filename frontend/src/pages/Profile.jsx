@@ -7,12 +7,22 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
-import PrivacidadPerfil from '../components/PrivacidadPerfil';
+import PrivacidadPerfil, { CAMPOS as CAMPOS_PRIVACIDAD } from '../components/PrivacidadPerfil';
 import AccessMethods from '../components/AccessMethods';
 import AccountPrivacy from '../components/AccountPrivacy';
 import { useAuth } from '../hooks/useAuth';
 
 const emptyForm = { handle: '', phone: '', fullName: '', bio: '', aboutMe: '', age: '', birthdate: '', gender: '' };
+
+// Extrae de una respuesta de perfil solo las preferencias de privacidad.
+// Se arma recorriendo la lista de campos del propio componente, en vez de
+// nombrarlos a mano: cuando el 11A agregó el quinto, esto ya lo incluía sin
+// tocar nada — antes había que acordarse de dos lugares distintos de este
+// archivo, y olvidar uno deja un control que se pinta pero no se guarda.
+const preferenciasDe = (u) => ({
+  ...Object.fromEntries(CAMPOS_PRIVACIDAD.map(c => [c.clave, u[c.clave]])),
+  perfilPublico: u.perfilPublico
+});
 
 const Profile = () => {
   const { user, setUser } = useAuth();
@@ -40,11 +50,7 @@ const Profile = () => {
       });
       setIdentities(u.identities || []);
       setPrivacidad({
-        visibilidadBio: u.visibilidadBio,
-        visibilidadAboutMe: u.visibilidadAboutMe,
-        visibilidadAge: u.visibilidadAge,
-        visibilidadGender: u.visibilidadGender,
-        perfilPublico: u.perfilPublico
+        ...preferenciasDe(u)
       });
     })
     .catch(() => setError('No se pudo cargar el perfil.'));
@@ -185,13 +191,7 @@ const Profile = () => {
             <CardContent sx={{ p: 4, pt: 2 }}>
               <PrivacidadPerfil
                 valores={privacidad}
-                onCambio={(u) => setPrivacidad({
-                  visibilidadBio: u.visibilidadBio,
-                  visibilidadAboutMe: u.visibilidadAboutMe,
-                  visibilidadAge: u.visibilidadAge,
-                  visibilidadGender: u.visibilidadGender,
-                  perfilPublico: u.perfilPublico
-                })}
+                onCambio={(u) => setPrivacidad(preferenciasDe(u))}
               />
             </CardContent>
           </Card>

@@ -18,7 +18,8 @@ import {
   fichaGenerica,
   recursoDeLaPeticion,
   recursoPost,
-  recursoSubforo
+  recursoSubforo,
+  recursoPerfil
 } from './worker';
 
 const URL_BASE = new URL('https://weedtown.social/p/1');
@@ -210,5 +211,85 @@ describe('HU-SEC-001 en la ficha de subforo — la prueba que de verdad protege 
 
     expect(html).not.toContain('<script>');
     expect(html).toContain('&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ciclo 11B: la ficha de perfil. Dos cosas que solo existen aquí — el
+// `noindex` por perfil y una caché más corta — y la misma trampa de regex del
+// 9A aplicada a `/@handle`.
+describe('recursoPerfil y la ruta /@handle (ciclo 11B)', () => {
+  test('/@handle sí se intercepta', () => {
+    expect(get('/@luna')).toEqual({
+      ruta: '/@luna',
+      api: '/api/profile/handle/luna/preview',
+      tipoOg: 'profile',
+      frescoMs: 10 * 60 * 1000,
+      maxMs: 60 * 60 * 1000,
+      edgeCacheControl: 'public, max-age=3600',
+      indexableSinFicha: false
+    });
+  });
+
+  // La misma trampa del 9A: si alguien afloja la regex a `.+`, esto falla.
+  test('una ruta MÁS PROFUNDA bajo /@ no se intercepta', () => {
+    expect(get('/@luna/loquesea')).toBeNull();
+    expect(get('/@luna/posts/3')).toBeNull();
+  });
+
+  test('lo que no cumple el formato del handle no se intercepta', () => {
+    expect(get('/@lu')).toBeNull();                    // muy corto
+    expect(get('/@' + 'a'.repeat(21))).toBeNull();     // muy largo
+    expect(get('/@_luna')).toBeNull();                 // no empieza con letra o número
+    expect(get('/@luna-mala')).toBeNull();
+    expect(get('/@')).toBeNull();
+  });
+
+  test('las rutas que ya existían siguen sin verse afectadas', () => {
+    expect(get('/feed')).toBeNull();
+    expect(get('/perfil/7')).toBeNull();
+    expect(get('/profile')).toBeNull();
+  });
+
+  test('la caché de un perfil es más corta que la de un posteo: se puede APAGAR', () => {
+    const perfil = recursoPerfil('luna');
+    expect(perfil.frescoMs).toBeLessThan(60 * 60 * 1000);
+    expect(perfil.maxMs).toBeLessThan(24 * 60 * 60 * 1000);
+    // Un posteo no trae TTL propio y cae en los de siempre.
+    expect(recursoPost('1').frescoMs).toBeUndefined();
+  });
+});
+
+describe('noindex por perfil (ciclo 11B)', () => {
+  const url = new URL('https://weedtown.social/@luna');
+  const PERFIL = recursoPerfil('luna');
+  const fichaRica = { titulo: 'Luna (@luna)', descripcion: 'd', imagen: 'https://x.test/a.jpg', imagenAlt: 'alt', tieneImagen: false, indexable: true };
+  const fichaGen = { titulo: 'WeedTown', descripcion: 'd', imagen: 'https://x.test/a.jpg', imagenAlt: 'alt', tieneImagen: false, indexable: false };
+
+  test('un perfil público NO lleva noindex', () => {
+    expect(construirMetaTags(datosMeta(fichaRica, url, PERFIL))).not.toContain('noindex');
+  });
+
+  test('un perfil no público SÍ lleva noindex', () => {
+    expect(construirMetaTags(datosMeta(fichaGen, url, PERFIL))).toContain('<meta name="robots" content="noindex, nofollow">');
+  });
+
+  // Falla cerrado: si el backend está dormido no sabemos si el perfil es
+  // público, y suponer que sí indexaría un perfil privado.
+  test('sin ficha (backend caído) un perfil cae en noindex', () => {
+    expect(construirMetaTags(datosMeta(fichaGenerica(url), url, PERFIL))).toContain('noindex');
+  });
+
+  test('posteos y subforos NO ganan noindex por este cambio', () => {
+    const ficha = { titulo: 't', descripcion: 'd', imagen: 'https://x.test/a.jpg', imagenAlt: 'alt', tieneImagen: false };
+    expect(construirMetaTags(datosMeta(ficha, URL_BASE, POST_1))).not.toContain('noindex');
+    const u = new URL('https://weedtown.social/forum/cultivo');
+    expect(construirMetaTags(datosMeta(fichaGenerica(u), u, recursoSubforo('cultivo')))).not.toContain('noindex');
+  });
+
+  test('og:type de un perfil es "profile" y la url es canónica', () => {
+    const datos = datosMeta(fichaRica, new URL('https://weedtown.social/@luna?utm_source=whatsapp'), PERFIL);
+    expect(datos.tipo).toBe('profile');
+    expect(datos.url).toBe('https://weedtown.social/@luna');
   });
 });

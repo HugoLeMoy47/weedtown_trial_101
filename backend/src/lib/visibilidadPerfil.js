@@ -28,7 +28,12 @@ const CAMPOS = {
   bio:     'visibilidadBio',
   aboutMe: 'visibilidadAboutMe',
   age:     'visibilidadAge',
-  gender:  'visibilidadGender'
+  gender:  'visibilidadGender',
+  // 11A: el contador de invitaciones entra aquí en vez de traer su propio
+  // interruptor. Fue la primera prueba real de que este mapa sirve para lo que
+  // se escribió — y encontró un hueco: ver el comentario en profileRoutes.js
+  // sobre por qué los campos en crudo ya no se destructuran a mano.
+  invitaciones: 'visibilidadInvitaciones'
 };
 
 // Relación de quien mira con el perfil que mira.

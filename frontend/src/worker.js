@@ -28,6 +28,7 @@
 // Ese silencio es la trampa — por eso esta nota vive también en
 // wrangler.jsonc y en frontend/README.md, no solo aquí.
 
+const DIEZ_MINUTOS_MS = 10 * 60 * 1000;
 const UNA_HORA_MS = 60 * 60 * 1000;
 const UN_DIA_MS = 24 * UNA_HORA_MS;
 const TIMEOUT_BACKEND_MS = 1500;
@@ -71,6 +72,14 @@ const RUTA_POST = /^\/p\/(\d+)\/?$/;
 // `/forum` a secas (el directorio) tampoco entra: el patrón exige un segmento
 // no vacío después de la barra.
 const RUTA_SUBFORO = /^\/forum\/([^/]+)\/?$/;
+
+// Ciclo 11B. Misma disciplina que arriba: el formato del handle es cerrado
+// (letra o número, luego letras, números o guion bajo, 3–20) y el `$` impide
+// que una ruta más profunda se cuele. Sin esa acotación, `/@luna/loquesea`
+// pediría la ficha de un handle que no existe y serviría la genérica en una
+// ruta que hoy pasa de largo — romper lo que funciona sin ningún error visible,
+// que es exactamente la trampa del 9A repetida.
+const RUTA_PERFIL = /^\/@([A-Za-z0-9][A-Za-z0-9_]{2,19})\/?$/;
 
 // URL del backend: CONFIGURABLE, nunca incrustada (criterio 8 de
 // HU-SHR-002). Vive en `vars.PREVIEW_API_URL` de wrangler.jsonc; en
@@ -137,6 +146,33 @@ function recursoPost(id) {
 // `%2520`). Express lo decodifica del otro lado al leer `req.params.slug`.
 function recursoSubforo(slug) {
   return { ruta: `/forum/${slug}`, api: `/api/forum/subforums/${slug}/preview`, tipoOg: 'website' };
+}
+
+// Ciclo 11B — LA CACHÉ DE UN PERFIL NO PUEDE DURAR LO MISMO.
+//
+// Un posteo público es casi inmutable y un subforo también. Un perfil no: su
+// dueña lo puede APAGAR, y el interruptor tiene que sentirse como que apaga
+// algo. Con las 24h de las otras dos fichas, alguien que quita "perfil
+// público" seguiría con su tarjeta rica circulando por WhatsApp un día entero.
+//
+// 10 min fresco / 1 h como máximo. Apagar el perfil deja de servir la ficha
+// rica en menos de una hora en el peor caso, y el aviso de PrivacidadPerfil.jsx
+// se ajustó para decir eso mismo — un aviso que exagera hoy es un aviso que
+// nadie cree mañana. Lo que NO se puede recoger sigue siendo lo que las redes
+// ya cachearon de su lado, y eso el aviso también lo dice.
+//
+// `tipoOg: 'profile'` es el valor de Open Graph para una persona.
+function recursoPerfil(handle) {
+  return {
+    ruta: `/@${handle}`,
+    api: `/api/profile/handle/${handle}/preview`,
+    tipoOg: 'profile',
+    frescoMs: DIEZ_MINUTOS_MS,
+    maxMs: UNA_HORA_MS,
+    edgeCacheControl: 'public, max-age=3600',
+    // Si no hay ficha (backend dormido), no sabemos si este perfil es público.
+    indexableSinFicha: false
+  };
 }
 
 // ---------- Pedirle la ficha al backend, con timeout duro (Trampa T2) ----------
@@ -229,7 +265,22 @@ function construirMetaTags(datos) {
   const dimensiones = datos.dimensionesConocidas
     ? '<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n'
     : '';
-  return `
+  // Ciclo 11B — POR QUÉ EL `noindex` VA AQUÍ Y NO EN robots.txt.
+  //
+  // Son mutuamente excluyentes, y es lo contrario de lo que uno haría por
+  // instinto: si una ruta está en `Disallow`, el rastreador NUNCA LA LEE, así
+  // que nunca ve el `noindex` — y la URL puede seguir apareciendo en
+  // resultados como enlace pelón, sin contenido. Para tener control POR
+  // PERFIL (público → indexable, privado → no) hay que PERMITIR el rastreo y
+  // decidir aquí, que es donde ya sabemos si el perfil es público.
+  //
+  // Solo se emite cuando el backend lo pide explícitamente (`indexable ===
+  // false`). Posteos y subforos no mandan el campo y siguen indexables, que
+  // es lo que robots.txt permite desde el 7B y el 9A.
+  const noindex = datos.indexable === false
+    ? '<meta name="robots" content="noindex, nofollow">\n'
+    : '';
+  return `${noindex}
 <meta property="og:title" content="${titulo}">
 <meta property="og:description" content="${descripcion}">
 <meta property="og:image" content="${imagen}">
@@ -266,6 +317,14 @@ function datosMeta(ficha, url, recurso) {
     // Solo la imagen de campaña (o la genérica, que también lo es) tiene
     // dimensiones conocidas de antemano — ver la nota en construirMetaTags.
     dimensionesConocidas: !ficha.tieneImagen,
+    // Solo la ficha de perfil manda este campo (11B). `undefined` en las otras
+    // dos es lo correcto: siguen indexables, como hasta ahora.
+    //
+    // El `??` cubre el caso en que NO HAY FICHA —backend dormido o caído— y se
+    // sirve la genérica: en una ruta de perfil no sabemos si es público, y
+    // suponer que sí indexaría un perfil privado. Falla cerrado, igual que el
+    // `default` de `campoVisible` en el backend.
+    indexable: ficha.indexable ?? recurso.indexableSinFicha,
     tipo: recurso.tipoOg,
     // Canónica y sin los parámetros con que haya llegado (criterio 3): se
     // arma con el origen real de la petición + la ruta limpia, nunca con
@@ -306,9 +365,12 @@ async function armarHtmlConMeta(env, url, datos) {
 // arma un Response nuevo encima — mismo patrón que ya usaba
 // `armarHtmlConMeta` para el Response que sale de HTMLRewriter, que por eso
 // nunca mostró este bug.
-function prepararParaEdge(respuesta) {
+// `recurso` desde el 11B: cada tipo puede traer su propio TTL de borde. Sin
+// parámetro se usa el de siempre (24h), que es lo que siguen queriendo posteos
+// y subforos.
+function prepararParaEdge(respuesta, recurso) {
   const headers = new Headers(respuesta.headers);
-  headers.set('Cache-Control', EDGE_CACHE_CONTROL);
+  headers.set('Cache-Control', recurso?.edgeCacheControl || EDGE_CACHE_CONTROL);
   headers.set(CACHED_AT_HEADER, String(Date.now()));
   return new Response(respuesta.clone().body, { status: respuesta.status, headers });
 }
@@ -366,10 +428,15 @@ async function servirFicha(recurso, env, ctx, url) {
   if (cacheada) {
     const cacheadaEn = Number(cacheada.headers.get(CACHED_AT_HEADER)) || 0;
     const edadMs = Date.now() - cacheadaEn;
-    if (edadMs < UNA_HORA_MS) {
+    // TTL por recurso desde el 11B: un perfil se puede APAGAR, así que su
+    // ficha no puede vivir lo mismo que la de un posteo. Sin valores propios
+    // se usan los de siempre (1 h fresco / 24 h máximo).
+    const frescoMs = recurso.frescoMs || UNA_HORA_MS;
+    const maxMs = recurso.maxMs || UN_DIA_MS;
+    if (edadMs < frescoMs) {
       return prepararParaCliente(cacheada);
     }
-    if (edadMs < UN_DIA_MS) {
+    if (edadMs < maxMs) {
       ctx.waitUntil(refrescarEnSegundoPlano(recurso, env, cache, cacheKey, url));
       return prepararParaCliente(cacheada);
     }
@@ -390,7 +457,7 @@ async function servirFicha(recurso, env, ctx, url) {
   }
 
   const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, recurso));
-  ctx.waitUntil(cache.put(cacheKey, prepararParaEdge(base)));
+  ctx.waitUntil(cache.put(cacheKey, prepararParaEdge(base, recurso)));
   return prepararParaCliente(base);
 }
 
@@ -403,7 +470,7 @@ async function refrescarEnSegundoPlano(recurso, env, cache, cacheKey, url) {
   if (resultado.estado === 'fallo') return; // sigue fallando: se deja la rancia como está
 
   const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, recurso));
-  await cache.put(cacheKey, prepararParaEdge(base));
+  await cache.put(cacheKey, prepararParaEdge(base, recurso));
 }
 
 // Decide qué recurso —si alguno— corresponde a esta petición. Devolver `null`
@@ -417,6 +484,9 @@ function recursoDeLaPeticion(request, url) {
 
   const subforo = RUTA_SUBFORO.exec(url.pathname);
   if (subforo) return recursoSubforo(subforo[1]);
+
+  const perfil = RUTA_PERFIL.exec(url.pathname);
+  if (perfil) return recursoPerfil(perfil[1]);
 
   return null;
 }
@@ -464,5 +534,6 @@ export {
   fichaGenerica,
   recursoDeLaPeticion,
   recursoPost,
-  recursoSubforo
+  recursoSubforo,
+  recursoPerfil
 };

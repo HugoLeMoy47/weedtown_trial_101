@@ -10,6 +10,7 @@ import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
 import PostCard from '../components/PostCard';
 import { useAuth } from '../hooks/useAuth';
+import { tomarBienvenida } from '../lib/attribution';
 import api from '../services/api';
 
 // Perfil de otra persona (HU-AMI-002): datos públicos siempre, "sobre mí"
@@ -45,6 +46,10 @@ const PublicProfile = () => {
   const [posts, setPosts] = useState([]);
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
+  // 11A: se lee UNA vez al montar, y leerlo lo consume. En el cuerpo del
+  // render desaparecería al primer re-render — el mismo error que ya costó una
+  // corrección en Login.jsx con `tomarNextPendiente`.
+  const [invitadaPor] = useState(() => tomarBienvenida());
 
   // La ruta canónica de esta persona, para volver aquí tras el login.
   const ruta = handle ? `/@${handle}` : `/perfil/${id}`;
@@ -194,16 +199,42 @@ const PublicProfile = () => {
               )}
             </Stack>
 
+            {/* 11A: quien acaba de darse de alta desde este enlace ve de quién
+                vino. Solo si el perfil que está abierto ES el de quien invitó:
+                si la persona navegó a otro lado, el saludo sería mentira.
+                No hay amistad automática — se ofrece mandar solicitud, y ese
+                botón ya existe abajo. Regalar la amistad por hacer clic en un
+                enlace volvería cosechables los posteos de "solo amigos". */}
+            {invitadaPor && perfil.handle === invitadaPor && (
+              <Alert severity="success" sx={{ mt: 3 }}>
+                <strong>{perfil.displayName || perfil.name}</strong> te invitó a WeedTown.
+                Si se conocen, mándale una solicitud de amistad aquí abajo.
+              </Alert>
+            )}
+
             {perfil.bio && (
               <Typography variant="body1" sx={{ mt: 3, whiteSpace: 'pre-wrap' }}>{perfil.bio}</Typography>
             )}
 
             {/* Edad y género pueden llegar desde el 10B, si su dueña los abrió.
                 El servidor ya decidió: aquí solo se pinta lo que vino. */}
-            {(perfil.age || perfil.gender) && (
+            {(perfil.age || perfil.gender || perfil.invitaciones) && (
               <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
                 {perfil.age && <Chip size="small" label={`${perfil.age} años`} />}
                 {perfil.gender && <Chip size="small" label={perfil.gender} sx={{ textTransform: 'capitalize' }} />}
+                {/* 11A. Al ver tu propio perfil llega el número exacto; a los
+                    demás les llega una cubeta ("5+"). El texto se arma según
+                    cuál de las dos vino, sin que el cliente decida nada de
+                    privacidad — eso ya se resolvió en el servidor. */}
+                {perfil.invitaciones && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={typeof perfil.invitaciones === 'number'
+                      ? `has invitado a ${perfil.invitaciones}`
+                      : `ha invitado a ${perfil.invitaciones} personas`}
+                  />
+                )}
               </Stack>
             )}
 
