@@ -32,10 +32,22 @@
 // EL ARCHIVO CONTIENE DATOS PERSONALES REALES: correos, teléfonos, mensajes
 // privados de chat y posteos de solo-amistades. Guárdalo cifrado o en un lugar
 // que solo tú abras, y NUNCA dentro del repositorio.
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
+
+// Se cargan LOS DOS archivos, y en este orden. La primera versión solo hacía
+// `dotenv.config()` —que lee `.env`— mientras el README mandaba a poner
+// RESPALDO_DATABASE_URL en `.env.produccion`. Resultado: el archivo existía,
+// estaba bien escrito, y el script lo ignoraba y respaldaba desarrollo
+// anunciando "✔ respaldo completo". Un respaldo de la base equivocada que se
+// reporta como éxito es peor que no tener respaldo: da confianza falsa.
+// (2026-08-09: pasó de verdad; lo cachó el PO porque sabía cuántas cuentas hay.)
+dotenv.config();
+const RUTA_PRODUCCION = path.join(__dirname, '..', '.env.produccion');
+const hayArchivoProduccion = fs.existsSync(RUTA_PRODUCCION);
+if (hayArchivoProduccion) dotenv.config({ path: RUTA_PRODUCCION });
 
 // Orden de exportación = orden de restauración. Las tablas sin llaves foráneas
 // primero, y cada una después de aquellas a las que apunta. Restaurar en otro
@@ -59,8 +71,17 @@ const opcion = (nombre) => {
   return i >= 0 ? args[i + 1] : null;
 };
 
-const url = opcion('--url') || process.env.RESPALDO_DATABASE_URL || process.env.DATABASE_URL;
+// De dónde salió la cadena se RASTREA, no solo se resuelve: es lo que se
+// imprime después para que no haya que adivinar qué base se está leyendo.
+let url, fuente;
+if (opcion('--url')) { url = opcion('--url'); fuente = '--url (línea de comandos)'; }
+else if (process.env.RESPALDO_DATABASE_URL) {
+  url = process.env.RESPALDO_DATABASE_URL;
+  fuente = hayArchivoProduccion ? 'RESPALDO_DATABASE_URL de .env.produccion' : 'RESPALDO_DATABASE_URL del entorno';
+} else { url = process.env.DATABASE_URL; fuente = 'DATABASE_URL de .env — LA BASE DE DESARROLLO'; }
+
 const destino = opcion('--destino');
+const aceptoDesarrollo = args.includes('--acepto-desarrollo');
 
 function abortar(mensaje) {
   console.error(`\n  ✖ ${mensaje}\n`);
@@ -93,20 +114,60 @@ if (destinoAbs === raizRepo || destinoAbs.startsWith(raizRepo + path.sep)) {
 // De qué base estamos hablando. Se imprime SIN la contraseña, igual que el log
 // `arranque_base_de_datos` de app.js: la pregunta "¿esto es producción?" tiene
 // que contestarse de un vistazo, y la respuesta no exige ver el secreto.
+//
+// El PROYECTO es lo que hay que mirar, no el host. Todos los proyectos de
+// Supabase de una misma región comparten el hostname del pooler
+// (aws-0-us-west-1.pooler.supabase.com), así que desarrollo y producción se
+// ven IDÉNTICOS por host. El discriminador vive en el usuario:
+// `postgres.<project-ref>`. Un banner que solo muestre el host no ayuda a
+// contestar "¿esto es producción?" — que es justo la pregunta.
 function describir(cadena) {
   try {
     const u = new URL(cadena);
-    return { host: u.hostname, puerto: u.port || '5432', base: u.pathname.replace(/^\//, ''), schema: u.searchParams.get('schema') || 'public' };
+    return {
+      host: u.hostname,
+      puerto: u.port || '5432',
+      proyecto: u.username.split('.')[1] || '(sin project-ref)',
+      base: u.pathname.replace(/^\//, ''),
+      schema: u.searchParams.get('schema') || 'public'
+    };
   } catch {
-    return { host: '(cadena ilegible)', puerto: '?', base: '?', schema: '?' };
+    return { host: '(cadena ilegible)', puerto: '?', proyecto: '?', base: '?', schema: '?' };
   }
+}
+
+// ¿Esta cadena es la misma que usa el desarrollo? Se compara por PROJECT REF,
+// no por cadena literal: el mismo proyecto se puede escribir con el pooler
+// (6543) o con la conexión directa (5432) y seguir siendo la misma base.
+function esLaDeDesarrollo(cadena) {
+  const propia = describir(cadena).proyecto;
+  const dev = process.env.DATABASE_URL ? describir(process.env.DATABASE_URL).proyecto : null;
+  return dev && propia === dev;
 }
 
 async function main() {
   const donde = describir(url);
   console.log('\n  Respaldo de WeedTown');
-  console.log(`  origen : ${donde.host}:${donde.puerto}/${donde.base} (schema ${donde.schema})`);
-  console.log(`  destino: ${destinoAbs}\n`);
+  console.log(`  origen  : proyecto ${donde.proyecto}  ·  ${donde.host}:${donde.puerto}/${donde.base} (schema ${donde.schema})`);
+  console.log(`  cadena  : ${fuente}`);
+  console.log(`  destino : ${destinoAbs}\n`);
+
+  // La guardia que faltaba el 2026-08-09. Respaldar desarrollo es legítimo
+  // —así se prueba la herramienta— pero tiene que ser una decisión, no el
+  // resultado de que un archivo no se cargó.
+  if (esLaDeDesarrollo(url) && !aceptoDesarrollo) {
+    abortar(
+      `El proyecto ${donde.proyecto} es EL MISMO que tu DATABASE_URL de .env: esto es DESARROLLO.\n\n` +
+      (hayArchivoProduccion
+        ? '    .env.produccion existe, así que revisa que dentro diga exactamente\n' +
+          '    RESPALDO_DATABASE_URL= (ese nombre) y que la cadena sea la del otro proyecto.\n\n'
+        : '    No existe backend/.env.produccion. Créalo con una línea:\n' +
+          '      RESPALDO_DATABASE_URL="postgresql://postgres.<ref-de-produccion>:...@...:5432/postgres"\n\n') +
+      '    OJO: todos los proyectos de Supabase de una región comparten hostname.\n' +
+      '    Lo que distingue producción de desarrollo es el <ref> del usuario, no el host.\n\n' +
+      '    Si de verdad quieres respaldar desarrollo, agrega --acepto-desarrollo.'
+    );
+  }
 
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   const datos = {};
@@ -134,7 +195,10 @@ async function main() {
 
     const sello = new Date().toISOString().replace(/[:.]/g, '-');
     fs.mkdirSync(destinoAbs, { recursive: true });
-    const archivo = path.join(destinoAbs, `weedtown-${donde.host.split('.')[0]}-${sello}.json`);
+    // El nombre lleva el PROJECT REF, no el host: con el host, el respaldo de
+    // desarrollo y el de producción se llamaban igual y no había forma de
+    // distinguirlos después en la carpeta.
+    const archivo = path.join(destinoAbs, `weedtown-${donde.proyecto}-${sello}.json`);
 
     // `Bytes` (Passkey.publicKey) no sobrevive a JSON.stringify: sale como
     // {"0":4,"1":91,...}, que al restaurar deja de ser un Buffer y la llave de
@@ -147,7 +211,7 @@ async function main() {
     fs.writeFileSync(archivo, JSON.stringify({
       version: 1,
       tomadoEn: new Date().toISOString(),
-      origen: { host: donde.host, base: donde.base, schema: donde.schema },
+      origen: { proyecto: donde.proyecto, host: donde.host, base: donde.base, schema: donde.schema },
       migracion,
       conteos,
       orden: MODELOS,

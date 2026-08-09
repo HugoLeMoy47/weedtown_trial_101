@@ -41,9 +41,22 @@ if (!archivo) abortar('Falta --archivo con la ruta del respaldo.');
 if (!fs.existsSync(archivo)) abortar(`No existe: ${path.resolve(archivo)}`);
 if (!url) abortar('No hay base destino: define DATABASE_URL o pasa --url.');
 
+// Igual que en respaldo.js: lo que identifica una base de Supabase es el
+// PROJECT REF del usuario, no el host — todos los proyectos de una región
+// comparten hostname. Comparar por host aquí tenía una consecuencia concreta:
+// la guardia de "mismo origen" se disparaba al restaurar un respaldo de
+// producción en desarrollo, que es exactamente la verificación que se quiere
+// poder hacer.
 function describir(c) {
-  try { const u = new URL(c); return { host: u.hostname, base: u.pathname.replace(/^\//, ''), schema: u.searchParams.get('schema') || 'public' }; }
-  catch { return { host: '(ilegible)', base: '?', schema: '?' }; }
+  try {
+    const u = new URL(c);
+    return {
+      proyecto: u.username.split('.')[1] || '(sin project-ref)',
+      host: u.hostname,
+      base: u.pathname.replace(/^\//, ''),
+      schema: u.searchParams.get('schema') || 'public'
+    };
+  } catch { return { proyecto: '?', host: '(ilegible)', base: '?', schema: '?' }; }
 }
 
 // Al leer, deshacemos la marca que `respaldo.js` puso sobre los Bytes.
@@ -58,15 +71,19 @@ async function main() {
 
   console.log('\n  Restauración de WeedTown');
   console.log(`  respaldo: ${path.basename(archivo)}`);
-  console.log(`            tomado ${respaldo.tomadoEn} de ${respaldo.origen.host} · ${totalRespaldo} filas`);
+  console.log(`            tomado ${respaldo.tomadoEn} del proyecto ${respaldo.origen.proyecto || respaldo.origen.host} · ${totalRespaldo} filas`);
   console.log(`            migración de origen: ${respaldo.migracion}`);
-  console.log(`  destino : ${destino.host}/${destino.base} (schema ${destino.schema})`);
+  console.log(`  destino : proyecto ${destino.proyecto}  ·  ${destino.host}/${destino.base} (schema ${destino.schema})`);
   console.log(`  modo    : ${soloVerificar ? 'solo verificar (no escribe)' : 'RESTAURAR (borra el destino)'}\n`);
 
   // La guardia que importa: no restaurar encima del origen por accidente.
   // Restaurar es borrar primero, así que equivocarse aquí es el peor caso
   // posible — perder los datos que se estaban intentando proteger.
-  if (destino.host === respaldo.origen.host && destino.schema === respaldo.origen.schema && !soloVerificar && !forzar) {
+  // Respaldos de la versión 1 no guardaban `proyecto`; para esos se cae al
+  // host, que es lo único que había.
+  const origenId = respaldo.origen.proyecto || respaldo.origen.host;
+  const destinoId = respaldo.origen.proyecto ? destino.proyecto : destino.host;
+  if (origenId === destinoId && destino.schema === respaldo.origen.schema && !soloVerificar && !forzar) {
     abortar(
       'El destino es la MISMA base de la que salió este respaldo.\n\n' +
       '    Restaurar borra el destino antes de cargar. Si es un error, cambia\n' +

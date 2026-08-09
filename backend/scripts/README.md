@@ -91,13 +91,24 @@ npm run respaldo -- --destino "D:/respaldos-weedtown"
 
 Recorre las 25 tablas en orden de dependencia y las escribe en un JSON con manifiesto: cuándo se tomó, de qué host, **con qué migración** y cuántas filas por tabla.
 
-**Tres decisiones que no son obvias:**
+Para respaldar producción, pon la cadena en `RESPALDO_DATABASE_URL` dentro de `backend/.env.produccion` — `.gitignore` ya lo excluye por el patrón `.env.*` — en vez de pasarla por `--url`, donde queda en el historial de la terminal. Usa el **puerto 5432** (conexión directa), no el 6543 del pooler: para una lectura masiva es más confiable.
+
+> ### El error que hay que entender antes de usar esto
+>
+> **Todos los proyectos de Supabase de una misma región comparten el hostname del pooler.** Desarrollo y producción se ven **idénticos** por host: `aws-0-us-west-1.pooler.supabase.com` los dos. Lo único que los distingue es el `<project-ref>` del usuario (`postgres.<ref>`).
+>
+> La primera versión de este script solo hacía `dotenv.config()` —que lee `.env`— mientras este README ya mandaba a poner la cadena en `.env.produccion`. El archivo existía, estaba bien escrito, y el script lo ignoraba: respaldó **desarrollo** y anunció `✔ respaldo completo`. Lo cachó el PO el 2026-08-09, y solo porque sabía cuántas cuentas hay en producción.
+>
+> **Un respaldo de la base equivocada que se reporta como éxito es peor que no tener respaldo**, porque produce confianza. De ahí las tres correcciones: el script carga los dos archivos, el banner muestra el **proyecto** (no el host), y **se niega a correr** si el proyecto resuelto es el mismo del `DATABASE_URL` de desarrollo, salvo `--acepto-desarrollo`.
+
+**Cuatro decisiones que no son obvias:**
 
 - **`--destino` es obligatorio y no tiene default.** El archivo lleva correos, teléfonos y mensajes privados de personas reales; un default cómodo terminaría poniéndolo junto al código. Además **se niega** si la ruta cae dentro del repositorio: la comprobación es lo que evita el accidente, no el comentario.
-- **La contraseña nunca se imprime.** Igual que el log `arranque_base_de_datos`: la pregunta "¿esto es producción?" se contesta con host y schema, sin ver el secreto.
+- **El banner dice de dónde salió la cadena**, no solo cuál es: `RESPALDO_DATABASE_URL de .env.produccion` o `DATABASE_URL de .env — LA BASE DE DESARROLLO`. Resolver en silencio es lo que permitió el fallo de arriba.
+- **La contraseña nunca se imprime.** Igual que el log `arranque_base_de_datos`: la pregunta "¿esto es producción?" se contesta con el proyecto y el schema, sin ver el secreto.
 - **Se guarda la migración de origen.** Restaurar datos sobre un esquema distinto al de origen es cómo un respaldo falla justo el día que hace falta, y `restaurar.js` compara antes de tocar nada.
 
-Para respaldar producción, pon la cadena en `RESPALDO_DATABASE_URL` dentro de `backend/.env.produccion` — `.gitignore` ya lo excluye por el patrón `.env.*` — en vez de pasarla por `--url`, donde queda en el historial de la terminal.
+El nombre del archivo lleva el project ref (`weedtown-<ref>-<fecha>.json`) y no el host, justamente para que en la carpeta se distinga cuál es cuál.
 
 **Lo que NO cubre**, dicho aquí para que nadie lo descubra durante una recuperación:
 
@@ -117,6 +128,8 @@ Sin `--url` escribe en `DATABASE_URL`, o sea tu base de desarrollo — el defaul
 **Lo de las secuencias no es un detalle.** Al insertar con ids explícitos, los contadores autoincrementales se quedan en 1, y la app choca con llaves duplicadas la primera vez que alguien publica — horas después de que la restauración pareció exitosa. Es el error clásico de restaurar así.
 
 **Se niega a escribir sobre la base de la que salió el respaldo** (`--forzar` para una recuperación real), y **se niega si la migración del destino no coincide** con la del respaldo. La primera guardia importa porque restaurar es borrar primero: equivocarse ahí destruye justo los datos que se estaban protegiendo.
+
+Esa comparación es **por project ref, no por host** — por la misma razón de arriba. Comparando por host tenía una consecuencia concreta: se disparaba al restaurar un respaldo de producción en desarrollo, que es exactamente la verificación que uno quiere poder hacer.
 
 **Verificado el 2026-08-09** con un viaje redondo completo sobre el schema de pruebas: respaldo → vaciado → carga → conteo, las 25 tablas coincidiendo.
 
