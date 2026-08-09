@@ -11,6 +11,7 @@ import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import CommentSection from './CommentSection';
 import OwnerActions from './OwnerActions';
 import { rutaPerfil } from '../lib/rutaPerfil';
+import { compartirEnlace } from '../lib/compartir';
 import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 
@@ -94,22 +95,14 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
   const shareUrl = `${window.location.origin}/p/${post.id}`;
 
   const handleShare = async () => {
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'Ver post en WeedTown', text: post.content.slice(0, 120), url: shareUrl });
-        setShareStatus('Compartido.');
-        return;
-      }
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(shareUrl);
-        setShareStatus('Enlace copiado al portapapeles.');
-        setTimeout(() => setShareStatus(''), 3000);
-        return;
-      }
-    } catch (e) {
-      // Ignorar, usaremos el prompt como respaldo.
-    }
-    window.prompt('Copia este enlace para compartirlo:', shareUrl);
+    const mensaje = await compartirEnlace({
+      titulo: 'Ver post en WeedTown',
+      texto: post.content.slice(0, 120),
+      url: shareUrl
+    });
+    if (!mensaje) return;
+    setShareStatus(mensaje);
+    setTimeout(() => setShareStatus(''), 3000);
   };
 
   return (

@@ -23,16 +23,20 @@ export const CAMPOS = [
   { clave: 'visibilidadAboutMe', etiqueta: 'Sobre mí' },
   { clave: 'visibilidadAge', etiqueta: 'Edad' },
   { clave: 'visibilidadGender', etiqueta: 'Género' },
-  // 11A. Este es el único campo cuyo NOMBRE no basta para entender qué se
-  // publica, así que es el único con texto de ayuda. Dos cosas hay que decir y
-  // ninguna se deduce de la etiqueta: que se muestra como rango y no como
-  // número, y que se refiere a gente que llegó por tu enlace, no a mensajes
-  // que mandaste. La primera redacción decía "A cuánta gente he invitado" y se
-  // leía como un contador de invitaciones enviadas.
+  // 11A. Las etiquetas de esta lista son SUSTANTIVOS CORTOS —"Biografía",
+  // "Edad"— porque en una columna de desplegables cada una se lee como "quién
+  // ve mi X". Las dos primeras versiones de este campo rompían eso: "A cuánta
+  // gente he invitado" y "Gente que llegó a WeedTown por mi enlace" son frases
+  // que se leen como un DATO, así que el desplegable de al lado —"Cualquiera /
+  // Solo mis amistades / Nadie"— parecía no tener nada que ver con la
+  // etiqueta. Lo reportó el PO en esos términos exactos.
+  //
+  // El número vive en «Tu enlace» (MiEnlaceDeInvitacion), que es donde alguien
+  // lo va a buscar. Aquí solo se decide quién más lo ve.
   {
     clave: 'visibilidadInvitaciones',
-    etiqueta: 'Gente que llegó a WeedTown por mi enlace',
-    ayuda: 'Se muestra como un rango («5+»), nunca el número exacto. Tú sí ves el número.'
+    etiqueta: 'Invitaciones',
+    ayuda: 'Cuánta gente llegó por tu enlace. A los demás se les muestra como un rango («5+»), nunca la cifra exacta.'
   }
 ];
 

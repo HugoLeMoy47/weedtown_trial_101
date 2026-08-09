@@ -7,6 +7,7 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
+import MiEnlaceDeInvitacion from '../components/MiEnlaceDeInvitacion';
 import PrivacidadPerfil, { CAMPOS as CAMPOS_PRIVACIDAD } from '../components/PrivacidadPerfil';
 import AccessMethods from '../components/AccessMethods';
 import AccountPrivacy from '../components/AccountPrivacy';
@@ -34,6 +35,9 @@ const Profile = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState([]);
   const [privacidad, setPrivacidad] = useState(null);
+  // El conteo EXACTO de invitaciones. Solo llega por /profile/me — hacia
+  // terceros el servidor manda una cubeta.
+  const [invitaciones, setInvitaciones] = useState(0);
 
   const cargarPerfil = () => api.get('/profile/me')
     .then(res => {
@@ -49,9 +53,8 @@ const Profile = () => {
         gender: u.gender || ''
       });
       setIdentities(u.identities || []);
-      setPrivacidad({
-        ...preferenciasDe(u)
-      });
+      setInvitaciones(u.invitaciones ?? 0);
+      setPrivacidad(preferenciasDe(u));
     })
     .catch(() => setError('No se pudo cargar el perfil.'));
 
@@ -196,6 +199,12 @@ const Profile = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Va ANTES del estudio del avatar y de los métodos de acceso: es lo
+            que alguien viene a buscar cuando quiere invitar a alguien, y
+            enterrarlo al final del perfil fue justo el error de la primera
+            versión del 11A — el mecanismo existía y no había dónde tomarlo. */}
+        <MiEnlaceDeInvitacion handle={form.handle} invitaciones={invitaciones} />
 
         <AvatarStudio user={user} onSaved={setUser} />
         <AccessMethods identities={identities} onChange={cargarPerfil} />
