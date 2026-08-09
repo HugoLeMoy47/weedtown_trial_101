@@ -19,22 +19,28 @@ module.exports = async function run() {
     const tok = token(user.id);
 
     console.log('\n  — requiere sesión (se conserva tal cual, HU-ATR-001 CA4) —');
+    // El cupo del limitador se cuenta POR CUENTA desde el 11A, y solo cuentan
+    // las peticiones que llegan con sesión: sin token, `requireAuth` corta
+    // antes de que el limitador vea nada. Por eso ésta no gasta cupo.
     const rSinSesion = await call('POST', '/api/auth/attribution', { body: { ref: 'post' } });
-    check('sin token responde 401', rSinSesion.status === 401); // 1/5
+    check('sin token responde 401', rSinSesion.status === 401);
 
     console.log('\n  — ref no reconocido o ausente se descarta en silencio, no truena —');
     const rRefInvalido = await call('POST', '/api/auth/attribution', { tok, body: { ref: 'algo-inventado' } });
-    check('ref inválido no da error (204)', rRefInvalido.status === 204); // 2/5
+    check('ref inválido no da error (204)', rRefInvalido.status === 204); // 1/5
 
     const rSinRef = await call('POST', '/api/auth/attribution', { tok, body: {} });
-    check('sin ref tampoco da error (204)', rSinRef.status === 204); // 3/5
+    check('sin ref tampoco da error (204)', rSinRef.status === 204); // 2/5
 
     console.log('\n  — ref válido —');
     const rPost = await call('POST', '/api/auth/attribution', { tok, body: { ref: 'post' } });
-    check('ref="post" responde 204', rPost.status === 204); // 4/5
+    check('ref="post" responde 204', rPost.status === 204); // 3/5
 
     const rPerfil = await call('POST', '/api/auth/attribution', { tok, body: { ref: 'perfil' } });
-    check('ref="perfil" responde 204', rPerfil.status === 204); // 5/5 — cupo agotado
+    check('ref="perfil" responde 204', rPerfil.status === 204); // 4/5
+
+    const rQuinta = await call('POST', '/api/auth/attribution', { tok, body: { ref: 'directo' } });
+    check('la 5ª todavía pasa', rQuinta.status === 204, `(fue ${rQuinta.status})`); // 5/5 — cupo agotado
 
     console.log('\n  — limitador propio (HU-ATR-001): corta antes que el apiLimiter general —');
     const rLimitado = await call('POST', '/api/auth/attribution', { tok, body: { ref: 'directo' } });
@@ -43,6 +49,14 @@ module.exports = async function run() {
       rLimitado.status === 429,
       `(fue ${rLimitado.status})`
     );
+
+    // Y la consecuencia de llavear por cuenta: el cupo de una persona no
+    // consume el de otra. Antes, por IP, dos cuentas dándose de alta desde el
+    // mismo wifi compartían los cinco — y desde el 11A eso perdía invitaciones.
+    const otra = await mkUser('otra');
+    const rOtra = await call('POST', '/api/auth/attribution', { tok: token(otra.id), body: { ref: 'perfil' } });
+    check('otra cuenta desde la misma IP tiene su propio cupo',
+      rOtra.status === 204, `(fue ${rOtra.status})`);
   } finally {
     await cleanup();
   }

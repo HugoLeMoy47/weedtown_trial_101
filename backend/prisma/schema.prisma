@@ -78,6 +78,25 @@ model User {
   visibilidadAge     VisibilidadCampo @default(NADIE)
   visibilidadGender  VisibilidadCampo @default(NADIE)
 
+  // Cuántas personas se dieron de alta desde el enlace de esta cuenta (11A).
+  //
+  // UN CONTADOR, NO UN GRAFO. No existe —ni debe existir— ninguna columna,
+  // tabla ni llave foránea que ate a quien invitó con quien llegó. Ese
+  // registro reconstruiría la red social real detrás de los seudónimos, que es
+  // la pieza más golosa de toda la base y la que este proyecto lleva varios
+  // ciclos decidiendo no tener. Si alguna vez parece "más limpio" guardar la
+  // relación para poder auditarla o deshacerla, ese es justo el atajo que no
+  // se toma.
+  //
+  // Hacia afuera nunca sale el número exacto, sino una cubeta: ver
+  // `src/lib/invitaciones.js` para por qué el número exacto es, él solo, un
+  // canal de correlación.
+  invitaciones     Int          @default(0)
+  // Default NADIE: es un campo que no existía, así que no hay exposición
+  // previa que preservar, y estrenarlo pintándole "0 invitaciones" a todas las
+  // cuentas es a la vez inútil y un poco humillante.
+  visibilidadInvitaciones VisibilidadCampo @default(NADIE)
+
   // ¿El perfil se ve también FUERA de la red, sin cuenta? Apagado por defecto.
   // NUNCA amplía lo de arriba: expone solo lo que ya estaba en TODOS. Un dato
   // en AMIGOS no sale hacia afuera, porque afuera no hay amistades.

@@ -13,10 +13,15 @@
 // enlace mágico — ambos ya en producción y fuera de este ciclo.
 import api from '../services/api';
 import { esRutaInterna } from './rutaInterna';
+import { invitadorDeNext } from './invitador';
 
 const REF_WHITELIST = ['post', 'perfil', 'directo'];
 const REF_KEY = 'weedtown_pending_ref';
 const NEXT_KEY = 'weedtown_pending_next';
+// 11A: quién compartió el enlace. Se guarda aparte de NEXT_KEY porque
+// `tomarNextPendiente()` CONSUME su valor al leerlo, y para entonces
+// `registrarAltaSiCorresponde()` todavía no ha corrido.
+const INVITA_KEY = 'weedtown_pending_invita';
 
 function refValido(ref) {
   return REF_WHITELIST.includes(ref) ? ref : null;
@@ -33,6 +38,28 @@ export function capturarAtribucion(searchParams) {
   if (next) {
     try { localStorage.setItem(NEXT_KEY, next); } catch { /* modo privado sin storage */ }
   }
+  // Solo con ref=perfil: un `next` a un perfil que llegó por otro camino no es
+  // una invitación, y contarlo como tal inflaría el contador sin que nadie
+  // invitara a nadie.
+  const invita = ref === 'perfil' ? invitadorDeNext(next) : null;
+  if (invita) {
+    try { localStorage.setItem(INVITA_KEY, invita); } catch { /* modo privado sin storage */ }
+  }
+}
+
+// El saludo a quien acaba de llegar vive en su propia clave y no en INVITA_KEY.
+// Motivo de secuencia: `registrarAltaSiCorresponde()` corre ANTES de navegar al
+// perfil y consume INVITA_KEY, así que para cuando la pantalla monta ya no
+// existe. Esta se escribe justo en ese momento y la consume la pantalla.
+const BIENVENIDA_KEY = 'weedtown_bienvenida_de';
+
+/** Consume el saludo pendiente. Devuelve el handle de quien invitó, o null. */
+export function tomarBienvenida() {
+  try {
+    const v = localStorage.getItem(BIENVENIDA_KEY);
+    localStorage.removeItem(BIENVENIDA_KEY);
+    return v;
+  } catch { return null; }
 }
 
 // Se llama una sola vez, justo después de un login/alta exitoso, para saber
@@ -53,13 +80,21 @@ export function tomarNextPendiente() {
 // registra nada, aunque venga con `?ref=`.
 export async function registrarAltaSiCorresponde(esNueva) {
   let ref = null;
+  let invitadoPor = null;
   try {
     ref = localStorage.getItem(REF_KEY);
     localStorage.removeItem(REF_KEY);
+    invitadoPor = localStorage.getItem(INVITA_KEY);
+    // Se borra SIEMPRE, aunque no haya alta: si no, quedaría colgando y se
+    // aplicaría al siguiente registro que hiciera esta persona en este equipo.
+    localStorage.removeItem(INVITA_KEY);
   } catch { /* modo privado sin storage */ }
   if (!esNueva || !ref) return;
   try {
-    await api.post('/auth/attribution', { ref });
+    await api.post('/auth/attribution', invitadoPor ? { ref, invitadoPor } : { ref });
+    if (invitadoPor) {
+      try { localStorage.setItem(BIENVENIDA_KEY, invitadoPor); } catch { /* sin storage */ }
+    }
   } catch {
     // Puramente observacional: un fallo aquí no debe interrumpir el alta.
   }

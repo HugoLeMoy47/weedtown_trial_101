@@ -1,11 +1,12 @@
 // Autenticación federada con Mastodon (OAuth 2.0, multi-instancia)
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
 const avatar = require('../lib/avatar');
-const { generarUnico: generarHandleUnico } = require('../lib/handle');
+const { generarUnico: generarHandleUnico, esValido: esHandleValido, normalizar: normalizarHandle } = require('../lib/handle');
 const { requireAuth } = require('../middlewares/requireAuth');
 const { log } = require('../lib/logger');
 
@@ -273,13 +274,68 @@ const ATRIBUCION_VENTANA_MS = 10 * 60 * 1000;
 // superficie, y choca con la regla del panóptico (mide qué pasa en la red,
 // no qué hace cada persona). `pid` se quitó del todo, no solo del log: no
 // tenía otro uso que terminar aquí.
-router.post('/attribution', requireAuth, async (req, res) => {
+// Limitador propio del endpoint. HU-ATR-001 lo puso porque, sin `userId` en el
+// log, no hay forma de deduplicar al contar y una cuenta nueva podría inflar
+// la métrica hasta agotar el apiLimiter general.
+//
+// **Llaveado por cuenta, no por IP, desde el 11A.** Dos razones, y la primera
+// es un bug que el ciclo destapó:
+//
+//   1. Ahora el endpoint no solo escribe una métrica: **incrementa el contador
+//      de invitaciones**. Por IP, cinco personas dándose de alta desde el wifi
+//      de una fiesta agotaban el cupo y las demás invitaciones se perdían en
+//      silencio — castigando justo el caso de uso que el ciclo quiere.
+//   2. La preocupación siempre fue "una cuenta inflando", así que la cuenta es
+//      la llave correcta. Por IP era una aproximación.
+//
+// Va DESPUÉS de `requireAuth` para que `req.user` exista. Lo que se pierde es
+// limitar peticiones sin sesión, y no se pierde nada: sin sesión el endpoint
+// responde 401 antes de tocar la base, y el apiLimiter general (300/15min)
+// sigue cubriendo esa puerta.
+const attributionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `attr:${req.user.id}`,
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
+  handler: (req, res, next, options) => {
+    log('rate_limit_excedido', { limitador: 'attribution', ruta: req.originalUrl, requestId: req.id });
+    res.status(options.statusCode).json(options.message);
+  }
+});
+
+// 11A: `invitadoPor` es el handle de quien compartió el enlace. Llega en la
+// petición porque no hay otra forma —el servidor no puede adivinarlo— pero
+// muere aquí: incrementa un contador y NO SE REGISTRA EN NINGUNA PARTE.
+//
+// La línea del log sigue siendo `{ref, requestId}`, exactamente igual que
+// antes. Es deliberado hasta la obsesión: si aquí se escribiera el handle de
+// quien invitó, el alta de la cuenta nueva deja su propia línea con marca de
+// tiempo cercana, y **el grafo se reconstruye por correlación aunque la base
+// no lo guarde**. El contador ciego no sirve de nada si el log lo delata.
+router.post('/attribution', requireAuth, attributionLimiter, async (req, res) => {
   const ref = REF_WHITELIST.includes(req.body?.ref) ? req.body.ref : null;
   if (!ref) return res.status(204).end();
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { createdAt: true } });
-    if (user && Date.now() - new Date(user.createdAt).getTime() < ATRIBUCION_VENTANA_MS) {
-      log('alta_atribuida', { ref, requestId: req.id });
+    const enVentana = user && Date.now() - new Date(user.createdAt).getTime() < ATRIBUCION_VENTANA_MS;
+    if (!enVentana) return res.status(204).end();
+
+    log('alta_atribuida', { ref, requestId: req.id });
+
+    const invitadoPor = typeof req.body?.invitadoPor === 'string' ? normalizarHandle(req.body.invitadoPor) : null;
+    if (ref === 'perfil' && invitadoPor && esHandleValido(invitadoPor)) {
+      // `updateMany` y no `update`: un handle que no existe simplemente
+      // actualiza cero filas. Con `update` habría que capturar el error de
+      // "no encontrado", y distinguir ese caso es empezar a construir el
+      // oráculo de existencia de handles que 10A cerró.
+      //
+      // Nadie se puede auto-invitar: sería el fraude más barato posible.
+      await prisma.user.updateMany({
+        where: { handle: invitadoPor, id: { not: req.user.id }, deletedAt: null },
+        data: { invitaciones: { increment: 1 } }
+      });
     }
   } catch (e) {
     console.error('Error registrando atribución de alta:', e);

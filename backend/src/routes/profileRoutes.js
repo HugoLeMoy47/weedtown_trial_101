@@ -11,6 +11,7 @@ const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
 const { isBlockedBetween } = require('../lib/blocks');
 const { friendStatusBetween } = require('../lib/friends');
 const { camposVisibles, CAMPOS, esVisibilidadValida } = require('../lib/visibilidadPerfil');
+const { cubetaInvitaciones } = require('../lib/invitaciones');
 const avatar = require('../lib/avatar');
 const handleLib = require('../lib/handle');
 const privacy = require('../lib/privacy');
@@ -24,6 +25,9 @@ const profileSelect = {
   // Sus propias preferencias de visibilidad (10B): solo viajan por /me. Nadie
   // más necesita saber qué decidió esconder — eso también es información.
   perfilPublico: true,
+  // Su dueña ve el conteo EXACTO de invitaciones; hacia terceros solo sale la
+  // cubeta. Ella repartió el enlace, así que ahí no hay nada que proteger.
+  ...Object.fromEntries(Object.keys(CAMPOS).map(c => [c, true])),
   ...Object.fromEntries(Object.values(CAMPOS).map(p => [p, true])),
   // Con qué métodos puede entrar esta persona. Solo lo ve su dueño. `id` es lo
   // que usa DELETE /api/auth/identities/:id; `originHandle` trae, según el
@@ -50,8 +54,11 @@ const publicProfileSelect = {
 // esto se devuelve tal cual: `responderPerfil` lo recorta antes de responder.
 const perfilConVisibilidadSelect = {
   ...publicProfileSelect,
-  aboutMe: true, age: true, gender: true,
   perfilPublico: true,
+  // Los campos configurables Y sus preferencias salen del mapa, no de una
+  // lista escrita a mano: así agregar uno (11A agregó `invitaciones`) no exige
+  // acordarse de tocar este select.
+  ...Object.fromEntries(Object.keys(CAMPOS).map(c => [c, true])),
   ...Object.fromEntries(Object.values(CAMPOS).map(p => [p, true]))
 };
 
@@ -288,8 +295,22 @@ async function responderPerfil(req, res, where) {
 
     // Lo que sale siempre: sin los campos configurables en crudo ni las
     // preferencias, que son asunto de su dueña y viajan solo por /me.
-    const { bio, aboutMe, age, gender, perfilPublico, ...resto } = user;
+    //
+    // Los dos borrados se hacen RECORRIENDO EL MAPA, no destructurando a mano.
+    // Antes del 11A esta línea era `const { bio, aboutMe, age, gender, ... }`,
+    // y eso quería decir que agregar un quinto campo configurable filtraba su
+    // valor en crudo salvo que alguien se acordara de tocar aquí — justo lo
+    // que el mapa `CAMPOS` existía para evitar. Se descubrió al usarlo por
+    // primera vez.
+    const { perfilPublico, ...resto } = user;
+    for (const campo of Object.keys(CAMPOS)) delete resto[campo];
     for (const preferencia of Object.values(CAMPOS)) delete resto[preferencia];
+
+    // El contador nunca sale exacto hacia terceros: solo su cubeta. Su dueña
+    // sí ve el número —ella repartió el enlace, ahí no hay nada que proteger—.
+    if (campos.invitaciones !== null && campos.invitaciones !== undefined) {
+      campos.invitaciones = esDueña ? campos.invitaciones : cubetaInvitaciones(campos.invitaciones);
+    }
 
     res.json({
       ...resto,

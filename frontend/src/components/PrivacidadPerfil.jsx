@@ -9,15 +9,23 @@ import api from '../services/api';
 // Visibilidad del perfil, dato por dato, más el interruptor de "también fuera
 // de la red" (ciclo 10B).
 //
-// Solo aparecen los cuatro campos configurables. `email`, `phone`, `fullName` y
+// Solo aparecen los campos configurables. `email`, `phone`, `fullName` y
 // `birthdate` NO están aquí a propósito: son contacto, autenticación e
 // identificación real, y ofrecerlos como interruptor sería ofrecer un disparo
 // al pie en una comunidad con estigma. El servidor tampoco los expone nunca.
-const CAMPOS = [
+//
+// Se EXPORTA porque `Profile.jsx` arma con ella el objeto de preferencias que
+// le pasa a este componente. Antes lo listaba a mano, en dos lugares distintos:
+// agregar el campo del 11A habría exigido acordarse de los dos, y olvidar uno
+// deja un control que se pinta pero no se guarda.
+export const CAMPOS = [
   { clave: 'visibilidadBio', etiqueta: 'Biografía' },
   { clave: 'visibilidadAboutMe', etiqueta: 'Sobre mí' },
   { clave: 'visibilidadAge', etiqueta: 'Edad' },
-  { clave: 'visibilidadGender', etiqueta: 'Género' }
+  { clave: 'visibilidadGender', etiqueta: 'Género' },
+  // 11A. Se muestra en cubetas ("5+"), nunca el número exacto, así que abrirlo
+  // expone bastante menos de lo que parece.
+  { clave: 'visibilidadInvitaciones', etiqueta: 'A cuánta gente he invitado' }
 ];
 
 const OPCIONES = [
