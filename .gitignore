@@ -54,3 +54,9 @@ CLAUDE.md
 # Salida de graphify: cache regenerable + rutas absolutas de la maquina local
 # (.graphify_python, .graphify_root) que no tiene sentido versionar
 graphify-out/
+
+# Respaldos de la base. scripts/respaldo.js ya se niega a escribir dentro del
+# repositorio, pero esto es la segunda red: un archivo movido a mano lleva
+# correos, telefonos y mensajes privados de personas reales.
+weedtown-*.json
+respaldos/

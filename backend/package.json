@@ -12,6 +12,8 @@
     "test:reset": "node tests/reset.js",
     "rol": "node scripts/rol.js",
     "subforos": "node scripts/subforos.js",
+    "respaldo": "node scripts/respaldo.js",
+    "restaurar": "node scripts/restaurar.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate"
   },

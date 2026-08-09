@@ -11,6 +11,8 @@ Se versionan a propósito. Una herramienta que solo vive en la máquina de quien
 | [`rol.js`](#roljs) | Asigna `USER` / `MOD` / `ADMIN` a una cuenta | Al montar un entorno, o para promover a alguien |
 | [`subforos.js`](#subforosjs) | Siembra el catálogo inicial de subforos | Una vez por entorno, después del alta de la cuenta creadora |
 | [`sembrar-dev.js`](#sembrar-devjs) | Escenario de desarrollo: cuentas, amistad, bloqueo y posteos | Al estrenar o vaciar la base de desarrollo |
+| [`respaldo.js`](#respaldojs) | Copia la base entera a un JSON | **Producción no tiene respaldos automáticos** — con la frecuencia que aguantes perder |
+| [`restaurar.js`](#restaurarjs) | Carga un respaldo y verifica que quedó igual | Al probar un respaldo, y el día de una recuperación real |
 | [`avatar-hoja.js`](#avatar-hojajs) | Hoja de contactos del catálogo de avatares | Al revisar o rediseñar el arte del avatar |
 | [`avatar-plantillas.js`](#avatar-plantillasjs) | Plantillas de 32×32 para redibujar piezas | Al redibujar el catálogo (`wt2`) |
 | [`avatar-convertidor.html`](#avatar-convertidorhtml) | PNG de pixel art → arreglo de rectángulos | Al integrar cada pieza dibujada |
@@ -72,6 +74,51 @@ Trae también posteos con y sin hashtags (incluida grafía en camello, para ver 
 2. Se niega si encuentra **una sola cuenta que él no creó** — sin importar a qué base apunte el `.env`. Es la defensa real: aunque alguien apunte el `.env` a una base con datos de gente, el script no toca nada. Aplica también con `--rehacer`, que es la bandera peligrosa.
 
 Los subforos van aparte, con su propio script: `npm run subforos -- --creador=luna`.
+
+---
+
+## Respaldo y recuperación
+
+**El plan gratuito de Supabase no hace respaldos automáticos.** Hay cuentas reales con posteos, foros y chats que la comunidad no puede reconstruir. De toda la deuda técnica del proyecto, es la única cuyo peor caso no se puede arreglar después: todo lo demás, si sale mal, se corrige.
+
+**Por qué esto y no `pg_dump`.** Sería el artefacto estándar. La máquina de trabajo no tiene las herramientas cliente de PostgreSQL ni Docker para prestarlas, y un respaldo que existe hoy vale más que el respaldo perfecto de la semana que viene. Si algún día se instalan, `pg_dump` sigue siendo mejor idea para el respaldo periódico — estas dos herramientas no dejan de servir, porque el par respaldo↔restauración verificada es lo que convierte un archivo en una garantía.
+
+### `respaldo.js`
+
+```bash
+npm run respaldo -- --destino "D:/respaldos-weedtown"
+```
+
+Recorre las 25 tablas en orden de dependencia y las escribe en un JSON con manifiesto: cuándo se tomó, de qué host, **con qué migración** y cuántas filas por tabla.
+
+**Tres decisiones que no son obvias:**
+
+- **`--destino` es obligatorio y no tiene default.** El archivo lleva correos, teléfonos y mensajes privados de personas reales; un default cómodo terminaría poniéndolo junto al código. Además **se niega** si la ruta cae dentro del repositorio: la comprobación es lo que evita el accidente, no el comentario.
+- **La contraseña nunca se imprime.** Igual que el log `arranque_base_de_datos`: la pregunta "¿esto es producción?" se contesta con host y schema, sin ver el secreto.
+- **Se guarda la migración de origen.** Restaurar datos sobre un esquema distinto al de origen es cómo un respaldo falla justo el día que hace falta, y `restaurar.js` compara antes de tocar nada.
+
+Para respaldar producción, pon la cadena en `RESPALDO_DATABASE_URL` dentro de `backend/.env.produccion` — `.gitignore` ya lo excluye por el patrón `.env.*` — en vez de pasarla por `--url`, donde queda en el historial de la terminal.
+
+**Lo que NO cubre**, dicho aquí para que nadie lo descubra durante una recuperación:
+
+- **Las imágenes.** Viven en Supabase Storage; aquí solo viaja su URL. Restaurar deja los posteos apuntando a archivos que hay que respaldar aparte.
+- **El esquema.** Se reconstruye con `prisma migrate deploy`, que sí está en git.
+
+### `restaurar.js`
+
+```bash
+npm run restaurar -- --archivo "D:/respaldos-weedtown/weedtown-....json"
+```
+
+Un respaldo que nadie ha restaurado nunca no es un respaldo, es un archivo. Este script es la mitad que convierte al otro en una garantía: vacía el destino, carga en orden de dependencia, **reajusta las secuencias** y cuenta cada tabla contra el manifiesto.
+
+Sin `--url` escribe en `DATABASE_URL`, o sea tu base de desarrollo — el default es ese a propósito: verificar un respaldo es justo para lo que sirve tener una base desechable.
+
+**Lo de las secuencias no es un detalle.** Al insertar con ids explícitos, los contadores autoincrementales se quedan en 1, y la app choca con llaves duplicadas la primera vez que alguien publica — horas después de que la restauración pareció exitosa. Es el error clásico de restaurar así.
+
+**Se niega a escribir sobre la base de la que salió el respaldo** (`--forzar` para una recuperación real), y **se niega si la migración del destino no coincide** con la del respaldo. La primera guardia importa porque restaurar es borrar primero: equivocarse ahí destruye justo los datos que se estaban protegiendo.
+
+**Verificado el 2026-08-09** con un viaje redondo completo sobre el schema de pruebas: respaldo → vaciado → carga → conteo, las 25 tablas coincidiendo.
 
 ---
 
