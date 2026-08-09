@@ -137,7 +137,7 @@ Para respaldar producción, pon la cadena en `RESPALDO_DATABASE_URL` dentro de `
 
 > ### El error que hay que entender antes de usar esto
 >
-> **Todos los proyectos de Supabase de una misma región comparten el hostname del pooler.** Desarrollo y producción se ven **idénticos** por host: `aws-0-us-west-1.pooler.supabase.com` los dos. Lo único que los distingue es el `<project-ref>` del usuario (`postgres.<ref>`).
+> **Todos los proyectos de Supabase de una misma región comparten el hostname del pooler.** Desarrollo y producción se ven **idénticos** por host: `aws-0-<region>.pooler.supabase.com` los dos. Lo único que los distingue es el `<project-ref>` del usuario (`postgres.<ref>`).
 >
 > La primera versión de este script solo hacía `dotenv.config()` —que lee `.env`— mientras este README ya mandaba a poner la cadena en `.env.produccion`. El archivo existía, estaba bien escrito, y el script lo ignoraba: respaldó **desarrollo** y anunció `✔ respaldo completo`. Lo cachó el PO el 2026-08-09, y solo porque sabía cuántas cuentas hay en producción.
 >

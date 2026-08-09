@@ -192,7 +192,7 @@ if (destinoAbs === raizRepo || destinoAbs.startsWith(raizRepo + path.sep)) {
 //
 // El PROYECTO es lo que hay que mirar, no el host. Todos los proyectos de
 // Supabase de una misma región comparten el hostname del pooler
-// (aws-0-us-west-1.pooler.supabase.com), así que desarrollo y producción se
+// (aws-0-<region>.pooler.supabase.com), así que desarrollo y producción se
 // ven IDÉNTICOS por host. El discriminador vive en el usuario:
 // `postgres.<project-ref>`. Un banner que solo muestre el host no ayuda a
 // contestar "¿esto es producción?" — que es justo la pregunta.
