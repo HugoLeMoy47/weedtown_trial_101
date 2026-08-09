@@ -23,9 +23,17 @@ export const CAMPOS = [
   { clave: 'visibilidadAboutMe', etiqueta: 'Sobre mí' },
   { clave: 'visibilidadAge', etiqueta: 'Edad' },
   { clave: 'visibilidadGender', etiqueta: 'Género' },
-  // 11A. Se muestra en cubetas ("5+"), nunca el número exacto, así que abrirlo
-  // expone bastante menos de lo que parece.
-  { clave: 'visibilidadInvitaciones', etiqueta: 'A cuánta gente he invitado' }
+  // 11A. Este es el único campo cuyo NOMBRE no basta para entender qué se
+  // publica, así que es el único con texto de ayuda. Dos cosas hay que decir y
+  // ninguna se deduce de la etiqueta: que se muestra como rango y no como
+  // número, y que se refiere a gente que llegó por tu enlace, no a mensajes
+  // que mandaste. La primera redacción decía "A cuánta gente he invitado" y se
+  // leía como un contador de invitaciones enviadas.
+  {
+    clave: 'visibilidadInvitaciones',
+    etiqueta: 'Gente que llegó a WeedTown por mi enlace',
+    ayuda: 'Se muestra como un rango («5+»), nunca el número exacto. Tú sí ves el número.'
+  }
 ];
 
 const OPCIONES = [
@@ -94,6 +102,7 @@ const PrivacidadPerfil = ({ valores, onCambio }) => {
             onChange={cambiarCampo(campo.clave)}
             disabled={guardando}
             fullWidth
+            helperText={campo.ayuda}
           >
             {OPCIONES.map(o => <MenuItem key={o.valor} value={o.valor}>{o.etiqueta}</MenuItem>)}
           </TextField>

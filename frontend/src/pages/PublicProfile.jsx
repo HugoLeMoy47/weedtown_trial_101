@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container, Card, CardContent, Typography, Avatar, Box, Stack, Button, Chip,
@@ -46,10 +46,26 @@ const PublicProfile = () => {
   const [posts, setPosts] = useState([]);
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
-  // 11A: se lee UNA vez al montar, y leerlo lo consume. En el cuerpo del
-  // render desaparecería al primer re-render — el mismo error que ya costó una
-  // corrección en Login.jsx con `tomarNextPendiente`.
-  const [invitadaPor] = useState(() => tomarBienvenida());
+  // 11A: quién invitó a esta persona, para saludarla. LEERLO LO CONSUME, y de
+  // ahí todo el cuidado.
+  //
+  // La primera versión era `useState(() => tomarBienvenida())`, y no funciona:
+  // en desarrollo `StrictMode` invoca DOS VECES el inicializador de useState, y
+  // éste tiene efecto colateral. La primera llamada lee el handle y borra la
+  // clave; la segunda ya encuentra null — y ese null es el que se queda. El
+  // aviso no aparecía nunca, sin ningún error en consola.
+  //
+  // Es el mismo error que Login.jsx documenta sobre `tomarNextPendiente`, y se
+  // resuelve con el patrón que ya usa AuthCallback.jsx: una guarda en `useRef`
+  // que sobrevive al montaje simulado de StrictMode, así el consumo ocurre
+  // exactamente una vez.
+  const [invitadaPor, setInvitadaPor] = useState(null);
+  const bienvenidaLeida = useRef(false);
+  useEffect(() => {
+    if (bienvenidaLeida.current) return;
+    bienvenidaLeida.current = true;
+    setInvitadaPor(tomarBienvenida());
+  }, []);
 
   // La ruta canónica de esta persona, para volver aquí tras el login.
   const ruta = handle ? `/@${handle}` : `/perfil/${id}`;
@@ -218,21 +234,27 @@ const PublicProfile = () => {
 
             {/* Edad y género pueden llegar desde el 10B, si su dueña los abrió.
                 El servidor ya decidió: aquí solo se pinta lo que vino. */}
-            {(perfil.age || perfil.gender || perfil.invitaciones) && (
+            {/* `Boolean(...)` en cada condición, no el valor a secas. En JSX
+                `{0 && <Chip/>}` NO renderiza nada: renderiza EL CERO, suelto,
+                en medio de la tarjeta. `age` e `invitaciones` son números y
+                los dos pueden valer 0 — `invitaciones` vale 0 para todo el
+                mundo hasta que alguien invite, así que este bug salía en el
+                perfil de cualquiera que mirara el suyo. */}
+            {Boolean(perfil.age || perfil.gender || perfil.invitaciones) && (
               <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
-                {perfil.age && <Chip size="small" label={`${perfil.age} años`} />}
-                {perfil.gender && <Chip size="small" label={perfil.gender} sx={{ textTransform: 'capitalize' }} />}
+                {Boolean(perfil.age) && <Chip size="small" label={`${perfil.age} años`} />}
+                {Boolean(perfil.gender) && <Chip size="small" label={perfil.gender} sx={{ textTransform: 'capitalize' }} />}
                 {/* 11A. Al ver tu propio perfil llega el número exacto; a los
                     demás les llega una cubeta ("5+"). El texto se arma según
                     cuál de las dos vino, sin que el cliente decida nada de
                     privacidad — eso ya se resolvió en el servidor. */}
-                {perfil.invitaciones && (
+                {Boolean(perfil.invitaciones) && (
                   <Chip
                     size="small"
                     variant="outlined"
                     label={typeof perfil.invitaciones === 'number'
-                      ? `has invitado a ${perfil.invitaciones}`
-                      : `ha invitado a ${perfil.invitaciones} personas`}
+                      ? `${perfil.invitaciones} ${perfil.invitaciones === 1 ? 'persona llegó' : 'personas llegaron'} por tu enlace`
+                      : `${perfil.invitaciones} personas llegaron por su enlace`}
                   />
                 )}
               </Stack>
