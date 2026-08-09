@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Respaldo — WeedTown</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fondo:#14161a; --panel:#1c1f26; --panel2:#22262f; --borde:#2f3540;
+    --texto:#e6e8ec; --tenue:#98a0ad; --verde:#5fbf7c; --ambar:#e0a83c;
+    --rojo:#e0605f; --azul:#6aa8e0;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --fondo:#f5f6f8; --panel:#fff; --panel2:#eef0f4; --borde:#d8dce3;
+            --texto:#1a1d22; --tenue:#5d6674; --verde:#2f8a4d; --ambar:#a3711a;
+            --rojo:#b83b3a; --azul:#2a6ba8; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--fondo); color:var(--texto);
+    font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .env { max-width:920px; margin:0 auto; padding:28px 20px 60px; }
+  h1 { font-size:21px; margin:0 0 4px; }
+  .sub { color:var(--tenue); font-size:13px; margin-bottom:24px; }
+  .tarjeta { background:var(--panel); border:1px solid var(--borde);
+    border-radius:10px; padding:18px; margin-bottom:16px; }
+  .tarjeta h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--tenue); margin:0 0 12px; font-weight:600; }
+  .bases { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+  .base { border:1.5px solid var(--borde); border-radius:8px; padding:14px;
+    cursor:pointer; background:var(--panel2); transition:border-color .12s; }
+  .base:hover:not(.off) { border-color:var(--azul); }
+  .base.sel { border-color:var(--verde); }
+  .base.sel.prod { border-color:var(--ambar); }
+  .base.off { opacity:.45; cursor:not-allowed; }
+  .base .nom { font-weight:600; display:flex; align-items:center; gap:8px; }
+  .pill { font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+    padding:2px 7px; border-radius:20px; background:var(--borde); color:var(--tenue); }
+  .base.prod .pill { background:var(--ambar); color:#14161a; }
+  .base .ref { font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    font-size:11.5px; color:var(--tenue); margin-top:7px; word-break:break-all; }
+  label.campo { display:block; font-size:13px; color:var(--tenue); margin-bottom:6px; }
+  input[type=text] { width:100%; padding:9px 11px; border-radius:7px;
+    border:1px solid var(--borde); background:var(--panel2); color:var(--texto);
+    font:13px ui-monospace,SFMono-Regular,Consolas,monospace; }
+  .modos { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .modo { padding:7px 14px; border-radius:7px; border:1.5px solid var(--borde);
+    background:var(--panel2); color:var(--texto); cursor:pointer; font-size:13px; }
+  .modo.sel { border-color:var(--verde); }
+  .grupos { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:14px; }
+  .grupo { padding:5px 11px; border-radius:20px; border:1px solid var(--borde);
+    background:var(--panel2); color:var(--tenue); cursor:pointer; font-size:12.5px; }
+  .grupo.sel { border-color:var(--azul); color:var(--texto); }
+  .tablas { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:2px; }
+  .tabla { display:flex; align-items:center; gap:8px; padding:5px 7px;
+    border-radius:5px; cursor:pointer; font-size:13px; }
+  .tabla:hover { background:var(--panel2); }
+  .tabla .dep { font-size:10.5px; color:var(--tenue); margin-left:auto; }
+  .tabla.auto { color:var(--azul); }
+  .aviso { border-radius:8px; padding:12px 14px; font-size:13px; margin-bottom:14px;
+    border-left:3px solid; background:var(--panel2); }
+  .aviso.warn { border-color:var(--ambar); }
+  .aviso.err  { border-color:var(--rojo); }
+  .aviso.info { border-color:var(--azul); }
+  .aviso b { display:block; margin-bottom:3px; }
+  button.ir { width:100%; padding:13px; border-radius:8px; border:none;
+    background:var(--verde); color:#0d1013; font-size:15px; font-weight:600; cursor:pointer; }
+  button.ir.prod { background:var(--ambar); }
+  button.ir:disabled { background:var(--borde); color:var(--tenue); cursor:not-allowed; }
+  pre.salida { background:#0d1013; color:#d6dae0; border-radius:8px; padding:14px;
+    font:12.5px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;
+    white-space:pre-wrap; word-break:break-word; max-height:400px; overflow:auto; margin:0; }
+  .cmd { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:12px;
+    color:var(--tenue); background:var(--panel2); padding:10px 12px; border-radius:7px;
+    word-break:break-all; margin-top:12px; }
+  table.arch { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.arch td { padding:6px 4px; border-bottom:1px solid var(--borde); }
+  table.arch td:first-child { font-family:ui-monospace,Consolas,monospace; word-break:break-all; }
+  table.arch td:last-child { text-align:right; color:var(--tenue); white-space:nowrap; }
+  .vacio { color:var(--tenue); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="env">
+  <h1>Respaldo de WeedTown</h1>
+  <div class="sub">Esta pantalla no respalda: arma los argumentos y lanza <code>scripts/respaldo.js</code>, para que las guardias sean las mismas que en la terminal.</div>
+
+  <div class="tarjeta">
+    <h2>1 · Qué base</h2>
+    <div class="bases" id="bases"></div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>2 · A dónde</h2>
+    <label class="campo" for="destino">Carpeta fuera del repositorio</label>
+    <input type="text" id="destino" placeholder="D:\respaldos-weedtown" spellcheck="false">
+  </div>
+
+  <div class="tarjeta">
+    <h2>3 · Qué tablas</h2>
+    <div class="modos">
+      <button class="modo sel" id="mCompleto">Completo — las 25 tablas</button>
+      <button class="modo" id="mSelectivo">Selectivo</button>
+    </div>
+    <div id="selector" hidden>
+      <div class="grupos" id="grupos"></div>
+      <div class="tablas" id="tablas"></div>
+    </div>
+  </div>
+
+  <div id="avisos"></div>
+  <button class="ir" id="ir">Generar respaldo</button>
+  <div class="cmd" id="cmd"></div>
+
+  <div class="tarjeta" id="cajaSalida" hidden style="margin-top:16px">
+    <h2>Salida</h2>
+    <pre class="salida" id="salida"></pre>
+  </div>
+
+  <div class="tarjeta" style="margin-top:16px">
+    <h2>Respaldos en esa carpeta</h2>
+    <div id="archivos" class="vacio">Escribe una carpeta arriba.</div>
+  </div>
+</div>
+
+<script>
+const T = '__TOKEN__';
+const api = (r, o) => fetch(r + (r.includes('?') ? '&' : '?') + 't=' + T, o);
+let INFO = null, base = null, modo = 'completo';
+const elegidas = new Set();
+
+const $ = id => document.getElementById(id);
+
+// La misma regla que valida `respaldo.js`, aplicada mientras armas la
+// selección: te dice qué falta antes de pedir nada, no después.
+function faltantes() {
+  const sel = [...elegidas], out = [];
+  for (const m of sel) for (const d of (INFO.dependeDe[m] || []))
+    if (!elegidas.has(d) && !out.includes(d)) out.push(d);
+  return out;
+}
+
+function pintarBases() {
+  const b = INFO.bases;
+  const tarjeta = (id, titulo, datos, esProd) => {
+    if (!datos) return `<div class="base off"><div class="nom">${titulo}</div>
+      <div class="ref">${esProd ? (b.hayArchivoProduccion
+        ? 'existe .env.produccion pero no tiene RESPALDO_DATABASE_URL'
+        : 'falta backend/.env.produccion') : 'falta DATABASE_URL en .env'}</div></div>`;
+    return `<div class="base ${esProd ? 'prod' : ''}" data-b="${id}">
+      <div class="nom">${titulo}${esProd ? '<span class="pill">datos reales</span>' : ''}</div>
+      <div class="ref">proyecto ${datos.proyecto}<br>${datos.host}:${datos.puerto} · schema ${datos.schema}</div></div>`;
+  };
+  $('bases').innerHTML =
+    tarjeta('produccion', 'Producción', b.produccion, true) +
+    tarjeta('dev', 'Desarrollo', b.dev, false);
+  document.querySelectorAll('.base[data-b]').forEach(el => el.onclick = () => {
+    base = el.dataset.b;
+    document.querySelectorAll('.base').forEach(x => x.classList.remove('sel'));
+    el.classList.add('sel');
+    revisar();
+  });
+}
+
+function pintarSelector() {
+  $('grupos').innerHTML = Object.keys(INFO.grupos)
+    .map(g => `<button class="grupo" data-g="${g}">${g}</button>`).join('');
+  document.querySelectorAll('.grupo').forEach(el => el.onclick = () => {
+    const ms = INFO.grupos[el.dataset.g];
+    const todas = ms.every(m => elegidas.has(m));
+    ms.forEach(m => todas ? elegidas.delete(m) : elegidas.add(m));
+    pintarTablas(); revisar();
+  });
+  pintarTablas();
+}
+
+function pintarTablas() {
+  const falta = new Set(faltantes());
+  $('tablas').innerHTML = INFO.modelos.map(m => {
+    const dep = INFO.dependeDe[m] || [];
+    return `<label class="tabla ${falta.has(m) ? 'auto' : ''}">
+      <input type="checkbox" data-m="${m}" ${elegidas.has(m) ? 'checked' : ''}>
+      <span>${m}</span>${dep.length ? `<span class="dep">← ${dep.join(', ')}</span>` : ''}</label>`;
+  }).join('');
+  document.querySelectorAll('[data-m]').forEach(el => el.onchange = () => {
+    el.checked ? elegidas.add(el.dataset.m) : elegidas.delete(el.dataset.m);
+    pintarTablas(); revisar();
+  });
+  document.querySelectorAll('.grupo').forEach(el =>
+    el.classList.toggle('sel', INFO.grupos[el.dataset.g].every(m => elegidas.has(m))));
+}
+
+function revisar() {
+  const av = [], destino = $('destino').value.trim();
+  const parcial = modo === 'selectivo' && elegidas.size > 0 && elegidas.size < INFO.modelos.length;
+  const falta = modo === 'selectivo' ? faltantes() : [];
+  let puede = Boolean(base && destino);
+
+  if (falta.length) {
+    puede = false;
+    av.push(`<div class="aviso err"><b>La selección no se podría restaurar</b>
+      Faltan tablas de las que dependen las elegidas: <b style="display:inline">${falta.join(', ')}</b>.
+      <button class="modo" id="arreglar" style="margin-top:8px">Agregar las que faltan</button></div>`);
+  }
+  if (modo === 'selectivo' && elegidas.size === 0) {
+    puede = false;
+    av.push('<div class="aviso info">Elige al menos una tabla o un grupo.</div>');
+  }
+  if (parcial && !falta.length) {
+    const fuera = INFO.modelos.filter(m => !elegidas.has(m));
+    av.push(`<div class="aviso warn"><b>Respaldo parcial — no sirve para recuperar</b>
+      Quedan fuera ${fuera.length} tablas: ${fuera.join(', ')}.
+      El archivo lleva el sufijo <code>-parcial</code> y <code>restaurar.js</code> se niega a cargarlo,
+      porque restaurar vacía el destino y las tablas ausentes quedarían en blanco.</div>`);
+  }
+  if (base === 'produccion') {
+    av.push('<div class="aviso warn"><b>Vas a leer datos reales</b>El archivo lleva correos, teléfonos y mensajes privados. Guárdalo donde solo tú lo abras.</div>');
+  }
+  $('avisos').innerHTML = av.join('');
+  const arr = $('arreglar');
+  if (arr) arr.onclick = () => { faltantes().forEach(m => elegidas.add(m)); pintarTablas(); revisar(); };
+
+  $('ir').disabled = !puede;
+  $('ir').className = 'ir' + (base === 'produccion' ? ' prod' : '');
+  $('ir').textContent = base === 'produccion' ? 'Generar respaldo de PRODUCCIÓN' : 'Generar respaldo';
+
+  // Se muestra el comando equivalente: la GUI es un atajo, no una caja negra,
+  // y así se puede repetir sin ella (o meter en una tarea programada).
+  if (base && destino) {
+    const tablas = parcial ? ` --solo ${INFO.modelos.filter(m => elegidas.has(m)).join(',')} --acepto-parcial` : '';
+    $('cmd').textContent = `npm run respaldo -- --base ${base} --destino "${destino}"${tablas}`;
+  } else $('cmd').textContent = '';
+}
+
+async function listarArchivos() {
+  const d = $('destino').value.trim();
+  if (!d) return;
+  const { archivos } = await (await api('/api/archivos?destino=' + encodeURIComponent(d))).json();
+  $('archivos').className = archivos.length ? '' : 'vacio';
+  $('archivos').innerHTML = archivos.length
+    ? '<table class="arch">' + archivos.map(a => `<tr><td>${a.nombre}${a.parcial ? ' <span class="pill">parcial</span>' : ''}</td>
+        <td>${a.mb} MB · ${new Date(a.fecha).toLocaleString('es-MX')}</td></tr>`).join('') + '</table>'
+    : 'Todavía no hay respaldos en esa carpeta.';
+}
+
+$('mCompleto').onclick = () => { modo = 'completo'; $('mCompleto').classList.add('sel');
+  $('mSelectivo').classList.remove('sel'); $('selector').hidden = true; revisar(); };
+$('mSelectivo').onclick = () => { modo = 'selectivo'; $('mSelectivo').classList.add('sel');
+  $('mCompleto').classList.remove('sel'); $('selector').hidden = false; revisar(); };
+
+$('destino').oninput = () => { localStorage.setItem('destino', $('destino').value); revisar(); };
+$('destino').onchange = listarArchivos;
+
+$('ir').onclick = async () => {
+  $('ir').disabled = true;
+  $('cajaSalida').hidden = false;
+  $('salida').textContent = '';
+  const r = await api('/api/respaldo', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      base, destino: $('destino').value.trim(),
+      tablas: modo === 'selectivo' ? [...elegidas] : []
+    })
+  });
+  const lector = r.body.getReader(), dec = new TextDecoder();
+  for (;;) {
+    const { done, value } = await lector.read();
+    if (done) break;
+    $('salida').textContent += dec.decode(value, { stream: true });
+    $('salida').scrollTop = $('salida').scrollHeight;
+  }
+  $('salida').textContent = $('salida').textContent.replace(/\n__FIN__\d+$/, '');
+  await listarArchivos();
+  revisar();
+};
+
+(async () => {
+  INFO = await (await api('/api/info')).json();
+  $('destino').value = localStorage.getItem('destino') || INFO.destinoSugerido || '';
+  pintarBases(); pintarSelector(); revisar(); listarArchivos();
+})();
+</script>
+</body>
+</html>

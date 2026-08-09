@@ -12,6 +12,7 @@ Se versionan a propósito. Una herramienta que solo vive en la máquina de quien
 | [`subforos.js`](#subforosjs) | Siembra el catálogo inicial de subforos | Una vez por entorno, después del alta de la cuenta creadora |
 | [`sembrar-dev.js`](#sembrar-devjs) | Escenario de desarrollo: cuentas, amistad, bloqueo y posteos | Al estrenar o vaciar la base de desarrollo |
 | [`respaldo.js`](#respaldojs) | Copia a un JSON cualquiera de las dos bases, entera o por tablas/grupos | **Producción no tiene respaldos automáticos** — con la frecuencia que aguantes perder |
+| [`respaldo-gui.js`](#respaldo-guijs) | La misma herramienta, con clics en vez de banderas | Cuando no quieras recordar la sintaxis |
 | [`restaurar.js`](#restaurarjs) | Carga un respaldo y verifica que quedó igual | Al probar un respaldo, y el día de una recuperación real |
 | [`avatar-hoja.js`](#avatar-hojajs) | Hoja de contactos del catálogo de avatares | Al revisar o rediseñar el arte del avatar |
 | [`avatar-plantillas.js`](#avatar-plantillasjs) | Plantillas de 32×32 para redibujar piezas | Al redibujar el catálogo (`wt2`) |
@@ -155,6 +156,26 @@ El nombre del archivo lleva el project ref (`weedtown-<ref>-<fecha>.json`) y no 
 
 - **Las imágenes.** Viven en Supabase Storage; aquí solo viaja su URL. Restaurar deja los posteos apuntando a archivos que hay que respaldar aparte.
 - **El esquema.** Se reconstruye con `prisma migrate deploy`, que sí está en git.
+
+### `respaldo-gui.js`
+
+```bash
+npm run respaldo:gui
+```
+
+Imprime una URL con token; la abres en el navegador y eliges base, carpeta y tablas con clics. Muestra las dos bases con su **project ref** —lo único que las distingue—, valida las dependencias mientras armas la selección, avisa cuando el recorte deja de servir para recuperar, y lista los respaldos que ya hay en la carpeta.
+
+**No respalda nada.** Arma los argumentos y lanza `scripts/respaldo.js` como proceso hijo. Es la decisión que ordena todo el archivo: las guardias —base equivocada, parcial de producción, destino dentro del repo, dependencias rotas, tabla nueva sin registrar— se aplican **idénticas** desde la terminal y desde el navegador, porque son literalmente el mismo código. Una GUI que reimplementara el respaldo sería una segunda versión con sus propios huecos, y el hueco aparecería el día de una recuperación. Comprobado: pedirle `Post` y `Comment` sin `User` desde el navegador falla con el mismo mensaje que en la terminal.
+
+El mapa de tablas vive en [`lib/respaldo-tablas.js`](lib/respaldo-tablas.js) justamente para que la validación instantánea de la pantalla y la del script lean la misma lista.
+
+La pantalla **muestra el comando equivalente** de lo que estás por hacer. La GUI es un atajo, no una caja negra: ese comando sirve para repetir el respaldo sin ella, o para meterlo en una tarea programada.
+
+**Tres cosas sobre seguridad**, porque esto puede volcar producción a disco:
+
+- **Escucha solo en `127.0.0.1`.** No es alcanzable desde la red local.
+- **Exige un token aleatorio** que se genera en cada arranque y se imprime en la terminal. Sin él, cualquier página abierta en el mismo navegador podría pedirle un respaldo a `localhost` sin que te enteres. Se exige también para el HTML, no solo para la API.
+- **Muere con la terminal.** No se despliega, no se importa desde `src/`, y no forma parte de la aplicación.
 
 ### `restaurar.js`
 

@@ -14,6 +14,7 @@
     "subforos": "node scripts/subforos.js",
     "respaldo": "node scripts/respaldo.js",
     "restaurar": "node scripts/restaurar.js",
+    "respaldo:gui": "node scripts/respaldo-gui.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate"
   },

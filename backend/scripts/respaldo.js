@@ -56,70 +56,10 @@ const RUTA_PRODUCCION = path.join(__dirname, '..', '.env.produccion');
 const hayArchivoProduccion = fs.existsSync(RUTA_PRODUCCION);
 if (hayArchivoProduccion) dotenv.config({ path: RUTA_PRODUCCION });
 
-// Orden de exportación = orden de restauración. Las tablas sin llaves foráneas
-// primero, y cada una después de aquellas a las que apunta. Restaurar en otro
-// orden falla por violación de FK, así que el orden vive aquí y no en la
-// cabeza de quien restaure a las 3 de la mañana.
-// Cada modelo con las tablas de las que DEPENDE por llave foránea obligatoria.
-// Sacado del esquema, no de memoria: `grep '@relation.*fields:'` sobre
-// schema.prisma, separando los campos opcionales (`Post?`) de los obligatorios.
-//
-// Las opcionales no se listan a propósito. Una `Reaction` apunta a Post O a
-// Comment O a ForumPost, nunca a todos, así que tratarlas como dependencias
-// duras obligaría a incluir el esquema entero en cualquier selección — y el
-// respaldo selectivo dejaría de existir. El precio es que un subconjunto puede
-// traer filas con una FK opcional colgando; `restaurar.js` las tolera porque
-// la columna acepta null.
-const DEPENDE_DE = {
-  User: [], MagicLink: [], MastodonApp: [], Hashtag: [], Chat: [],
-  Identity: ['User'],
-  Passkey: ['Identity'],
-  Block: ['User'],
-  FriendRequest: ['User'],
-  Post: ['User'],
-  PalabraDescartada: [],
-  HashtagOnPost: ['Post', 'Hashtag'],
-  Comment: ['Post', 'User'],
-  Reaction: ['User'],
-  Message: ['Chat', 'User'],
-  SubForum: ['User'],
-  SubForumFollow: ['User', 'SubForum'],
-  ForumPost: ['User', 'SubForum'],
-  ForumComment: ['User', 'ForumPost'],
-  Report: ['User'],
-  ModerationAction: ['User'],
-  Notification: ['User'],
-  MarketItem: ['User'],
-  PrivacyAction: ['User'],
-  Media: []
-};
-
-// Orden de exportación = orden de restauración. Las tablas sin llaves foráneas
-// primero, y cada una después de aquellas a las que apunta. Restaurar en otro
-// orden falla por violación de FK, así que el orden vive aquí y no en la
-// cabeza de quien restaure a las 3 de la mañana.
-const MODELOS = [
-  'User', 'Identity', 'Passkey', 'MagicLink', 'MastodonApp',
-  'Block', 'FriendRequest',
-  'SubForum', 'SubForumFollow',
-  'Post', 'Hashtag', 'HashtagOnPost', 'PalabraDescartada',
-  'Comment', 'Reaction',
-  'ForumPost', 'ForumComment',
-  'Chat', 'Message',
-  'Report', 'ModerationAction', 'Notification',
-  'MarketItem', 'PrivacyAction', 'Media'
-];
-
-// Grupos con nombre, para no tener que acordarse de qué tablas componen una
-// idea. Son los recortes que de verdad se piden, no una taxonomía completa.
-const GRUPOS = {
-  cuentas:  ['User', 'Identity', 'Passkey', 'MagicLink'],
-  feed:     ['Post', 'Hashtag', 'HashtagOnPost', 'Comment', 'Reaction', 'Media'],
-  foros:    ['SubForum', 'SubForumFollow', 'ForumPost', 'ForumComment'],
-  social:   ['Block', 'FriendRequest', 'Notification'],
-  chats:    ['Chat', 'Message'],
-  moderacion: ['Report', 'ModerationAction', 'PalabraDescartada', 'PrivacyAction']
-};
+// El mapa de tablas (orden, dependencias, grupos) vive en un módulo aparte
+// porque la GUI de `respaldo-gui.js` lo lee también. Una segunda copia sería
+// una copia que envejece sola, y la GUI validaría distinto que el script.
+const { MODELOS, GRUPOS, DEPENDE_DE, expandir: expandirNombres, validarDependencias } = require('./lib/respaldo-tablas');
 
 const args = process.argv.slice(2);
 const opcion = (nombre) => {
@@ -168,19 +108,12 @@ const eligioDevAPropósito = aceptoDesarrollo || base === 'dev' || base === 'des
 
 // --solo y --excepto aceptan nombres de tabla y nombres de grupo, mezclados.
 function expandir(nombres) {
-  const out = new Set();
-  for (const n of nombres) {
-    if (GRUPOS[n.toLowerCase()]) GRUPOS[n.toLowerCase()].forEach(m => out.add(m));
-    else {
-      const real = MODELOS.find(m => m.toLowerCase() === n.toLowerCase());
-      if (!real) {
-        console.error(`\n  ✖ "${n}" no es una tabla ni un grupo. Corre --listar para ver las opciones.\n`);
-        process.exit(1);
-      }
-      out.add(real);
-    }
+  const r = expandirNombres(nombres);
+  if (r.error) {
+    console.error(`\n  ✖ ${r.error} Corre --listar para ver las opciones.\n`);
+    process.exit(1);
   }
-  return out;
+  return r.tablas;
 }
 
 const pedidas = expandir(lista(opcion('--solo')));
@@ -217,23 +150,15 @@ if (soloListar) {
 // recuperación, así que las dependencias obligatorias se verifican antes de
 // abrir la conexión.
 if (esParcial) {
-  const faltantes = [];
-  for (const m of seleccion) {
-    for (const dep of DEPENDE_DE[m]) {
-      if (!seleccion.includes(dep) && !faltantes.some(f => f.tabla === m && f.falta === dep)) {
-        faltantes.push({ tabla: m, falta: dep });
-      }
-    }
-  }
-  if (faltantes.length) {
-    const sugerido = [...new Set([...seleccion, ...faltantes.map(f => f.falta)])];
+  const { ok, faltantes, sugerida } = validarDependencias(seleccion);
+  if (!ok) {
     abortar(
       'La selección deja fuera tablas de las que otras dependen:\n\n' +
       faltantes.map(f => `      ${f.tabla} necesita ${f.falta}`).join('\n') +
       '\n\n    Un respaldo así NO se puede restaurar: la carga muere por violación de\n' +
       '    llave foránea. Mejor enterarse ahora que durante una recuperación.\n\n' +
       '    Selección que sí funciona:\n' +
-      `      --solo ${MODELOS.filter(m => sugerido.includes(m)).join(',')}`
+      `      --solo ${sugerida.join(',')}`
     );
   }
 }
