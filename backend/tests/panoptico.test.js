@@ -96,6 +96,57 @@ module.exports = async function run() {
       }
     });
 
+    // ---- Ciclo 12C: las dos instantáneas que medían algo que ya no era cierto.
+    //
+    // Ninguna tenía prueba, y por eso los dos bugs vivieron. Se siembra aquí,
+    // con el resto, porque la respuesta se cachea 10 minutos: sembrar después
+    // de la primera lectura consultaría la respuesta vieja.
+    //
+    // CUARENTENA (8H). La ventana es POR PROVEEDOR —Mastodon 0 h, correo 3 h,
+    // llave 24 h— y una cuenta con varias identidades toma la MÁS CORTA. El
+    // indicador usaba una sola ventana de 24 h para todos.
+    const haceHoras = (h) => new Date(Date.now() - h * 60 * 60 * 1000);
+    // SIN `mkUser` a propósito: ese helper siempre agrega una identidad de
+    // MASTODON, cuya ventana de cuarentena es 0 h. Cualquier cuenta creada con
+    // él queda fuera de la cuarentena por definición, así que no sirve para
+    // probar las otras dos ventanas. Costó una corrida darse cuenta.
+    const conIdentidad = (sufijo, proveedor, horasDeAntiguedad) => prisma.user.create({
+      data: {
+        handle: `wtpan_${sufijo}`.toLowerCase().slice(0, 20),
+        name: `wtpan_${sufijo}`,
+        createdAt: haceHoras(horasDeAntiguedad),
+        identities: { create: { provider: proveedor, externalId: `wtpan-${sufijo}-${Date.now()}` } }
+      }
+    });
+    // Correo de 5 h: YA SALIÓ de cuarentena (ventana 3 h). Con el bug se
+    // contaba, porque 5 < 24. Es el caso que destapa el 8H.
+    await conIdentidad('q_email_vieja', 'EMAIL', 5);
+    // Correo de 1 h: sigue dentro.
+    await conIdentidad('q_email_nueva', 'EMAIL', 1);
+    // Llave de 5 h: sigue dentro (ventana 24 h).
+    await conIdentidad('q_llave', 'PASSKEY', 5);
+    // Mastodon recién creada: ventana 0, nunca cuenta.
+    await conIdentidad('q_masto', 'MASTODON', 0.1);
+    // Llave + correo, 5 h: toma la ventana MÁS CORTA (3 h), así que YA salió.
+    const mixta = await conIdentidad('q_mixta', 'PASSKEY', 5);
+    await prisma.identity.create({
+      data: { userId: mixta.id, provider: 'EMAIL', externalId: `wtpan-q-mixta-mail-${mixta.id}` }
+    });
+
+    // ZONA COMPARTIDA. `hasActiveCell()` exige además que la celda tenga el
+    // formato ACTUAL: las del geohash viejo no aparecen en el mapa de nadie,
+    // pero el indicador las contaba.
+    const conCelda = (sufijo, celda) => mkUser(sufijo, {
+      nearbyCell: celda, nearbyUpdatedAt: new Date()
+    });
+    await conCelda('celda_ok', '5432_9876');      // formato actual: cuenta
+    await conCelda('celda_vieja', '9g3q7bx');     // geohash viejo: NO debe contar
+    await conCelda('celda_fuera', '9999_99999');  // formato válido, fuera de la cuadrícula: NO
+    await mkUser('celda_caduca', {                 // formato bueno pero caducada: NO
+      nearbyCell: '5432_9877',
+      nearbyUpdatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+    });
+
     console.log('\n  — Permisos: solo ADMIN en la ruta principal —');
     let r = await call('GET', '/api/admin/indicadores?dias=30');
     check('anónimo → 401', r.status === 401, `(fue ${r.status})`);
@@ -118,6 +169,36 @@ module.exports = async function run() {
     check('dias no numérico → 400, no cae en el default en silencio', r.status === 400, `(fue ${r.status})`);
     r = await call('GET', '/api/admin/indicadores?dias=30.5', { tok: tAdmin });
     check('dias con decimales (no está en la lista exacta) → 400', r.status === 400, `(fue ${r.status})`);
+
+    console.log('\n  — Ciclo 12C: instantáneas que medían algo que ya no era cierto —');
+    const inst = (await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin })).data;
+    // Las instantáneas viven repartidas por área temática en la respuesta, no
+    // bajo una llave "instantaneas": la cuarentena es crecimiento y la zona
+    // compartida es actividad.
+    const enCuarentena = inst.crecimiento.cuentasEnCuarentena;
+    const compartiendo = inst.actividad.personasCompartiendoZona;
+
+    // No se asierta un número absoluto: la suite crea muchas otras cuentas y
+    // ese total cambiaría cada vez que alguien agregue un caso arriba. Se
+    // asierta la DIFERENCIA contra lo que habría contado el bug, que es lo que
+    // de verdad distingue el arreglo.
+    //
+    // Las dos que sobran con el bug son `q_email_vieja` (correo, 5 h: ya salió
+    // a las 3 h) y `q_mixta` (llave + correo, 5 h: toma la ventana más corta,
+    // también 3 h). Con la ventana única de 24 h las dos contaban.
+    const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [{ conBug }] = await prisma.$queryRaw`
+      SELECT count(*)::int AS "conBug" FROM "User" u
+      WHERE u."deletedAt" IS NULL AND u."createdAt" >= ${hace24h}
+        AND NOT EXISTS (SELECT 1 FROM "Identity" i WHERE i."userId" = u.id AND i.provider = 'MASTODON')`;
+    check('la cuarentena usa la ventana real de cada proveedor (8H)',
+      enCuarentena === conBug - 2,
+      `(el indicador dice ${enCuarentena}; la fórmula vieja de 24 h decía ${conBug}, y sobran exactamente 2)`);
+
+    // De las cuatro con celda, solo UNA es visible en Cerca.
+    check('zona compartida cuenta solo celdas del formato actual y vigentes',
+      compartiendo === 1,
+      `(fueron ${compartiendo}; contando las inválidas o caducadas serían 2-4)`);
 
     console.log('\n  — Caché: incluye calculadoEn y no recalcula en la siguiente consulta —');
     r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });

@@ -20,7 +20,30 @@ const DIAS_PERMITIDOS = [7, 30, 90];
 const TTL_CACHE_MS = 10 * 60 * 1000; // 10 min — dentro del rango 5-15 que pide el ciclo
 const UMBRAL_SUPRESION = 5;
 const CELL_TTL_DIAS = 7; // = CELL_TTL_DAYS en nearbyRoutes.js; mantener sincronizado si cambia ahí
-const QUARANTINE_HOURS = Number(process.env.SIGNUP_QUARANTINE_HOURS) || 24; // = requireAuth.js
+// Límites de la cuadrícula, importados de geogrid.js en vez de copiados: si
+// STEP_DEG cambia ahí, este indicador no puede quedarse midiendo con los
+// viejos. Es justo la clase de desincronización que este ciclo vino a cazar.
+const { LAT_CELLS, LON_CELLS } = require('./geogrid');
+
+// Cuarentena: LAS MISMAS VENTANAS QUE APLICA requireAuth.js, no una sola.
+//
+// Esto era el 8H. Antes había una constante `QUARANTINE_HOURS` que leía
+// `process.env.SIGNUP_QUARANTINE_HOURS` — una variable que **nadie define**
+// desde que HU-SEG-007 pasó a cuarentena graduada por proveedor. Caía siempre
+// a 24 h, así que el tablero contaba como "en cuarentena" a cuentas de correo
+// que ya podían tocar y chatear desde las 3 h. No afectaba la cuarentena real,
+// solo el número que ve un ADMIN — que es peor de lo que suena: un número que
+// nadie puede contrastar es un número en el que se confía.
+//
+// Se leen las mismas variables que requireAuth.js y con los mismos defaults.
+// Duplicarlas es feo, pero importarlas desde un middleware para calcular una
+// métrica ata dos cosas que no se parecen; el comentario cruzado en ambos
+// archivos es la defensa, y la prueba de este ciclo la hace real.
+const VENTANA_CUARENTENA_H = {
+  MASTODON: 0,
+  EMAIL: Number(process.env.SIGNUP_QUARANTINE_HOURS_EMAIL) || 3,
+  PASSKEY: Number(process.env.SIGNUP_QUARANTINE_HOURS_PASSKEY) || 24
+};
 
 // ---------- Zona horaria (Trampa 2) ----------
 //
@@ -275,15 +298,51 @@ async function consultaReportesPorDia(desdeConsulta) {
 // H. Instantáneas de "ahora mismo" que no son series de tiempo — combinadas en
 // una sola consulta con subconsultas escalares.
 async function consultaInstantaneas() {
-  const cuarentenaCutoff = new Date(Date.now() - QUARANTINE_HOURS * 60 * 60 * 1000);
-  const cercaCutoff = new Date(Date.now() - CELL_TTL_DIAS * 24 * 60 * 60 * 1000);
+  const ahora = Date.now();
+  const corte = (h) => new Date(ahora - h * 60 * 60 * 1000);
+  const cutMastodon = corte(VENTANA_CUARENTENA_H.MASTODON);
+  const cutEmail = corte(VENTANA_CUARENTENA_H.EMAIL);
+  const cutPasskey = corte(VENTANA_CUARENTENA_H.PASSKEY);
+  const cercaCutoff = new Date(ahora - CELL_TTL_DIAS * 24 * 60 * 60 * 1000);
   const filas = await prisma.$queryRaw`
     SELECT
+      -- Cuarentena, con la ventana REAL de cada cuenta (8H).
+      --
+      -- La regla de requireAuth.js: una cuenta con varias identidades toma la
+      -- ventana MÁS CORTA — llave + correo de respaldo debe esperar menos, es
+      -- la conducta que se quiere fomentar para recuperación de cuenta.
+      -- Ventana más corta = corte MÁS RECIENTE, de ahí el MAX y no un MIN.
+      -- Mastodon tiene ventana 0, así que su corte es "ahora" y nunca cuenta.
+      --
+      -- Sin identidades el MAX es NULL y la comparación no se cumple: una
+      -- cuenta que no puede entrar tampoco puede estar en cuarentena.
       (SELECT count(*)::int FROM "User" u
-        WHERE u."deletedAt" IS NULL AND u."createdAt" >= ${cuarentenaCutoff}
-          AND NOT EXISTS (SELECT 1 FROM "Identity" idm WHERE idm."userId" = u.id AND idm.provider = 'MASTODON')
+        WHERE u."deletedAt" IS NULL
+          AND u."createdAt" >= (
+            SELECT MAX(CASE i.provider
+              WHEN 'MASTODON' THEN ${cutMastodon}
+              WHEN 'EMAIL'    THEN ${cutEmail}
+              WHEN 'PASSKEY'  THEN ${cutPasskey}
+            END)
+            FROM "Identity" i WHERE i."userId" = u.id
+          )
       ) AS cuarentena,
-      (SELECT count(*)::int FROM "User" WHERE "nearbyCell" IS NOT NULL AND "nearbyUpdatedAt" >= ${cercaCutoff}) AS "compartiendoZona",
+      -- Zona compartida, con el MISMO criterio que usa Cerca.
+      --
+      -- Antes solo miraba que la celda no fuera nula y no hubiera caducado.
+      -- Pero hasActiveCell() en nearbyRoutes.js exige además que la celda
+      -- tenga el FORMATO ACTUAL: las del geohash viejo (~5 km) se descartan y
+      -- esas personas no aparecen en el mapa de nadie. Contarlas aquí decía
+      -- que hay más gente compartiendo zona de la que Cerca puede mostrar.
+      -- Replica isValidCell de geogrid.js COMPLETA: el patrón CELL_RE
+      -- ("{latIdx}_{lonIdx}") **y** los límites de la cuadrícula. Solo el
+      -- patrón dejaría pasar índices fuera de rango, que la app sí descarta.
+      -- El split es seguro porque el patrón ya garantizó que son dígitos.
+      (SELECT count(*)::int FROM "User"
+        WHERE "nearbyCell" ~ '^[0-9]{1,4}_[0-9]{1,5}$'
+          AND split_part("nearbyCell", '_', 1)::int < ${LAT_CELLS}
+          AND split_part("nearbyCell", '_', 2)::int < ${LON_CELLS}
+          AND "nearbyUpdatedAt" >= ${cercaCutoff}) AS "compartiendoZona",
       (SELECT count(*)::int FROM (SELECT "userId" FROM "Identity" GROUP BY "userId" HAVING count(*) > 1) x) AS "metodosMultiples",
       (SELECT count(*)::int FROM "Post" WHERE "hiddenAt" IS NOT NULL) AS "ocultoFeed",
       (SELECT count(*)::int FROM "ForumPost" WHERE "hiddenAt" IS NOT NULL) AS "ocultoForo"
