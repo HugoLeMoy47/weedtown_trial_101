@@ -143,6 +143,16 @@ Para respaldar producción, pon la cadena en `RESPALDO_DATABASE_URL` dentro de `
 >
 > **Un respaldo de la base equivocada que se reporta como éxito es peor que no tener respaldo**, porque produce confianza. De ahí las tres correcciones: el script carga los dos archivos, el banner muestra el **proyecto** (no el host), y **se niega a correr** si el proyecto resuelto es el mismo del `DATABASE_URL` de desarrollo, salvo `--acepto-desarrollo`.
 
+**Cuánto lleva sin respaldarse:**
+
+```bash
+npm run respaldo -- --revisar --destino "D:\respaldos-weedtown"
+```
+
+No respalda nada: mira la carpeta y dice hace cuántos días fue el último respaldo **completo** (los parciales no cuentan — un recorte no sirve para recuperar). Sale con código 1 si pasa de 7 días o si no hay ninguno, para poder engancharlo a algo automático el día que se quiera. La GUI muestra lo mismo como franja de color.
+
+> **Por qué esto existe y no un cron (decisión del ciclo 12D).** Se evaluaron cuatro caminos: tarea programada local, GitHub Actions con cron, plan de pago de Supabase, y seguir a mano. El PO eligió **seguir a mano por ahora**. Lo que se descartó explícitamente fue el cron en GitHub: habría puesto la cadena de producción en Secrets y dejado un archivo con correos, teléfonos y chats privados de 54 personas reales descargable como artefacto por cualquiera con acceso al repo — una ampliación real de la superficie de exposición en un proyecto cuya tesis es la privacidad. La decisión de no automatizar es legítima; lo que no podía quedar es que **el olvido fuera silencioso**, y para eso está este comando.
+
 **Cuatro decisiones que no son obvias:**
 
 - **`--destino` es obligatorio y no tiene default.** El archivo lleva correos, teléfonos y mensajes privados de personas reales; un default cómodo terminaría poniéndolo junto al código. Además **se niega** si la ruta cae dentro del repositorio: la comprobación es lo que evita el accidente, no el comentario.

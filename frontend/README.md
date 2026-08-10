@@ -70,6 +70,24 @@ El backend vive en Render (plan gratuito): se duerme a los ~15 min de inactivida
 
 Límite aceptado: un enlace que **nunca** se expandió antes cae en la ficha genérica la primera vez si el backend está dormido — hace falta que alguien lo abra una vez para que quede cacheado. Precalentar al compartir o pagar el plan Starter de Render resolverían esto; quedan fuera de alcance a propósito.
 
+### Cómo purgar una ficha (y por qué casi nunca hace falta)
+
+La auditoría del ciclo 7D dejó abierto que **`Custom Purge` con comodín (`/p/*`) exige plan Enterprise** — en Free y Pro solo hay purga por URL exacta o *Purge Everything*. Al retomarlo en el ciclo 12D resultó que el problema es más chico de lo que parecía, porque **los casos que de verdad importan ya se resuelven solos**:
+
+| Situación | Qué pasa hoy | ¿Hay que purgar? |
+|---|---|---|
+| Un posteo se borra u oculta por moderación | El backend responde 404 y el Worker **invalida la caché** en la siguiente petición, aunque estuviera rancia | **No** |
+| Un subforo se archiva | Igual: 404 y se invalida | **No** |
+| Alguien apaga su perfil público | La ficha rica caduca sola en **1 h como máximo** (TTL propio del 11B) | **No** |
+| Se cambió la imagen de campaña o el texto genérico | Afecta a muchas URLs y ninguna es "incorrecta", solo vieja | Opcional; se renueva sola en 24 h |
+| Una ficha concreta salió mal y hay que arreglarla ya | — | **Sí, por URL exacta** |
+
+Para el último caso: Cloudflare → *Caching* → *Configuration* → **Purge Custom** → la URL completa (`https://weedtown.social/p/59`). Funciona en Free.
+
+**Lo que NO sirve, y conviene saberlo antes de intentarlo:** el comodín necesita Enterprise, y *Purge Everything* tira también los bundles con hash y las imágenes, dejando el sitio entero con caché fría — un remedio desproporcionado para arreglar una tarjeta. Redesplegar el Worker **tampoco** limpia estas entradas: la Cache API es independiente de la versión del Worker.
+
+En resumen: no hay que resolver la purga con comodín, hay que saber que casi nunca se necesita. Si algún día hiciera falta invalidar muchas fichas a la vez, la salida barata es cambiar la clave de caché (por ejemplo agregando un sufijo de versión en `servirFicha`), no pagar Enterprise.
+
 ### Variables
 
 | Variable | Dónde vive | Valor |
