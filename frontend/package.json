@@ -2,14 +2,14 @@
   "name": "weedtown-frontend",
   "version": "1.0.0",
   "private": true,
-  "main": "src/index.js",
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "start": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "worker:dev": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy --env production"
+    "deploy": "npm run build && wrangler deploy --env production",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -24,11 +24,16 @@
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.30.4",
-    "react-scripts": "^5.0.1",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
-    "eslint": "^8.56.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.9.0",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10",
     "wrangler": "^4.119.0"
   },
   "browserslist": {

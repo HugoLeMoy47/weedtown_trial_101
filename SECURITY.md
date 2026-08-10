@@ -33,7 +33,9 @@ Se listan a propósito: un aviso abierto sin explicación se vuelve ruido que na
 | *Open redirect via backslash en `<Link>` y `useNavigate`* | **Mitigado desde antes de que existiera el aviso.** El único punto donde una cadena que viene de la URL llega a `useNavigate` es el `next` del muro de login, y `frontend/src/lib/rutaInterna.js` lo valida: exige que empiece con `/`, rechaza `//`, rechaza esquemas, y **rechaza la barra invertida** — que es exactamente el vector del CVE. Se escribió para la trampa T5 del ciclo 7A, no para esto |
 | *Open redirect leading to XSS* | Mismo razonamiento: depende del mismo vector |
 
-**Lo que sí queda como riesgo, y es el motivo de que esto no sea "cerrado" sino "aceptado":** la mitigación depende de que *cada* destino dinámico de navegación pase por una validación. Hoy es así —los demás se construyen con datos ya validados (handle, slug, id)— pero nada obliga a que el siguiente `navigate()` lo haga. La migración a la v7 se agenda junto con la del bundler (`react-scripts` → Vite), donde el riesgo de la migración baja.
+**Lo que sí queda como riesgo, y es el motivo de que esto no sea "cerrado" sino "aceptado":** la mitigación depende de que *cada* destino dinámico de navegación pase por una validación. Hoy es así —los demás se construyen con datos ya validados (handle, slug, id)— pero nada obliga a que el siguiente `navigate()` lo haga.
+
+**Actualización del ciclo 12B:** la condición que faltaba ya se cumplió. El bundler se migró a Vite, y con eso **estos dos son los únicos avisos que quedan en el frontend** — de 62 (32 altos, 2 críticos) se pasó a 2 moderados, ambos éstos. Migrar `react-router-dom` a la v7 es ahora un cambio acotado con el toolchain moderno debajo, y es el siguiente paso natural. No se hizo dentro del 12B a propósito: meter un cambio de mayor de la librería de rutas en el mismo diff que mueve el bundler haría que ninguno de los dos se pudiera revisar bien.
 
 ## Tiempo de respuesta
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Box, Card, CardContent, Typography, Button, Stack, Link } from '@mui/material';
+import { Card, CardContent, Typography, Button, Stack, Link } from '@mui/material';
 import GroupsIcon from '@mui/icons-material/Groups';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 

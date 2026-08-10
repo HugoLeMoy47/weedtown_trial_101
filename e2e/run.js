@@ -94,12 +94,13 @@ async function main() {
   // runners sin TTY.
   if (EN_CI) {
     console.log('\nCompilando el frontend contra el backend de pruebas…');
-    // CRA incrusta REACT_APP_* en tiempo de COMPILACIÓN, no de ejecución: si
-    // esta variable no está aquí, el bundle apunta al backend equivocado y
-    // todas las specs fallan con errores de red que no dicen por qué.
+    // Vite incrusta VITE_* en tiempo de COMPILACIÓN, no de ejecución: si esta
+    // variable no está aquí, el bundle apunta al backend equivocado y todas las
+    // specs fallan con errores de red que no dicen por qué. (Antes de la
+    // migración del 12B la variable se llamaba REACT_APP_API_URL.)
     const build = spawnSync('npm', ['run', 'build'], {
       cwd: FRONTEND,
-      env: { ...process.env, REACT_APP_API_URL: BACKEND_URL, CI: 'true' },
+      env: { ...process.env, VITE_API_URL: BACKEND_URL, CI: 'true' },
       stdio: 'inherit', shell: SHELL
     });
     if (build.status !== 0) abortar('No se pudo compilar el frontend.');
@@ -119,14 +120,19 @@ async function main() {
     console.log(`  frontend compilado sirviéndose en ${FRONTEND_URL}\n`);
   } else {
     console.log('\nLevantando el frontend, apuntando al backend de pruebas…');
-    frontendProc = spawn('npm', ['start'], {
+    // `--port` como bandera, no como variable de entorno: Vite NO lee PORT, a
+    // diferencia de react-scripts. Sin esto el servidor arrancaría en 3000 y
+    // las specs golpearían el puerto equivocado (o el de otra cosa que esté
+    // corriendo ahí).
+    frontendProc = spawn('npm', ['start', '--', '--port', String(FRONTEND_PORT), '--strictPort'], {
       cwd: FRONTEND,
-      env: { ...process.env, PORT: String(FRONTEND_PORT), REACT_APP_API_URL: BACKEND_URL, BROWSER: 'none' },
+      env: { ...process.env, VITE_API_URL: BACKEND_URL },
       stdio: 'inherit',
       shell: SHELL
     });
     frontendProc.on('error', e => abortar(`No se pudo iniciar el frontend: ${e.message}`));
-    // El primer arranque de react-scripts puede tardar bastante en compilar.
+    // El primer arranque de Vite compila dependencias; es rápido, pero se deja
+    // margen holgado porque en una máquina fría igual tarda.
     if (!await esperar(FRONTEND_URL, 180)) abortar('El frontend de pruebas no respondió a tiempo.');
     console.log('  frontend listo\n');
   }

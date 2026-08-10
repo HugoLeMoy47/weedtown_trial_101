@@ -173,22 +173,31 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # CI=true hace que react-scripts test corra una vez y salga (sin watch
-      # mode, que es el default fuera de CI y dejaría el job colgado para
-      # siempre). Sin este paso, worker.test.js (HU-SEC-001: que la inyección
-      # de HTML en /p/:id salga inerte) y rutaInterna.test.js nunca corrían en
-      # CI — la única defensa automática contra esa inyección no protegía nada.
+      # PASO PROPIO DESDE EL 12B, y es una reposición, no una mejora.
+      #
+      # Con Create React App el linter no tenía configuración en el repo: venía
+      # dentro de react-scripts, y el gate era `CI=true npm run build`, que
+      # convertía los warnings en error. Al migrar a Vite ese gate DESAPARECE
+      # sin que nada falle — Vite compila igual código que ESLint rechazaría.
+      # No es teórico: en el 9E ese gate atrapó un comentario JSX dentro del
+      # return implícito de un `.map()`.
+      #
+      # Ahora la configuración vive en frontend/eslint.config.mjs y el gate es
+      # explícito. Va ANTES de las pruebas: es el más rápido de los tres.
+      - name: Linter
+        working-directory: frontend
+        run: npm run lint
+
+      # `vitest run` (no `vitest`) corre una vez y sale. En modo interactivo se
+      # queda observando cambios y colgaría el job para siempre — el mismo
+      # cuidado que antes exigía CI=true con react-scripts.
+      #
+      # Sin este paso, worker.test.js (HU-SEC-001: que la inyección de HTML en
+      # /p/:id salga inerte) y rutaInterna.test.js no protegerían nada.
       - name: Pruebas
         working-directory: frontend
-        env:
-          CI: true
         run: npm test
 
-      # CI=true TAMBIÉN convierte los warnings de ESLint en error acá: una
-      # variable sin usar o un hook con dependencias incompletas rompen la
-      # tanda.
       - name: Compilar
         working-directory: frontend
-        env:
-          CI: true
         run: npm run build

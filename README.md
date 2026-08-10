@@ -90,7 +90,7 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   │                     chat, notifications, nearby, blocks, friends, reports,
 │   │                     admin (moderación), market* (* = stub)
 │   └── tests/          Pruebas de integración (`npm test`) contra una base aparte
-├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
+├── frontend/           Web (React 18 + Vite + MUI v5 + React Router)
 │   └── src/
 │       ├── components/ Navbar, PostCard, InviteBlock, ContentActions, RequireAuth, RequireRole, ...
 │       ├── hooks/      useAuth (AuthProvider + sesión en localStorage)
@@ -387,7 +387,7 @@ Están documentadas en **[`backend/scripts/README.md`](backend/scripts/README.md
 | API | Node.js 18+, Express 4 |
 | Identidad | OAuth 2.0 de Mastodon, llave de acceso (`@simplewebauthn/server`+`browser`) y enlace mágico por correo (Resend) + JWT (`jsonwebtoken`) |
 | Base de datos | PostgreSQL gestionado en **Supabase** (dev/pruebas); Prisma ORM 6 |
-| Web | React 18, **MUI v5** (Material Design, claro/oscuro), React Router 6, Axios |
+| Web | React 18, **Vite 7**, **MUI v5** (Material Design, claro/oscuro), React Router 6, Axios |
 | Móvil | Expo / React Native |
 | Docs API | Swagger UI en `/api-docs` |
 | Tiempo real | Socket.IO 4 (handshake autenticado con el JWT de sesión; entrega de mensajes en vivo) |
@@ -395,7 +395,7 @@ Están documentadas en **[`backend/scripts/README.md`](backend/scripts/README.md
 
 Notas:
 - En producción la base de datos puede apuntar a cualquier PostgreSQL: solo cambian `DATABASE_URL` y `DIRECT_URL`.
-- MUI está **fijado en v5**: la v9 es incompatible con Create React App (react-scripts 5). No actualizar de major sin migrar el bundler.
+- MUI sigue en **v5**, pero ya no por obligación: el bundler se migró a Vite en el ciclo 12B y el impedimento técnico desapareció. Subir de major es ahora una decisión de producto —hay cambios de API que revisar— y no un bloqueo del toolchain.
 
 ---
 
@@ -529,7 +529,9 @@ Dos cosas más que hay que decidir explícitamente al desplegar, porque los defa
 
 El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin dependencias nuevas y sobre la infraestructura que el proyecto ya tiene. Agregar S3, R2 o MinIO es escribir un objeto más en `src/lib/storage.js` con el mismo contrato (`save`, `remove`, `keyFromUrl`).
 
-**2. URL del backend.** El frontend resuelve el origen de la API en este orden: `REACT_APP_API_URL` si existe; si no y estás en desarrollo, el mismo host con puerto 4000 (así funciona igual en `localhost` y desde otra máquina de la red); si no y estás en producción, **el mismo origen que la web**, que es lo que da un reverse proxy sirviendo el frontend y `/api` juntos. Si tu backend vive en otro dominio o puerto, define `REACT_APP_API_URL` al compilar — la app avisa por consola cuando cae en el default de producción.
+**2. URL del backend.** El frontend resuelve el origen de la API en este orden: **`VITE_API_URL`** si existe (y `REACT_APP_API_URL` se sigue aceptando, ver abajo); si no y estás en desarrollo, el mismo host con puerto 4000 (así funciona igual en `localhost` y desde otra máquina de la red); si no y estás en producción, **el mismo origen que la web**, que es lo que da un reverse proxy sirviendo el frontend y `/api` juntos. Si tu backend vive en otro dominio o puerto, define `VITE_API_URL` **al compilar** — Vite la incrusta en el bundle, no se lee en tiempo de ejecución. La app avisa por consola cuando cae en el default de producción.
+
+> **La variable cambió de nombre en el 12B y las dos se aceptan a propósito.** La configuración de Cloudflare vive en su dashboard, fuera de este repo: si solo se aceptara `VITE_API_URL`, un despliegue con el nombre viejo compilaría bien y apuntaría al backend equivocado, **sin error y sin aviso**. Aceptando ambas, lo que ya está configurado sigue funcionando y la app avisa por consola para que la limpieza sea deliberada. Verificado compilando con cada nombre y comprobando que el valor llega al bundle.
 
 **3. Ficha de previsualización (Worker de Cloudflare).** Desde el ciclo 7B, `frontend/wrangler.jsonc` ya no es "solo assets": tiene un Worker (`frontend/src/worker.js`) que intercepta `/p/:id` — y desde el 9A también `/forum/:slug`, pero **no** `/forum/:slug/post/:id` — para inyectar meta tags Open Graph antes de servir el HTML — ver [frontend/README.md](frontend/README.md) para el porqué y el detalle técnico. `PREVIEW_API_URL` (la URL del backend que consulta el Worker) vive en dos bloques separados de `wrangler.jsonc`: el de arriba (`vars`, apunta a `localhost:4000`) es solo para `wrangler dev`; el real vive en `env.production.vars` (`https://weedtown-api.onrender.com`), y **`npm run deploy` ya corre `wrangler deploy --env production`** — no hace falta editar nada a mano antes de desplegar, ni hay forma de mandar por accidente el valor de desarrollo a producción.
 
@@ -547,7 +549,7 @@ El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se
 
 **Las E2E también corren en CI desde el ciclo 12A**, en su propio job. Existían desde el ciclo 1 y pasaban en local, pero no protegían nada en cada push — el mismo patrón que el 7E ya había cazado para las unitarias del frontend. El 8C lo documentó con honestidad aquí mismo, y documentar un hueco no lo cierra.
 
-El job levanta el mismo Postgres 16 efímero, compila el frontend y lo sirve **estático** (`e2e/servidorEstatico.js`, veinte líneas con fallback de SPA, sin dependencia nueva). En local el ciclo sigue usando el servidor de desarrollo, que da recarga en caliente. Dos razones para compilarlo en CI: es lo que de verdad se despliega, y el dev server de Create React App a veces se cuelga en runners sin TTY.
+El job levanta el mismo Postgres 16 efímero, compila el frontend y lo sirve **estático** (`e2e/servidorEstatico.js`, veinte líneas con fallback de SPA, sin dependencia nueva). En local el ciclo sigue usando el servidor de desarrollo, que da recarga en caliente. Dos razones para compilarlo en CI: es lo que de verdad se despliega, y el servidor de desarrollo a veces se cuelga en runners sin TTY.
 
 > **La trampa que costó una corrida entera:** la primera versión levantaba el servidor estático **dentro del proceso** de `e2e/run.js`. Como Playwright se lanza con `spawnSync`, que **bloquea el event loop**, ese servidor aceptaba conexiones y no contestaba ninguna: las 10 specs agotaron su timeout de 1.7 min cada una. Y Playwright no dice "el servidor no responde", dice "no encontré el elemento". Va en su propio proceso, y por eso `servidorEstatico.js` se puede ejecutar suelto.
 

@@ -1,6 +1,6 @@
 # WeedTown — Frontend
 
-React (Create React App) servido en producción como **Cloudflare Workers Static Assets**, con un Worker propio delante para las fichas de previsualización de `/p/:id` y `/forum/:slug`. Ver el [README raíz](../README.md) para la visión general del proyecto.
+React 18 con **Vite** servido en producción como **Cloudflare Workers Static Assets**, con un Worker propio delante para las fichas de previsualización de `/p/:id`, `/forum/:slug` y `/@handle`. Ver el [README raíz](../README.md) para la visión general del proyecto.
 
 ## Desarrollo local
 
@@ -17,7 +17,11 @@ Levanta en `http://localhost:3000` contra el backend de `http://localhost:4000` 
 npm run build
 ```
 
-Genera `build/`, que es lo que sirve tanto `serve -s build` en local como Cloudflare en producción.
+Genera `build/`, que es lo que sirve tanto `e2e/servidorEstatico.js` en local como Cloudflare en producción.
+
+> **`build/` y no el `dist/` que Vite usa por defecto**, y no es preferencia estética: `wrangler.jsonc` declara `assets.directory: "build"` y el ciclo E2E sirve esa carpeta. Cambiar el nombre obligaría a tocar la configuración de despliegue de Cloudflare, que vive en su dashboard y fuera de este repo — el tipo de cambio que se rompe en silencio.
+
+La forma de la salida SÍ cambió con la migración: CRA emitía `static/js/main.<hash>.js` y Vite emite `assets/index-<hash>.js`. Nada del Worker depende de eso (sirve el `index.html` y deja pasar el resto), pero conviene saberlo al leer notas viejas.
 
 ### `public/robots.txt`
 

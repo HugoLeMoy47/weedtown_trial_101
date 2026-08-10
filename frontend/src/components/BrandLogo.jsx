@@ -4,10 +4,11 @@ import SpaIcon from '@mui/icons-material/Spa';
 
 // Marca en orden de preferencia: el PNG oficial (si existe en public/) y,
 // si no, la versión vectorial SVG del logo. El ícono de hoja es el último recurso.
-const LOGO_SOURCES = [
-  `${process.env.PUBLIC_URL || ''}/logo.png`,
-  `${process.env.PUBLIC_URL || ''}/logo.svg`
-];
+// `BASE_URL` es el equivalente en Vite de PUBLIC_URL (12B). Vale '/' salvo que
+// el sitio se sirva bajo un subdirectorio, así que se recorta la barra final
+// para no terminar con '//logo.png'.
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+const LOGO_SOURCES = [`${BASE}/logo.png`, `${BASE}/logo.svg`];
 
 // Isotipo: el logo va recortado en círculo sobre fondo blanco,
 // así se ve intencional también en modo oscuro.
