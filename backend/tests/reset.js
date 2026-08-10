@@ -18,10 +18,22 @@ function abortar(mensaje) {
   process.exit(1);
 }
 
-if (!fs.existsSync(ENV_TEST)) {
+// En local el entorno sale de .env.test; en CI ya viene inyectado, igual que en
+// tests/run.js y e2e/run.js. Este script quedó fuera de ese arreglo del 12A y
+// tiró el job de E2E en la primera tanda: es el PRIMERO que corre, y exigía un
+// archivo que en el runner no existe.
+//
+// El archivo no es el guardia. Los guardias son los dos de abajo — schema propio
+// y distinto del de desarrollo — y se aplican igual en los dos casos.
+let fuenteEntorno;
+if (fs.existsSync(ENV_TEST)) {
+  require('dotenv').config({ path: ENV_TEST, override: true });
+  fuenteEntorno = '.env.test';
+} else if (process.env.CI && process.env.DATABASE_URL) {
+  fuenteEntorno = 'las variables de entorno del CI';
+} else {
   abortar('Falta backend/.env.test — este script solo opera sobre la base de pruebas.');
 }
-require('dotenv').config({ path: ENV_TEST, override: true });
 
 const urlPruebas = process.env.DIRECT_URL || process.env.DATABASE_URL || '';
 const schema = /[?&]schema=([^&]+)/.exec(urlPruebas)?.[1];
@@ -29,17 +41,17 @@ const schema = /[?&]schema=([^&]+)/.exec(urlPruebas)?.[1];
 // Mismos guardias que tests/run.js: nunca operar sobre "public" ni sobre la
 // URL de desarrollo, así este script no pueda tirar un schema que no es suyo.
 if (!schema || schema === 'public') {
-  abortar('DATABASE_URL/DIRECT_URL (de .env.test) no declara un ?schema= distinto de "public".');
+  abortar(`DATABASE_URL/DIRECT_URL (de ${fuenteEntorno}) no declara un ?schema= distinto de "public".`);
 }
 if (fs.existsSync(ENV_DEV)) {
   const dev = /^DATABASE_URL="?([^"\n]+)"?/m.exec(fs.readFileSync(ENV_DEV, 'utf8'))?.[1];
   if (dev && dev === process.env.DATABASE_URL) {
-    abortar('DATABASE_URL de .env.test es idéntica a la de .env. Me niego a tirar ese schema.');
+    abortar(`DATABASE_URL (de ${fuenteEntorno}) es idéntica a la de .env. Me niego a tirar ese schema.`);
   }
 }
 
 async function main() {
-  console.log(`Reiniciando el schema de pruebas "${schema}"…`);
+  console.log(`Reiniciando el schema de pruebas "${schema}"  ·  entorno: ${fuenteEntorno}`);
   const client = new Client({ connectionString: urlPruebas });
   await client.connect();
   try {
