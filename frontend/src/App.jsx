@@ -19,6 +19,7 @@ import AuthCallback from './pages/AuthCallback';
 import RequireAuth from './components/RequireAuth';
 import RequireRole from './components/RequireRole';
 
+import PrimeraPregunta from './components/PrimeraPregunta';
 import { AuthProvider } from './hooks/useAuth';
 import { ColorModeProvider } from './theme';
 
@@ -27,6 +28,12 @@ function App() {
     <ColorModeProvider>
       <AuthProvider>
         <Router>
+          {/* Ciclo 13B. Va FUERA de <Routes> y no dentro de una pantalla: quien
+              llega por una invitación aterriza en el perfil de quien la invitó,
+              no en el feed, y la pregunta tiene que aparecer igual sin importar
+              dónde caiga. Se dispara una sola vez, con la marca que dejó el
+              alta, y no pinta nada el resto del tiempo. */}
+          <PrimeraPregunta />
           <Routes>
             <Route path="/" element={<Navigate to="/feed" replace />} />
             <Route path="/home" element={<Navigate to="/feed" replace />} />

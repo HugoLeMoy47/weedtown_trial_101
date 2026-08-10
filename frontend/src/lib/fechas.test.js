@@ -7,7 +7,7 @@
 // y día 7): un formateador de fechas se equivoca justo ahí y en ningún otro
 // lado.
 import { describe, it, expect } from 'vitest';
-import { fechaRelativa, fechaCorta, fechaCompleta, etiquetaAccesible, etiquetaDeDia } from './fechas';
+import { fechaRelativa, fechaCorta, fechaCompleta, etiquetaAccesible, etiquetaDeDia, faltaPara } from './fechas';
 
 // Un martes a media tarde, para que restarle horas no cruce la medianoche por
 // accidente y las pruebas digan lo que parecen decir.
@@ -134,5 +134,31 @@ describe('etiquetaDeDia: separadores del chat', () => {
   it('a la semana pasa a fecha', () => {
     expect(etiquetaDeDia(hace(3 * DIA), AHORA)).toBe('hace 3 días');
     expect(etiquetaDeDia(hace(9 * DIA), AHORA)).not.toMatch(/hace/);
+  });
+});
+
+describe('faltaPara: el tiempo que falta (13B, aviso de cuarentena)', () => {
+  it('redondea hacia arriba, porque prometer menos espera de la real es peor', () => {
+    // 61 minutos son "unas 2 horas", no "1 hora": si dijera 1 y al volver
+    // siguiera bloqueado, el aviso habría mentido.
+    expect(faltaPara(new Date(AHORA.getTime() + 61 * MIN), AHORA)).toBe('en unas 2 horas');
+  });
+
+  it('con menos de una hora habla en minutos, no en "menos de una hora"', () => {
+    expect(faltaPara(new Date(AHORA.getTime() + 20 * MIN), AHORA)).toBe('en 20 minutos');
+    expect(faltaPara(new Date(AHORA.getTime() + 30 * SEG), AHORA)).toBe('en menos de un minuto');
+  });
+
+  it('singular donde toca', () => {
+    expect(faltaPara(new Date(AHORA.getTime() + 60 * MIN), AHORA)).toBe('en una hora');
+    expect(faltaPara(new Date(AHORA.getTime() + 40 * SEG + 20 * SEG), AHORA)).toBe('en un minuto');
+  });
+
+  it('si ya pasó, dice "ya" — nunca un tiempo negativo', () => {
+    expect(faltaPara(new Date(AHORA.getTime() - 5 * MIN), AHORA)).toBe('ya');
+  });
+
+  it('una fecha inválida no produce un aviso a medias', () => {
+    expect(faltaPara(null, AHORA)).toBe('');
   });
 });

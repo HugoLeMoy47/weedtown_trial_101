@@ -605,6 +605,15 @@ const Indicadores = () => {
                 />
               </>
             )}
+            {datos.crecimiento.altasConBio && (
+              <Tile
+                label="Altas del periodo que llenaron su biografía"
+                valor={datos.crecimiento.altasConBio.porcentaje != null
+                  ? `${datos.crecimiento.altasConBio.conBio} de ${datos.crecimiento.altasConBio.altas} (${datos.crecimiento.altasConBio.porcentaje}%)`
+                  : 'sin altas en el periodo'}
+                ayuda="Mide si la pregunta del alta sirve. Todo lo construido sobre el perfil depende de este número."
+              />
+            )}
           </Bloque>
 
           <Bloque titulo="Actividad por superficie">

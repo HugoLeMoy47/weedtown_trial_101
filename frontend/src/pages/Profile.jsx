@@ -204,7 +204,7 @@ const Profile = () => {
             que alguien viene a buscar cuando quiere invitar a alguien, y
             enterrarlo al final del perfil fue justo el error de la primera
             versión del 11A — el mecanismo existía y no había dónde tomarlo. */}
-        <MiEnlaceDeInvitacion handle={form.handle} invitaciones={invitaciones} />
+        <MiEnlaceDeInvitacion handle={form.handle} invitaciones={invitaciones} bio={form.bio} />
 
         <AvatarStudio user={user} onSaved={setUser} />
         <AccessMethods identities={identities} onChange={cargarPerfil} />

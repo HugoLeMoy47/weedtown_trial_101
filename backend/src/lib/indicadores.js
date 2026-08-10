@@ -329,6 +329,33 @@ async function consultaAtribucionPorDia(desdeConsulta) {
   `;
 }
 
+// G-ter. ¿Las altas del periodo llenaron su perfil? (ciclo 13B)
+//
+// Sin esto el ciclo no se puede evaluar, y quedarse sin saber si funcionó es
+// la peor salida posible: la pregunta del alta puede llevar de 1 de 56 a 15 de
+// 56, o no mover nada, y las dos cosas se parecen mucho si nadie mide.
+//
+// No hace falta guardar nada nuevo: sale de columnas que ya existen. Se filtra
+// por día mexicano con `entreDiasMx` y no convirtiendo las fechas de la
+// ventana a instantes — la segunda cara de la Trampa 2, que el 9A documentó.
+async function consultaAltasConBio(desdeActualISO, hastaISO) {
+  const filas = await prisma.$queryRaw`
+    SELECT count(*)::int AS altas,
+           count(*) FILTER (WHERE "bio" IS NOT NULL AND btrim("bio") <> '')::int AS con_bio
+    FROM "User"
+    WHERE "deletedAt" IS NULL AND ${entreDiasMx('createdAt', null, desdeActualISO, hastaISO)}
+  `;
+  const { altas, con_bio: conBio } = filas[0];
+  return {
+    altas,
+    conBio,
+    // `null` y no 0 cuando no hubo altas: un 0% con cero altas diría "nadie
+    // llenó su perfil" cuando lo cierto es "no llegó nadie". Son cosas
+    // distintas y el tablero no debe confundirlas.
+    porcentaje: altas > 0 ? Math.round((conBio / altas) * 1000) / 10 : null
+  };
+}
+
 // H. Instantáneas de "ahora mismo" que no son series de tiempo — combinadas en
 // una sola consulta con subconsultas escalares.
 async function consultaInstantaneas() {
@@ -516,7 +543,7 @@ async function calcularCatalogo(dias) {
   const [
     simples, altasProveedor, feed, reacciones, foro, amistad, reportes,
     instantaneas, subforosVivos, seguidores, concentracion, tiempoRespuesta, reincidencia,
-    atribucion
+    atribucion, altasConBio
   ] = await Promise.all([
     consultaSeriesSimples(v.desdeConsulta),
     consultaAltasPorProveedor(v.desdeConsulta),
@@ -531,7 +558,8 @@ async function calcularCatalogo(dias) {
     consultaConcentracion(v.desdeActual, v.hasta),
     consultaTiempoRespuesta(v.desdeActual, v.hasta),
     consultaReincidencia(v.desdeActual, v.hasta),
-    consultaAtribucionPorDia(v.desdeConsulta)
+    consultaAtribucionPorDia(v.desdeConsulta),
+    consultaAltasConBio(v.desdeActual, v.hasta)
   ]);
 
   const porFuente = (fuente) => simples.filter(f => f.fuente === fuente);
@@ -591,7 +619,9 @@ async function calcularCatalogo(dias) {
         totalesPeriodo: totalesAtribucion,
         intentosPeriodo,
         altasDelPeriodo: altasTendencia.total
-      }
+      },
+      // 13B: la conversión que mide si la pregunta del alta sirvió de algo.
+      altasConBio
     },
     actividad: {
       postsPorDia: conTendencia(feed.filter(f => f.sub === 'post'), v),

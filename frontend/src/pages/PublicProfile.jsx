@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container, Card, CardContent, Typography, Avatar, Box, Stack, Button, Chip,
-  CircularProgress, Alert, Divider, Pagination
+  CircularProgress, Alert, Divider, Pagination, Link
 } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
@@ -11,6 +11,7 @@ import ContentActions from '../components/ContentActions';
 import PostCard from '../components/PostCard';
 import { useAuth } from '../hooks/useAuth';
 import { tomarBienvenida } from '../lib/attribution';
+import { datosCuarentena } from '../lib/cuarentena';
 import api from '../services/api';
 
 // Perfil de otra persona (HU-AMI-002): datos públicos siempre, "sobre mí"
@@ -42,6 +43,7 @@ const PublicProfile = () => {
   const [sinSesion, setSinSesion] = useState(false);
   const [busy, setBusy] = useState(false);
   const [accionError, setAccionError] = useState('');
+  const [cuarentena, setCuarentena] = useState(null);
   const [bloqueado, setBloqueado] = useState(false);
   const [posts, setPosts] = useState([]);
   const [pagina, setPagina] = useState(1);
@@ -141,11 +143,20 @@ const PublicProfile = () => {
   const conAccion = async (fn) => {
     setBusy(true);
     setAccionError('');
+    setCuarentena(null);
     try {
       await fn();
       await cargar();
     } catch (e) {
-      setAccionError(e.response?.data?.error || 'No se pudo completar la acción.');
+      // Ciclo 13B. La cuarentena de cuentas nuevas se distingue de cualquier
+      // otro error, y aquí no basta la frase de una línea que usan Chat y
+      // Cerca: este es el momento en que alguien acaba de llegar POR UNA
+      // INVITACIÓN y lo primero que intenta —corresponder— le sale bloqueado.
+      // Con el mensaje genérico se queda parada sin saber cuánto falta ni si
+      // puede hacer algo. El aviso con enlaces se pinta abajo.
+      const espera = datosCuarentena(e);
+      if (espera) setCuarentena(espera);
+      else setAccionError(e.response?.data?.error || 'No se pudo completar la acción.');
     } finally {
       setBusy(false);
     }
@@ -308,6 +319,29 @@ const PublicProfile = () => {
             )}
 
             {accionError && <Alert severity="error" role="alert" sx={{ mt: 2 }}>{accionError}</Alert>}
+
+            {/* Ciclo 13B: el callejón sin salida de la cuarentena, con salida.
+                Dice CUÁNDO se libera —el backend ya mandaba ese dato y el
+                frontend lo tiraba— y ofrece las dos cosas que se pueden hacer
+                mientras tanto. Ojo con cuál es cuál: completar el perfil NO
+                acorta la espera y el texto no lo insinúa; agregar un correo de
+                respaldo SÍ, porque baja la ventana de 24 h a 3 h. La diferencia
+                es que un correo demuestra control de algo, y una biografía se
+                escribe en diez segundos — también por un script. */}
+            {cuarentena && (
+              <Alert severity="info" role="status" sx={{ mt: 2 }}>
+                <Typography variant="body2" gutterBottom>
+                  Tu cuenta es muy nueva para mandar solicitudes — es una protección de la
+                  comunidad, no un castigo. Vas a poder <strong>{cuarentena.cuando}</strong>.
+                </Typography>
+                <Typography variant="body2">
+                  Mientras tanto, <Link component={RouterLink} to="/profile">completa tu perfil</Link>:
+                  cuando se libere, quien reciba tu solicitud va a ver quién eres.
+                  Y si <Link component={RouterLink} to="/profile">agregas un correo de respaldo</Link>,
+                  la espera se acorta.
+                </Typography>
+              </Alert>
+            )}
           </CardContent>
         </Card>
 

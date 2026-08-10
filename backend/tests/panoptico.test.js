@@ -236,6 +236,32 @@ module.exports = async function run() {
       compartiendo === 1,
       `(fueron ${compartiendo}; contando las inválidas o caducadas serían 2-4)`);
 
+    // Ciclo 13B. La conversión que dice si la pregunta del alta sirvió. Se
+    // asserta contra un conteo calculado aquí, no contra un número fijo: un
+    // absoluto envejecería con cada caso nuevo que la suite siembre, que es
+    // exactamente cómo se escribió la aserción de cuarentena que tumbó el CI
+    // en la Ola 4.
+    console.log('\n  — 13B: altas del periodo que llenaron su biografía —');
+    // Con su propia llamada, no reusando la `r` de la sección anterior: ahí
+    // arriba `r` quedó apuntando a otra respuesta, y depender de eso es cómo
+    // una prueba empieza a asertar sobre lo que no cree estar asertando.
+    const rBio = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
+    const conBio = rBio.data.crecimiento?.altasConBio;
+    check('el indicador viene en la respuesta', Boolean(conBio), `(fue ${JSON.stringify(conBio)})`);
+    if (conBio) {
+      const bíosEnBase = await prisma.user.count({
+        where: { deletedAt: null, bio: { not: null }, NOT: { bio: '' } }
+      });
+      // El indicador filtra por la ventana; la cuenta de arriba no. Solo puede
+      // ser menor o igual, nunca mayor.
+      check('cuenta bios reales, sin pasarse del total de la base',
+        conBio.conBio <= bíosEnBase && conBio.conBio >= 0,
+        `(indicador ${conBio.conBio}, total en base ${bíosEnBase})`);
+      check('el porcentaje es null cuando no hubo altas, no un 0% engañoso',
+        conBio.altas > 0 ? typeof conBio.porcentaje === 'number' : conBio.porcentaje === null,
+        `(altas ${conBio.altas}, porcentaje ${conBio.porcentaje})`);
+    }
+
     console.log('\n  — Caché: incluye calculadoEn y no recalcula en la siguiente consulta —');
     r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
     check('trae calculadoEn', Boolean(r.data.calculadoEn));

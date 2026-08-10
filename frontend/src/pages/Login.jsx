@@ -18,6 +18,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
 import api, { API_ORIGIN } from '../services/api';
 import { capturarAtribucion, tomarNextPendiente, registrarAltaSiCorresponde } from '../lib/attribution';
+import { marcarAltaNueva } from '../lib/altaNueva';
 
 const API_URL = `${API_ORIGIN}/api`;
 
@@ -143,6 +144,7 @@ const Login = () => {
       });
       await loginWithToken(creado.token);
       await registrarAltaSiCorresponde(creado.isNew);
+      marcarAltaNueva(creado.isNew);
     } catch (e) {
       if (e?.name === 'NotAllowedError') setPasskeyError('Cancelado.');
       else if (e?.name === 'InvalidStateError') setPasskeyError('Esa llave ya está registrada. Usa "Entrar con llave de acceso".');

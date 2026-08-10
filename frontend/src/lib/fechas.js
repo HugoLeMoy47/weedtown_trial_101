@@ -110,6 +110,28 @@ export function etiquetaAccesible(valor, ahora = new Date()) {
   return `${relativa}, ${completa}`;
 }
 
+// Hacia el FUTURO: cuánto falta para algo. Lo usa el aviso de cuarentena
+// (13B), que hasta ahora tenía su propia versión dentro de cuarentena.js.
+// Vive aquí para que exista UNA sola forma de decir el tiempo en esta
+// aplicación — la de arriba mira al pasado y ésta al futuro, pero si alguien
+// cambia el tono de una debe ver la otra al lado.
+//
+// Redondea hacia ARRIBA a propósito: prometer menos espera de la real y que
+// la acción siga bloqueada al volver es peor que prometer de más.
+export function faltaPara(valor, ahora = new Date()) {
+  const d = aFecha(valor);
+  if (!d) return '';
+  const ms = d.getTime() - new Date(ahora).getTime();
+  if (ms <= 0) return 'ya';
+  if (ms < MINUTO) return 'en menos de un minuto';
+  if (ms < HORA) {
+    const n = Math.ceil(ms / MINUTO);
+    return n === 1 ? 'en un minuto' : `en ${n} minutos`;
+  }
+  const n = Math.ceil(ms / HORA);
+  return n === 1 ? 'en una hora' : `en unas ${n} horas`;
+}
+
 // Separadores de día del chat: ahí no se dice "hace 3 horas", se dice de qué
 // día es el bloque de mensajes que viene abajo.
 export function etiquetaDeDia(valor, ahora = new Date()) {
