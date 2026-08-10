@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -58,11 +58,11 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      # Solo el backend: hoy está en 0 avisos (ciclo 8E), así que un aviso
-      # alto nuevo aquí es señal real, no ruido. El frontend queda fuera a
-      # propósito — hereda altos/críticos del toolchain de Create React App
-      # (deuda de fondo documentada en la auditoría, fuera de este ciclo) y
-      # este gate fallaría de inmediato sin decir nada nuevo.
+      # 0 avisos desde el ciclo 8E, así que un alto nuevo aquí es señal real.
+      # (El frontend estuvo fuera de este gate durante meses porque heredaba
+      # 32 altos y 2 críticos del toolchain de Create React App y habría
+      # fallado siempre sin decir nada nuevo. Desde el 12B ya no: tiene su
+      # propio gate abajo.)
       - name: Auditar dependencias (solo altas/críticas)
         working-directory: backend
         run: npm audit --audit-level=high
@@ -80,6 +80,82 @@ jobs:
         working-directory: backend
         run: npm test
 
+  # Ciclo 12A. Las specs de Playwright existían desde el ciclo 1, pasaban en
+  # local y NO PROTEGÍAN NADA en cada push — el mismo patrón que el 7E cazó
+  # para las unitarias del frontend. El 8C lo documentó con honestidad en el
+  # README, pero documentar un hueco no lo cierra.
+  #
+  # Va en su propio job, no pegado al de backend: tarda más que los otros dos y
+  # así no retrasa la señal rápida. Mismo Postgres efímero, misma razón — las
+  # specs borran datos.
+  e2e:
+    name: E2E · navegador real
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weedtown_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/weedtown_e2e?schema=weedtown_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/weedtown_e2e?schema=weedtown_test
+      API_LIMITER_MAX: 5000
+      # Un navegador de verdad hace muchas más peticiones que la suite de
+      # integración, y todas desde la misma IP.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
+          npm ci --prefix e2e
+
+      - name: Generar el cliente de Prisma
+        working-directory: backend
+        run: npx prisma generate
+
+      # `--with-deps` instala las librerías del sistema que Chromium necesita
+      # en el runner. Sin eso, el navegador arranca y muere sin explicar nada.
+      - name: Instalar Chromium para Playwright
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Generar JWT_SECRET de la tanda
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      # e2e/run.js detecta CI: toma el entorno inyectado en vez de .env.test, y
+      # sirve el frontend COMPILADO en vez del servidor de desarrollo.
+      - name: Ciclo E2E completo
+        working-directory: e2e
+        run: npm test
+
+      # Las trazas y capturas solo se generan al fallar (playwright.config.js).
+      # Sin esto, un fallo en CI es un mensaje sin nada que mirar.
+      - name: Guardar evidencia si algo falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidencia
+          path: e2e/test-results/
+          retention-days: 7
+
   frontend:
     name: Frontend · compilación
     runs-on: ubuntu-latest
@@ -89,7 +165,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -97,22 +173,39 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # CI=true hace que react-scripts test corra una vez y salga (sin watch
-      # mode, que es el default fuera de CI y dejaría el job colgado para
-      # siempre). Sin este paso, worker.test.js (HU-SEC-001: que la inyección
-      # de HTML en /p/:id salga inerte) y rutaInterna.test.js nunca corrían en
-      # CI — la única defensa automática contra esa inyección no protegía nada.
+      # GATE NUEVO, que la migración del 12B hizo posible. Con Create React App
+      # el frontend arrastraba 32 avisos altos y 2 críticos del toolchain, así
+      # que auditarlo habría fallado en cada tanda sin aportar información.
+      # Ahora está en 0 altos: a partir de aquí, un alto nuevo es real.
+      - name: Auditar dependencias (solo altas/críticas)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      # PASO PROPIO DESDE EL 12B, y es una reposición, no una mejora.
+      #
+      # Con Create React App el linter no tenía configuración en el repo: venía
+      # dentro de react-scripts, y el gate era `CI=true npm run build`, que
+      # convertía los warnings en error. Al migrar a Vite ese gate DESAPARECE
+      # sin que nada falle — Vite compila igual código que ESLint rechazaría.
+      # No es teórico: en el 9E ese gate atrapó un comentario JSX dentro del
+      # return implícito de un `.map()`.
+      #
+      # Ahora la configuración vive en frontend/eslint.config.mjs y el gate es
+      # explícito. Va ANTES de las pruebas: es el más rápido de los tres.
+      - name: Linter
+        working-directory: frontend
+        run: npm run lint
+
+      # `vitest run` (no `vitest`) corre una vez y sale. En modo interactivo se
+      # queda observando cambios y colgaría el job para siempre — el mismo
+      # cuidado que antes exigía CI=true con react-scripts.
+      #
+      # Sin este paso, worker.test.js (HU-SEC-001: que la inyección de HTML en
+      # /p/:id salga inerte) y rutaInterna.test.js no protegerían nada.
       - name: Pruebas
         working-directory: frontend
-        env:
-          CI: true
         run: npm test
 
-      # CI=true TAMBIÉN convierte los warnings de ESLint en error acá: una
-      # variable sin usar o un hook con dependencias incompletas rompen la
-      # tanda.
       - name: Compilar
         working-directory: frontend
-        env:
-          CI: true
         run: npm run build

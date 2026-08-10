@@ -38,7 +38,11 @@ function Feed() {
     setLoading(true);
     api.get(`/posts?page=${page}`)
       .then(res => {
-        setPosts(res.data.posts);
+        // `|| []` no es paranoia: si la respuesta no trae `posts` —una URL de API
+        // mal configurada devolviendo el index.html del SPA con 200, por ejemplo—
+        // esto guardaba `undefined` y el render moría en `showing.length` con la
+        // pantalla EN BLANCO, sin mensaje. Pasó al verificar la migración a Vite.
+        setPosts(res.data.posts || []);
         setTotalPages(res.data.totalPages || 1);
       })
       .catch(() => setError('No se pudo cargar el feed.'))

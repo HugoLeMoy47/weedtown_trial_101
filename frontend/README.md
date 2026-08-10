@@ -1,6 +1,6 @@
 # WeedTown — Frontend
 
-React (Create React App) servido en producción como **Cloudflare Workers Static Assets**, con un Worker propio delante para las fichas de previsualización de `/p/:id` y `/forum/:slug`. Ver el [README raíz](../README.md) para la visión general del proyecto.
+React 18 con **Vite** servido en producción como **Cloudflare Workers Static Assets**, con un Worker propio delante para las fichas de previsualización de `/p/:id`, `/forum/:slug` y `/@handle`. Ver el [README raíz](../README.md) para la visión general del proyecto.
 
 ## Desarrollo local
 
@@ -17,7 +17,11 @@ Levanta en `http://localhost:3000` contra el backend de `http://localhost:4000` 
 npm run build
 ```
 
-Genera `build/`, que es lo que sirve tanto `serve -s build` en local como Cloudflare en producción.
+Genera `build/`, que es lo que sirve tanto `e2e/servidorEstatico.js` en local como Cloudflare en producción.
+
+> **`build/` y no el `dist/` que Vite usa por defecto**, y no es preferencia estética: `wrangler.jsonc` declara `assets.directory: "build"` y el ciclo E2E sirve esa carpeta. Cambiar el nombre obligaría a tocar la configuración de despliegue de Cloudflare, que vive en su dashboard y fuera de este repo — el tipo de cambio que se rompe en silencio.
+
+La forma de la salida SÍ cambió con la migración: CRA emitía `static/js/main.<hash>.js` y Vite emite `assets/index-<hash>.js`. Nada del Worker depende de eso (sirve el `index.html` y deja pasar el resto), pero conviene saberlo al leer notas viejas.
 
 ### `public/robots.txt`
 
@@ -69,6 +73,24 @@ El backend vive en Render (plan gratuito): se duerme a los ~15 min de inactivida
 | Backend responde 404 explícito | Invalida la caché (aunque estuviera rancia) y sirve la genérica |
 
 Límite aceptado: un enlace que **nunca** se expandió antes cae en la ficha genérica la primera vez si el backend está dormido — hace falta que alguien lo abra una vez para que quede cacheado. Precalentar al compartir o pagar el plan Starter de Render resolverían esto; quedan fuera de alcance a propósito.
+
+### Cómo purgar una ficha (y por qué casi nunca hace falta)
+
+La auditoría del ciclo 7D dejó abierto que **`Custom Purge` con comodín (`/p/*`) exige plan Enterprise** — en Free y Pro solo hay purga por URL exacta o *Purge Everything*. Al retomarlo en el ciclo 12D resultó que el problema es más chico de lo que parecía, porque **los casos que de verdad importan ya se resuelven solos**:
+
+| Situación | Qué pasa hoy | ¿Hay que purgar? |
+|---|---|---|
+| Un posteo se borra u oculta por moderación | El backend responde 404 y el Worker **invalida la caché** en la siguiente petición, aunque estuviera rancia | **No** |
+| Un subforo se archiva | Igual: 404 y se invalida | **No** |
+| Alguien apaga su perfil público | La ficha rica caduca sola en **1 h como máximo** (TTL propio del 11B) | **No** |
+| Se cambió la imagen de campaña o el texto genérico | Afecta a muchas URLs y ninguna es "incorrecta", solo vieja | Opcional; se renueva sola en 24 h |
+| Una ficha concreta salió mal y hay que arreglarla ya | — | **Sí, por URL exacta** |
+
+Para el último caso: Cloudflare → *Caching* → *Configuration* → **Purge Custom** → la URL completa (`https://weedtown.social/p/59`). Funciona en Free.
+
+**Lo que NO sirve, y conviene saberlo antes de intentarlo:** el comodín necesita Enterprise, y *Purge Everything* tira también los bundles con hash y las imágenes, dejando el sitio entero con caché fría — un remedio desproporcionado para arreglar una tarjeta. Redesplegar el Worker **tampoco** limpia estas entradas: la Cache API es independiente de la versión del Worker.
+
+En resumen: no hay que resolver la purga con comodín, hay que saber que casi nunca se necesita. Si algún día hiciera falta invalidar muchas fichas a la vez, la salida barata es cambiar la clave de caché (por ejemplo agregando un sufijo de versión en `servirFicha`), no pagar Enterprise.
 
 ### Variables
 

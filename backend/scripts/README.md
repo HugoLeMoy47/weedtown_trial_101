@@ -143,6 +143,16 @@ Para respaldar producción, pon la cadena en `RESPALDO_DATABASE_URL` dentro de `
 >
 > **Un respaldo de la base equivocada que se reporta como éxito es peor que no tener respaldo**, porque produce confianza. De ahí las tres correcciones: el script carga los dos archivos, el banner muestra el **proyecto** (no el host), y **se niega a correr** si el proyecto resuelto es el mismo del `DATABASE_URL` de desarrollo, salvo `--acepto-desarrollo`.
 
+**Cuánto lleva sin respaldarse:**
+
+```bash
+npm run respaldo -- --revisar --destino "D:\respaldos-weedtown"
+```
+
+No respalda nada: mira la carpeta y dice hace cuántos días fue el último respaldo **completo** (los parciales no cuentan — un recorte no sirve para recuperar). Sale con código 1 si pasa de 7 días o si no hay ninguno, para poder engancharlo a algo automático el día que se quiera. La GUI muestra lo mismo como franja de color.
+
+> **Por qué esto existe y no un cron (decisión del ciclo 12D).** Se evaluaron cuatro caminos: tarea programada local, GitHub Actions con cron, plan de pago de Supabase, y seguir a mano. El PO eligió **seguir a mano por ahora**. Lo que se descartó explícitamente fue el cron en GitHub: habría puesto la cadena de producción en Secrets y dejado un archivo con correos, teléfonos y chats privados de 54 personas reales descargable como artefacto por cualquiera con acceso al repo — una ampliación real de la superficie de exposición en un proyecto cuya tesis es la privacidad. La decisión de no automatizar es legítima; lo que no podía quedar es que **el olvido fuera silencioso**, y para eso está este comando.
+
 **Cuatro decisiones que no son obvias:**
 
 - **`--destino` es obligatorio y no tiene default.** El archivo lleva correos, teléfonos y mensajes privados de personas reales; un default cómodo terminaría poniéndolo junto al código. Además **se niega** si la ruta cae dentro del repositorio: la comprobación es lo que evita el accidente, no el comentario.
@@ -188,6 +198,20 @@ Un respaldo que nadie ha restaurado nunca no es un respaldo, es un archivo. Este
 Sin `--url` escribe en `DATABASE_URL`, o sea tu base de desarrollo — el default es ese a propósito: verificar un respaldo es justo para lo que sirve tener una base desechable.
 
 **Lo de las secuencias no es un detalle.** Al insertar con ids explícitos, los contadores autoincrementales se quedan en 1, y la app choca con llaves duplicadas la primera vez que alguien publica — horas después de que la restauración pareció exitosa. Es el error clásico de restaurar así.
+
+#### Revisar un archivo sin tocar ninguna base
+
+```bash
+npm run restaurar -- --archivo "D:\respaldos-weedtown\weedtown-....json" --revisar-archivo
+```
+
+Comprueba que el archivo es coherente consigo mismo: que el manifiesto cuadra con los datos, que están todas las tablas y que **los campos `Bytes` se leen de vuelta como bytes**. No necesita base de datos y **no imprime ningún dato** — solo nombres de tabla, conteos y booleanos.
+
+> **Esta comprobación encontró un bug que el viaje redondo no podía ver.** La verificación de la Ola 3 restauró un respaldo completo y dijo "las 25 tablas coinciden". Parecía suficiente. No lo era: **la base de desarrollo tiene 0 llaves de acceso**, así que el único campo `Bytes` del esquema (`Passkey.publicKey`) nunca se ejercitó. Al revisar el primer respaldo real de producción —que sí tiene 20 llaves— apareció el fallo: **Prisma 6 devuelve `Bytes` como `Uint8Array`, no como `Buffer`**, y el reemplazo de `respaldo.js` solo reconocía la forma de Buffer. Las claves públicas se guardaron como `{"0":4,"1":91,…}` y al restaurar no habrían vuelto a ser bytes: 20 personas sin poder entrar con su llave, y nadie se habría enterado hasta intentar recuperar una cuenta.
+>
+> Ya está corregido, y `restaurar.js` **sabe leer los respaldos viejos**: reconoce esa forma y la reconstruye, así que el respaldo de producción del 2026-08-09 sigue sirviendo sin volver a tomarlo. Hay una prueba (`tests/respaldoBytes.test.js`) que cubre las tres formas.
+>
+> La lección, que vale más que el arreglo: **una verificación pasa por lo que cubre, no por lo que uno cree que cubre.** Verificar contra una base solo prueba lo que esa base contiene.
 
 **Se niega a escribir sobre la base de la que salió el respaldo** (`--forzar` para una recuperación real), y **se niega si la migración del destino no coincide** con la del respaldo. La primera guardia importa porque restaurar es borrar primero: equivocarse ahí destruye justo los datos que se estaban protegiendo.
 

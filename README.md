@@ -56,7 +56,7 @@
 | Exportar mis datos y eliminar (anonimizar) mi cuenta, con bitácora propia | ✅ Funcionando |
 | Cuarentena de altas nuevas para contacto directo (toque, chat), diferenciada por método de acceso — HU-SEG-006/007 | ✅ Funcionando |
 | Control de spam: contenido repetido en ráfaga y exceso de enlaces por posteo | ✅ Funcionando |
-| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando localmente — **no corre en CI** (ver [Integración continua](#integración-continua)) |
+| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando, **y corriendo en CI** en cada push desde el ciclo 12A |
 | Posteo público por enlace (`/p/:id`, visible sin sesión si es `PUBLIC`); un posteo oculto por moderación deja de resolverse para cualquiera, incluida su propia autora | ✅ Funcionando |
 | Bloque de invitación bajo un posteo público para quien no tiene sesión, con atribución de altas (`?ref=post`) sin migración — solo una línea en el log estructurado | ✅ Funcionando |
 | Posteo no accesible (de amistades o inexistente) sin sesión → redirige a iniciar sesión y regresa al mismo enlace tras el alta, sin bucles ni distinguir "privado" de "no existe" | ✅ Funcionando |
@@ -90,7 +90,7 @@ Monorepo con tres módulos — el panel de moderación **no** es uno de ellos: v
 │   │                     chat, notifications, nearby, blocks, friends, reports,
 │   │                     admin (moderación), market* (* = stub)
 │   └── tests/          Pruebas de integración (`npm test`) contra una base aparte
-├── frontend/           Web (React 18 + CRA + MUI v5 + React Router)
+├── frontend/           Web (React 18 + Vite + MUI v5 + React Router)
 │   └── src/
 │       ├── components/ Navbar, PostCard, InviteBlock, ContentActions, RequireAuth, RequireRole, ...
 │       ├── hooks/      useAuth (AuthProvider + sesión en localStorage)
@@ -387,7 +387,7 @@ Están documentadas en **[`backend/scripts/README.md`](backend/scripts/README.md
 | API | Node.js 18+, Express 4 |
 | Identidad | OAuth 2.0 de Mastodon, llave de acceso (`@simplewebauthn/server`+`browser`) y enlace mágico por correo (Resend) + JWT (`jsonwebtoken`) |
 | Base de datos | PostgreSQL gestionado en **Supabase** (dev/pruebas); Prisma ORM 6 |
-| Web | React 18, **MUI v5** (Material Design, claro/oscuro), React Router 6, Axios |
+| Web | React 18, **Vite 7**, **MUI v5** (Material Design, claro/oscuro), React Router 6, Axios |
 | Móvil | Expo / React Native |
 | Docs API | Swagger UI en `/api-docs` |
 | Tiempo real | Socket.IO 4 (handshake autenticado con el JWT de sesión; entrega de mensajes en vivo) |
@@ -395,7 +395,7 @@ Están documentadas en **[`backend/scripts/README.md`](backend/scripts/README.md
 
 Notas:
 - En producción la base de datos puede apuntar a cualquier PostgreSQL: solo cambian `DATABASE_URL` y `DIRECT_URL`.
-- MUI está **fijado en v5**: la v9 es incompatible con Create React App (react-scripts 5). No actualizar de major sin migrar el bundler.
+- MUI sigue en **v5**, pero ya no por obligación: el bundler se migró a Vite en el ciclo 12B y el impedimento técnico desapareció. Subir de major es ahora una decisión de producto —hay cambios de API que revisar— y no un bloqueo del toolchain.
 
 ---
 
@@ -469,6 +469,7 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Atribucion** | HU-CTA-002/HU-ATR-001: `ref` fuera de la lista blanca se descarta en silencio, exige sesión, y el limitador propio (5/15min) corta antes que el general |
 | **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
 | **Hashtags** | Ciclo 9C: `#RolarEnLaTarde` guarda llave `rolarenlatarde` y grafía `RolarEnLaTarde`; `#Rolar` y `#rolar` son una sola fila y gana la primera grafía vista (también al editar); las palabras del diccionario de descarte no generan fila; y el texto del posteo vuelve **idéntico**, con sus `#de` adentro |
+| **DocumentacionApi** | Ciclo 12A: que la lista de rutas de `swagger.json` coincida con las que el servidor monta de verdad. No valida el contenido de cada entrada —eso es criterio humano—, sino que no falte ninguna ni sobre una inventada. Existe porque el 10E encontró **21 rutas desfasadas, 13 de ellas acumuladas de ciclos anteriores**: no fue el descuido de nadie, era que no había ningún paso que lo impidiera. En su primera corrida atrapó una ruta del ciclo 11B sin documentar |
 | **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las demás |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
@@ -528,7 +529,9 @@ Dos cosas más que hay que decidir explícitamente al desplegar, porque los defa
 
 El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin dependencias nuevas y sobre la infraestructura que el proyecto ya tiene. Agregar S3, R2 o MinIO es escribir un objeto más en `src/lib/storage.js` con el mismo contrato (`save`, `remove`, `keyFromUrl`).
 
-**2. URL del backend.** El frontend resuelve el origen de la API en este orden: `REACT_APP_API_URL` si existe; si no y estás en desarrollo, el mismo host con puerto 4000 (así funciona igual en `localhost` y desde otra máquina de la red); si no y estás en producción, **el mismo origen que la web**, que es lo que da un reverse proxy sirviendo el frontend y `/api` juntos. Si tu backend vive en otro dominio o puerto, define `REACT_APP_API_URL` al compilar — la app avisa por consola cuando cae en el default de producción.
+**2. URL del backend.** El frontend resuelve el origen de la API en este orden: **`VITE_API_URL`** si existe (y `REACT_APP_API_URL` se sigue aceptando, ver abajo); si no y estás en desarrollo, el mismo host con puerto 4000 (así funciona igual en `localhost` y desde otra máquina de la red); si no y estás en producción, **el mismo origen que la web**, que es lo que da un reverse proxy sirviendo el frontend y `/api` juntos. Si tu backend vive en otro dominio o puerto, define `VITE_API_URL` **al compilar** — Vite la incrusta en el bundle, no se lee en tiempo de ejecución. La app avisa por consola cuando cae en el default de producción.
+
+> **La variable cambió de nombre en el 12B y las dos se aceptan a propósito.** La configuración de Cloudflare vive en su dashboard, fuera de este repo: si solo se aceptara `VITE_API_URL`, un despliegue con el nombre viejo compilaría bien y apuntaría al backend equivocado, **sin error y sin aviso**. Aceptando ambas, lo que ya está configurado sigue funcionando y la app avisa por consola para que la limpieza sea deliberada. Verificado compilando con cada nombre y comprobando que el valor llega al bundle.
 
 **3. Ficha de previsualización (Worker de Cloudflare).** Desde el ciclo 7B, `frontend/wrangler.jsonc` ya no es "solo assets": tiene un Worker (`frontend/src/worker.js`) que intercepta `/p/:id` — y desde el 9A también `/forum/:slug`, pero **no** `/forum/:slug/post/:id` — para inyectar meta tags Open Graph antes de servir el HTML — ver [frontend/README.md](frontend/README.md) para el porqué y el detalle técnico. `PREVIEW_API_URL` (la URL del backend que consulta el Worker) vive en dos bloques separados de `wrangler.jsonc`: el de arriba (`vars`, apunta a `localhost:4000`) es solo para `wrangler dev`; el real vive en `env.production.vars` (`https://weedtown-api.onrender.com`), y **`npm run deploy` ya corre `wrangler deploy --env production`** — no hace falta editar nada a mano antes de desplegar, ni hay forma de mandar por accidente el valor de desarrollo a producción.
 
@@ -539,11 +542,18 @@ El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin d
 | Trabajo | Qué hace |
 |---|---|
 | **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` (integración) |
+| **E2E** | Su propio Postgres efímero, Chromium con `--with-deps`, frontend compilado y servido estático, y las specs de Playwright. Va aparte del backend para no retrasar la señal rápida |
 | **Frontend** | `npm test` (70 unitarias — `worker.test.js`, `rutaInterna.test.js`, `intencionCerca.test.js`, `recorte.test.js`, `invitador.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
 
 El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se pisarían. El Postgres del runner nace y muere con el trabajo, así que tampoco hay secretos que guardar — el `JWT_SECRET` se genera con `openssl rand` al vuelo. No hace falta configurar nada en el repositorio para que funcione.
 
-**Lo que NO corre en CI:** las pruebas E2E de Playwright (`e2e/`). Viven y pasan en local (ver más abajo), pero levantar backend + frontend compilado + Chromium dentro del runner no está armado todavía — es trabajo de infraestructura de pruebas pendiente, no una omisión silenciosa: quien lea esta sección ya sabe que esa cobertura depende de que alguien la corra a mano antes de confiar en ella.
+**Las E2E también corren en CI desde el ciclo 12A**, en su propio job. Existían desde el ciclo 1 y pasaban en local, pero no protegían nada en cada push — el mismo patrón que el 7E ya había cazado para las unitarias del frontend. El 8C lo documentó con honestidad aquí mismo, y documentar un hueco no lo cierra.
+
+El job levanta el mismo Postgres 16 efímero, compila el frontend y lo sirve **estático** (`e2e/servidorEstatico.js`, veinte líneas con fallback de SPA, sin dependencia nueva). En local el ciclo sigue usando el servidor de desarrollo, que da recarga en caliente. Dos razones para compilarlo en CI: es lo que de verdad se despliega, y el servidor de desarrollo a veces se cuelga en runners sin TTY.
+
+> **La trampa que costó una corrida entera:** la primera versión levantaba el servidor estático **dentro del proceso** de `e2e/run.js`. Como Playwright se lanza con `spawnSync`, que **bloquea el event loop**, ese servidor aceptaba conexiones y no contestaba ninguna: las 10 specs agotaron su timeout de 1.7 min cada una. Y Playwright no dice "el servidor no responde", dice "no encontré el elemento". Va en su propio proceso, y por eso `servidorEstatico.js` se puede ejecutar suelto.
+
+Al fallar, el job sube las trazas y capturas de Playwright como artefacto (7 días). Sin eso, un fallo en CI es un mensaje sin nada que mirar.
 
 El runner de pruebas detecta dónde está corriendo: en local lee `.env.test`, y en CI toma las variables ya inyectadas en el entorno. Los tres guardias se aplican igual en ambos casos.
 
@@ -681,6 +691,7 @@ La moderación (`/api/admin`) ya existía; lo que faltaba eran indicadores y ten
 - **Por qué no hay DAU/MAU, retención por cohorte ni embudos de conversión.** Esas métricas exigen saber cuándo entró cada persona por última vez o seguir su recorrido — es decir, tracking por individuo, y esa es exactamente la línea que este proyecto decidió no cruzar. Es un intercambio consciente, no una limitación técnica que se vaya a resolver después: para un README que abre con "la privacidad no es una feature, es la base", medir solo con agregados de lo que ya se guarda es la postura coherente.
 - **Cuatro trampas técnicas evitadas a propósito** (documentadas en `.planeacion/2026-07-30_panoptico_plan.html`, pestaña 02): (1) una consulta agregada por métrica — 13 consultas cubren el catálogo completo, constantes sin importar la ventana de 7/30/90 días, nunca un ciclo con un conteo por día; (2) el día se trunca en `America/Mexico_City`, no en UTC — `date_trunc` ingenuo corta la noche (el pico de actividad) al día siguiente, y las gráficas se ven igual de razonables estando mal; (3) ningún desglose (por subforo, por segmento) expone un grupo con menos de 5 elementos — se colapsa en un cubo "Otros"; (4) la carga por moderador es la única pieza visible a `MOD`, y solo como número propio + promedio del equipo — el desglose por persona es `ADMIN`, para no convertir una herramienta de trabajo en un tablero de comparación entre compañeros.
 - **La trampa 2 tenía una segunda cara, encontrada en el ciclo 9A: el mismo error de zona horaria, pero en el *límite* de la ventana.** Las cuatro consultas que no agrupan por día (carga por moderador, concentración, tiempo de respuesta, reincidencia) tomaban las fechas de calendario mexicano de la ventana y las leían como instantes UTC (`` `${hasta}T23:59:59.999Z` ``). Como un día de México termina 6 horas después de eso, la ventana entera quedaba corrida: se comía todo lo ocurrido entre las 18:00 y la medianoche del último día —el mismo pico nocturno de la trampa original— y a cambio metía esas 6 horas del día anterior al primero. No fallaba: devolvía un número plausible y más chico, todos los días. Ahora las cuatro filtran con `entreDiasMx()`, que deja la traducción del día en Postgres igual que `diaMx()`. La prueba de regresión siembra una acción de moderación a las **23:00 hora de México** para que falle sin importar a qué hora se corra la suite — el motivo de que esto viviera en verde es que la prueba anterior sembraba "el instante actual", que solo cae en la franja ciega si las pruebas se corren de noche.
+- **Dos indicadores medían algo que ya no era cierto, corregidos en el ciclo 12C.** Los dos por la misma causa: la lógica que miden cambió en un ciclo posterior y el indicador se quedó atrás, sin que nada avisara. **(a) Cuentas en cuarentena** usaba una ventana única de 24 h leída de `SIGNUP_QUARANTINE_HOURS`, una variable que **nadie define** desde que HU-SEG-007 pasó a cuarentena graduada por proveedor — así que contaba como "en cuarentena" a cuentas de correo que ya podían tocar y chatear desde las 3 h. Ahora aplica la ventana real de cada cuenta, incluida la regla de que quien tiene varias identidades toma **la más corta**. **(b) Personas compartiendo zona** contaba cualquier celda no nula y vigente, pero `hasActiveCell()` en Cerca exige además el **formato actual** de celda: las del geohash viejo no aparecen en el mapa de nadie y aun así se contaban. Ahora replica `isValidCell()` completa —patrón y límites de la cuadrícula—, con `LAT_CELLS`/`LON_CELLS` importados de `geogrid.js` en vez de copiados. **Ninguno de los dos tenía prueba, y por eso vivieron:** ahora sí, y la de cuarentena se asierta contra lo que habría contado la fórmula vieja, no contra un número absoluto que envejecería con cada caso nuevo de la suite.
 - **Caché en memoria del proceso, 10 minutos.** Nadie decide distinto porque un conteo esté unos minutos desactualizado; la respuesta siempre trae `calculadoEn` para que la pantalla no invite a malinterpretar datos viejos como si fueran en vivo.
 - **Salud técnica sin infraestructura nueva.** La tarjeta de estado técnico re-expone lo que `/health` ya calculaba (base, storage, mailer, uptime) más un enlace a observabilidad externa configurable por `OBSERVABILITY_URL`. Historial de errores/latencia en el tiempo es trabajo de despliegue (conectar un log drain al `logger.js` que ya emite JSON estructurado), no una tabla nueva en Postgres.
 

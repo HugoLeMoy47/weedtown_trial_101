@@ -4547,6 +4547,60 @@
           }
         }
       }
+    },
+    "/api/profile/handle/{handle}/preview": {
+      "get": {
+        "tags": [
+          "Perfil"
+        ],
+        "summary": "Ficha Open Graph de un perfil (HU-SHR-005, ciclo 11B)",
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Sin la arroba"
+          }
+        ],
+        "description": "La consume el Worker de Cloudflare para /@handle, no el frontend. Sin optionalAuth: no importa quién pregunta. RESPONDE SIEMPRE 200. Ficha rica solo si el perfil es público, y solo con los campos que su dueña puso en TODOS — la regla de composición del ciclo 10B se aplica llamando a camposVisibles() con el contexto del extremo (sin dueña, sin amistad, sin sesión), no reimplementándola. En cualquier otro caso —handle inexistente, perfil no público, cuenta suspendida, cuenta eliminada— devuelve EL MISMO cuerpo genérico, idéntico entre los cuatro: un 404 para \"no existe\" y un 200 para \"existe pero es privado\" convertirían esta ruta en un verificador de handles. El genérico tampoco menciona el handle. Trae `indexable`, que es lo que el Worker mira para emitir noindex. Fuera del apiLimiter general; limitador propio.",
+        "responses": {
+          "200": {
+            "description": "Ficha rica (perfil público) o la genérica, con la misma forma",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "titulo": {
+                      "type": "string"
+                    },
+                    "descripcion": {
+                      "type": "string"
+                    },
+                    "imagen": {
+                      "type": "string"
+                    },
+                    "imagenAlt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "tieneImagen": {
+                      "type": "boolean"
+                    },
+                    "indexable": {
+                      "type": "boolean",
+                      "description": "false → el Worker emite noindex"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

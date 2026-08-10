@@ -100,7 +100,7 @@ const Subforum = () => {
     setLoading(true);
     api.get(`/forum/subforums/${slug}/posts?sort=${sort}&period=${period}&page=${page}`)
       .then(res => {
-        setPosts(res.data.posts);
+        setPosts(res.data.posts || []); // ver la nota en Feed.jsx: sin esto, pantalla en blanco
         setTotalPages(res.data.totalPages || 1);
       })
       .catch(() => setError('No se pudieron cargar los posts.'))

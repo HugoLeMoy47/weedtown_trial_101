@@ -128,6 +128,42 @@ function abortar(mensaje) {
   process.exit(1);
 }
 
+// --revisar: ¿cuántos días lleva el último respaldo? No respalda nada, solo
+// mira la carpeta y lo dice.
+//
+// El PO decidió (12D) NO automatizar todavía: ni cron en GitHub —que pondría
+// los datos privados de 54 personas en artefactos descargables— ni plan de
+// pago. La decisión es legítima; lo que no puede quedar es que el olvido sea
+// SILENCIOSO. Esto lo hace visible, y sale con código 1 si está viejo, para
+// que el día que se quiera enganchar a algo automático ya esté listo.
+if (args.includes('--revisar')) {
+  const DIAS_ACEPTABLES = 7;
+  if (!destino) abortar('Falta --destino con la carpeta de respaldos.');
+  const dir = path.resolve(destino);
+  const archivos = fs.existsSync(dir)
+    ? fs.readdirSync(dir)
+      .filter(f => f.startsWith('weedtown-') && f.endsWith('.json') && !f.includes('-parcial'))
+      .map(f => ({ f, t: fs.statSync(path.join(dir, f)).mtime }))
+      .sort((a, b) => b.t - a.t)
+    : [];
+
+  if (!archivos.length) {
+    console.error(`\n  ✖ No hay ningún respaldo COMPLETO en ${dir}.\n`);
+    console.error('    Producción no tiene respaldos automáticos: si esta carpeta está');
+    console.error('    vacía, no existe ninguna copia de los datos de la comunidad.\n');
+    process.exit(1);
+  }
+  const dias = Math.floor((Date.now() - archivos[0].t) / 86400000);
+  console.log(`\n  Último respaldo completo: ${archivos[0].f}`);
+  console.log(`  Hace ${dias} día${dias === 1 ? '' : 's'} (${archivos[0].t.toLocaleString('es-MX')})\n`);
+  if (dias > DIAS_ACEPTABLES) {
+    console.error(`  ⚠ Lleva más de ${DIAS_ACEPTABLES} días. Todo lo que entró después no está en ninguna copia.\n`);
+    process.exit(1);
+  }
+  console.log('  ✔ Al día.\n');
+  process.exit(0);
+}
+
 if (soloListar) {
   console.log('\n  Tablas (en orden de restauración) y de qué dependen:\n');
   for (const m of MODELOS) {
@@ -305,13 +341,31 @@ async function main() {
     // no sirve para recuperar tiene que decirlo desde el nombre.
     const archivo = path.join(destinoAbs, `weedtown-${donde.proyecto}-${sello}${esParcial ? '-parcial' : ''}.json`);
 
-    // `Bytes` (Passkey.publicKey) no sobrevive a JSON.stringify: sale como
-    // {"0":4,"1":91,...}, que al restaurar deja de ser un Buffer y la llave de
-    // acceso queda inservible. Se marca explícitamente para poder revertirlo.
-    const reemplazo = (_clave, valor) =>
-      (valor?.type === 'Buffer' && Array.isArray(valor.data))
-        ? { __bytes: Buffer.from(valor.data).toString('base64') }
-        : valor;
+    // `Bytes` (Passkey.publicKey) no sobrevive a JSON.stringify y hay que
+    // marcarlo para poder revertirlo al restaurar.
+    //
+    // LA VERSIÓN ANTERIOR DE ESTO ESTABA MAL, y solo se vio al verificar un
+    // respaldo real de producción (12D). Comprobaba `valor.type === 'Buffer'`,
+    // que es la forma que produce `Buffer.toJSON()`. Pero **Prisma 6 devuelve
+    // Bytes como `Uint8Array`, no como Buffer**, y `Uint8Array` no tiene
+    // `toJSON`: se serializa como {"0":4,"1":91,…}. El reemplazo nunca
+    // disparaba y las 20 llaves de acceso del respaldo quedaron en esa forma.
+    //
+    // Por qué la prueba de viaje redondo no lo atrapó: la base de desarrollo
+    // tiene **0 llaves de acceso**. Las 25 tablas cuadraron porque el caso no
+    // estaba presente. Una verificación pasa por lo que cubre, no por lo que
+    // uno cree que cubre.
+    //
+    // Se mira `this[clave]` —el valor ANTES de `toJSON`— porque es lo único
+    // que distingue las dos formas de una sola manera. Función normal, no
+    // flecha: hace falta `this`.
+    const reemplazo = function (clave, valor) {
+      const bruto = this[clave];
+      if (ArrayBuffer.isView(bruto)) {
+        return { __bytes: Buffer.from(bruto.buffer, bruto.byteOffset, bruto.byteLength).toString('base64') };
+      }
+      return valor;
+    };
 
     fs.writeFileSync(archivo, JSON.stringify({
       version: 2,

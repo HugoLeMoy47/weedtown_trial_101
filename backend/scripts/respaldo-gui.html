@@ -118,6 +118,10 @@
 
   <div class="tarjeta" style="margin-top:16px">
     <h2>Respaldos en esa carpeta</h2>
+    <!-- 12D: el PO decidió no automatizar todavía. La decisión es válida, pero
+         el olvido no puede ser silencioso: esta franja dice cuántos días lleva
+         el último respaldo COMPLETO, y se pone en ámbar o rojo sola. -->
+    <div id="antiguedad"></div>
     <div id="archivos" class="vacio">Escribe una carpeta arriba.</div>
   </div>
 </div>
@@ -235,6 +239,23 @@ async function listarArchivos() {
   const d = $('destino').value.trim();
   if (!d) return;
   const { archivos } = await (await api('/api/archivos?destino=' + encodeURIComponent(d))).json();
+
+  // Solo cuentan los COMPLETOS: un recorte no sirve para recuperar, así que
+  // presumir de "respaldo de ayer" cuando el de ayer era parcial sería
+  // exactamente la confianza falsa que este proyecto lleva evitando.
+  const completos = archivos.filter(a => !a.parcial);
+  const dias = completos.length
+    ? Math.floor((Date.now() - new Date(completos[0].fecha)) / 86400000)
+    : null;
+  $('antiguedad').innerHTML = dias === null
+    ? `<div class="aviso err"><b>No hay ningún respaldo completo aquí</b>
+         Producción no tiene respaldos automáticos. Si esta carpeta está vacía, no existe
+         ninguna copia de los datos de la comunidad.</div>`
+    : dias > 7
+      ? `<div class="aviso warn"><b>El último respaldo completo es de hace ${dias} días</b>
+           Todo lo que entró después no está en ninguna copia.</div>`
+      : `<div class="aviso info">Último respaldo completo: hace ${dias === 0 ? 'menos de un día' : `${dias} día${dias === 1 ? '' : 's'}`}.</div>`;
+
   $('archivos').className = archivos.length ? '' : 'vacio';
   $('archivos').innerHTML = archivos.length
     ? '<table class="arch">' + archivos.map(a => `<tr><td>${a.nombre}${a.parcial ? ' <span class="pill">parcial</span>' : ''}</td>

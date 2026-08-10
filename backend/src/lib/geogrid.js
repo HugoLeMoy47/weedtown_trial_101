@@ -61,4 +61,8 @@ function cellDistanceKm(cellA, cellB) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-module.exports = { STEP_DEG, CELL_RE, encode, isValidCell, centroid, neighborsGrid, cellDistanceKm };
+// LAT_CELLS/LON_CELLS se exportan desde el ciclo 12C: el panóptico replica
+// `isValidCell` en SQL —no puede llamar a una función de JS dentro de una
+// consulta— y necesita los mismos límites. Copiarlos allá era garantizar que
+// se separaran el día que cambie STEP_DEG.
+module.exports = { STEP_DEG, LAT_CELLS, LON_CELLS, CELL_RE, encode, isValidCell, centroid, neighborsGrid, cellDistanceKm };
