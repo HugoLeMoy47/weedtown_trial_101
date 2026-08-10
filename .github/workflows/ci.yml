@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -58,11 +58,11 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      # Solo el backend: hoy está en 0 avisos (ciclo 8E), así que un aviso
-      # alto nuevo aquí es señal real, no ruido. El frontend queda fuera a
-      # propósito — hereda altos/críticos del toolchain de Create React App
-      # (deuda de fondo documentada en la auditoría, fuera de este ciclo) y
-      # este gate fallaría de inmediato sin decir nada nuevo.
+      # 0 avisos desde el ciclo 8E, así que un alto nuevo aquí es señal real.
+      # (El frontend estuvo fuera de este gate durante meses porque heredaba
+      # 32 altos y 2 críticos del toolchain de Create React App y habría
+      # fallado siempre sin decir nada nuevo. Desde el 12B ya no: tiene su
+      # propio gate abajo.)
       - name: Auditar dependencias (solo altas/críticas)
         working-directory: backend
         run: npm audit --audit-level=high
@@ -119,7 +119,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Instalar dependencias
         run: |
@@ -165,13 +165,21 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Instalar dependencias
         working-directory: frontend
         run: npm ci
+
+      # GATE NUEVO, que la migración del 12B hizo posible. Con Create React App
+      # el frontend arrastraba 32 avisos altos y 2 críticos del toolchain, así
+      # que auditarlo habría fallado en cada tanda sin aportar información.
+      # Ahora está en 0 altos: a partir de aquí, un alto nuevo es real.
+      - name: Auditar dependencias (solo altas/críticas)
+        working-directory: frontend
+        run: npm audit --audit-level=high
 
       # PASO PROPIO DESDE EL 12B, y es una reposición, no una mejora.
       #

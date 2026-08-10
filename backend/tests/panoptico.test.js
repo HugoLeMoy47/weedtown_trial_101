@@ -183,17 +183,53 @@ module.exports = async function run() {
     // asierta la DIFERENCIA contra lo que habría contado el bug, que es lo que
     // de verdad distingue el arreglo.
     //
-    // Las dos que sobran con el bug son `q_email_vieja` (correo, 5 h: ya salió
-    // a las 3 h) y `q_mixta` (llave + correo, 5 h: toma la ventana más corta,
-    // también 3 h). Con la ventana única de 24 h las dos contaban.
-    const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // SE COMPARA CONTRA UNA SEGUNDA IMPLEMENTACIÓN, no contra un número.
+    //
+    // La primera versión asertaba `indicador === conFórmulaVieja - 2`, dando
+    // por hecho que las únicas cuentas afectadas serían las dos que siembra
+    // esta suite. Falló seis horas después de escribirla: el schema de pruebas
+    // conserva cuentas de las corridas E2E, y una de ellas cruzó el umbral de
+    // 3 h entre una corrida y otra. La corrección la excluía, la fórmula vieja
+    // la contaba, y la diferencia pasó de 2 a 3.
+    //
+    // O sea: era una PRUEBA DEPENDIENTE DEL TIEMPO, la misma familia que la
+    // regresión de las 23:00 de más arriba — solo que esa se escribió para
+    // evitarlo y ésta cayó en ello.
+    //
+    // El arreglo es no depender de qué más haya en la base: se calcula la
+    // respuesta correcta EN JS, leyendo las cuentas y sus proveedores, y se
+    // compara con lo que dice el indicador (que la calcula en SQL). Dos
+    // implementaciones independientes que coinciden valen más que un número
+    // fijo, y esto es cierto sin importar cuántas cuentas ajenas haya ni qué
+    // edad tengan.
+    const VENTANAS_H = { MASTODON: 0, EMAIL: 3, PASSKEY: 24 };
+    const cuentas = await prisma.user.findMany({
+      where: { deletedAt: null },
+      select: { createdAt: true, identities: { select: { provider: true } } }
+    });
+    const ahora = Date.now();
+    const esperado = cuentas.filter(u => {
+      if (!u.identities.length) return false;            // sin forma de entrar
+      const horas = (ahora - new Date(u.createdAt)) / 3_600_000;
+      // La ventana efectiva es la MÁS CORTA de sus identidades.
+      const ventana = Math.min(...u.identities.map(i => VENTANAS_H[i.provider] ?? 24));
+      return horas < ventana;
+    }).length;
+
+    check('la cuarentena usa la ventana real de cada proveedor (8H)',
+      enCuarentena === esperado,
+      `(el indicador dice ${enCuarentena}; calculado aparte en JS da ${esperado})`);
+
+    // Y que las cuentas sembradas de verdad distingan el arreglo del bug: si
+    // esto fuera 0, la prueba de arriba pasaría incluso con la fórmula vieja.
+    const hace24h = new Date(ahora - 24 * 60 * 60 * 1000);
     const [{ conBug }] = await prisma.$queryRaw`
       SELECT count(*)::int AS "conBug" FROM "User" u
       WHERE u."deletedAt" IS NULL AND u."createdAt" >= ${hace24h}
         AND NOT EXISTS (SELECT 1 FROM "Identity" i WHERE i."userId" = u.id AND i.provider = 'MASTODON')`;
-    check('la cuarentena usa la ventana real de cada proveedor (8H)',
-      enCuarentena === conBug - 2,
-      `(el indicador dice ${enCuarentena}; la fórmula vieja de 24 h decía ${conBug}, y sobran exactamente 2)`);
+    check('y la fórmula vieja habría contado de más',
+      conBug > esperado,
+      `(vieja ${conBug}, correcta ${esperado} — si fueran iguales, esta suite no distinguiría el bug)`);
 
     // De las cuatro con celda, solo UNA es visible en Cerca.
     check('zona compartida cuenta solo celdas del formato actual y vigentes',
