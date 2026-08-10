@@ -12,6 +12,7 @@ import ImagePicker from './ImagePicker';
 import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
+import FechaRelativa from './FechaRelativa';
 
 const MAX_DEPTH = 2;
 
@@ -115,7 +116,7 @@ const CommentNode = ({ comment, childrenNodes, onReply, onEdited, onDeleted, onB
             <Typography variant="subtitle2">{comment.deleted ? '—' : (comment.author?.name || 'Anónimo')}</Typography>
             {date && (
               <Typography variant="caption" color="text.secondary">
-                <time dateTime={date.toISOString()}>{date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}</time>
+                <FechaRelativa fecha={date} />
               </Typography>
             )}
             {flattened && comment.parent?.author?.name && (

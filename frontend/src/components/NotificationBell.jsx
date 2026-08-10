@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import api from '../services/api';
+import FechaRelativa from './FechaRelativa';
 
 const POLL_MS = 30000;
 
@@ -138,7 +139,7 @@ const NotificationBell = () => {
               </ListItemAvatar>
               <ListItemText
                 primary={describe(n)}
-                secondary={new Date(n.createdAt).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}
+                secondary={<FechaRelativa fecha={n.createdAt} />}
                 primaryTypographyProps={{ variant: 'body2' }}
                 secondaryTypographyProps={{ variant: 'caption' }}
               />
