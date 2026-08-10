@@ -28,12 +28,17 @@ jobs:
           POSTGRES_DB: weedtown_ci
         ports:
           - 5432:5432
+        # El sondeo lleva -U postgres. Sin el usuario, pg_isready intenta entrar
+        # como "root" (el usuario del contenedor), que no existe, y Postgres
+        # escupe un FATAL por cada sondeo. El sondeo igual pasa —solo comprueba
+        # que el servidor conteste— pero deja el log del job lleno de errores
+        # que no lo son, y eso estorba para ver un fallo de verdad.
+        #
+        # OJO: este comentario va AQUÍ y no adentro de `options`. Lo de abajo es
+        # un bloque plegado (>-): ahí un "#" no comenta nada, es texto literal
+        # que termina en la línea de comando de Docker. Puesto adentro, el
+        # contenedor no arranca y el job muere en segundos sin decir por qué.
         options: >-
-          # Con -U postgres. Sin el usuario, pg_isready se conecta como "root"
-          # (el usuario del contenedor) y Postgres escupe un FATAL por cada
-          # sondeo. El sondeo igual pasa —solo comprueba que el servidor
-          # conteste— pero deja el log del job lleno de errores que no lo son,
-          # y eso hace más difícil ver un fallo de verdad.
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
@@ -106,12 +111,17 @@ jobs:
           POSTGRES_DB: weedtown_e2e
         ports:
           - 5432:5432
+        # El sondeo lleva -U postgres. Sin el usuario, pg_isready intenta entrar
+        # como "root" (el usuario del contenedor), que no existe, y Postgres
+        # escupe un FATAL por cada sondeo. El sondeo igual pasa —solo comprueba
+        # que el servidor conteste— pero deja el log del job lleno de errores
+        # que no lo son, y eso estorba para ver un fallo de verdad.
+        #
+        # OJO: este comentario va AQUÍ y no adentro de `options`. Lo de abajo es
+        # un bloque plegado (>-): ahí un "#" no comenta nada, es texto literal
+        # que termina en la línea de comando de Docker. Puesto adentro, el
+        # contenedor no arranca y el job muere en segundos sin decir por qué.
         options: >-
-          # Con -U postgres. Sin el usuario, pg_isready se conecta como "root"
-          # (el usuario del contenedor) y Postgres escupe un FATAL por cada
-          # sondeo. El sondeo igual pasa —solo comprueba que el servidor
-          # conteste— pero deja el log del job lleno de errores que no lo son,
-          # y eso hace más difícil ver un fallo de verdad.
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
