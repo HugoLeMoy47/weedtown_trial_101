@@ -14,7 +14,12 @@ test('alta con llave de acceso y reingreso con la misma llave', async ({ page, c
 
   // El perfil muestra el handle elegido y la llave como método de acceso
   await page.goto('/profile', { waitUntil: 'load' });
-  await expect(page.getByText(`@${handle}`)).toBeVisible();
+  // `exact` no es adorno: desde el ciclo 11A el perfil también muestra tu enlace
+  // de invitación, que es la URL completa y por lo tanto CONTIENE el handle. Sin
+  // exact, getByText busca por subcadena, encuentra dos elementos y Playwright
+  // aborta por modo estricto. Deliberadamente NO se resuelve con .first(): eso
+  // silenciaría al detector justo cuando está avisando que la página cambió.
+  await expect(page.getByText(`@${handle}`, { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Métodos de acceso' })).toBeVisible();
   await expect(page.getByText('Llave de acceso').first()).toBeVisible();
 

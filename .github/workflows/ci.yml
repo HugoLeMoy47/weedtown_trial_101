@@ -29,7 +29,12 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          # Con -U postgres. Sin el usuario, pg_isready se conecta como "root"
+          # (el usuario del contenedor) y Postgres escupe un FATAL por cada
+          # sondeo. El sondeo igual pasa —solo comprueba que el servidor
+          # conteste— pero deja el log del job lleno de errores que no lo son,
+          # y eso hace más difícil ver un fallo de verdad.
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -102,7 +107,12 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          # Con -U postgres. Sin el usuario, pg_isready se conecta como "root"
+          # (el usuario del contenedor) y Postgres escupe un FATAL por cada
+          # sondeo. El sondeo igual pasa —solo comprueba que el servidor
+          # conteste— pero deja el log del job lleno de errores que no lo son,
+          # y eso hace más difícil ver un fallo de verdad.
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
