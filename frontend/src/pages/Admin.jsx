@@ -472,6 +472,19 @@ const Bloque = ({ titulo, children }) => (
 const ETIQUETAS_PROVEEDOR = { MASTODON: 'Mastodon', PASSKEY: 'Llave de acceso', EMAIL: 'Correo' };
 const ETIQUETAS_REACCION = { LIKE: 'Me prende', ROLA: 'Rola', INTERESA: 'Interesa', MOLESTA: 'Molesta' };
 const ETIQUETAS_AMISTAD = { PENDING: 'Pendientes', ACCEPTED: 'Aceptadas', REJECTED: 'Rechazadas' };
+// 13A. Los escalones del recorrido de invitación, en orden de recorrido y no
+// alfabético: leídos de arriba abajo cuentan dónde se cae la gente. Las claves
+// son las de RESULTADOS en backend/src/lib/atribucion.js.
+const ETIQUETAS_ATRIBUCION = {
+  ref_no_valido: 'Sin origen reconocible',
+  fuera_de_ventana: 'Cuenta ya no era nueva',
+  sin_invitador: 'Llegó por un CTA sin invitador',
+  handle_mal_formado: 'Enlace con handle inválido',
+  auto_invitacion: 'Se invitó a sí misma',
+  enlace_sin_destino: 'El enlace no resolvió a nadie',
+  atribuida: 'Atribuida a alguien',
+  limitada: 'Frenada por el limitador'
+};
 
 // Card visible a MOD y ADMIN (a diferencia del resto del panóptico): la carga
 // propia es una herramienta de trabajo; el desglose por compañero, que sí ve
@@ -578,6 +591,20 @@ const Indicadores = () => {
             <MiniSerie titulo="Exportaciones de datos" datos={datos.crecimiento.exportacionesPorDia} />
             <Tile label="Cuentas con +1 método de acceso" valor={datos.crecimiento.cuentasConMetodosMultiples} />
             <Tile label="Cuentas en cuarentena ahora" valor={datos.crecimiento.cuentasEnCuarentena} />
+            {datos.crecimiento.atribucion && (
+              <>
+                <Tile
+                  label="Altas con enlace de invitación"
+                  valor={`${datos.crecimiento.atribucion.totalesPeriodo.atribuida || 0} de ${datos.crecimiento.atribucion.altasDelPeriodo}`}
+                  ayuda="Solo las que incrementaron el contador de alguien. El resto del recorrido, en el desglose."
+                />
+                <MiniSeriesPorSubclave
+                  titulo="Atribución: dónde se cae el recorrido"
+                  porSubclave={datos.crecimiento.atribucion.porResultado}
+                  etiquetas={ETIQUETAS_ATRIBUCION}
+                />
+              </>
+            )}
           </Bloque>
 
           <Bloque titulo="Actividad por superficie">

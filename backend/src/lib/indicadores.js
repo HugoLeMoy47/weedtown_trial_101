@@ -1,18 +1,28 @@
 // Agregados para el panóptico (HU-PAN-001/002/003/004).
 //
 // Principio rector, heredado de logger.js: el panóptico mide qué pasa en la
-// red, no qué hace cada persona. Todo lo de abajo son conteos, sumas y
-// percentiles sobre columnas que YA EXISTEN (createdAt, deletedAt, hiddenAt…)
-// — cero columnas, cero tablas, cero migraciones. Si algo aquí pareciera
-// necesitar guardar un dato nuevo sobre una persona, es que se salió del
-// alcance: no se hace, se avisa.
+// red, no qué hace cada persona. Casi todo lo de abajo son conteos, sumas y
+// percentiles sobre columnas que YA EXISTEN (createdAt, deletedAt, hiddenAt…).
+// Si algo aquí pareciera necesitar guardar un dato nuevo sobre una persona, es
+// que se salió del alcance: no se hace, se avisa.
+//
+// LA EXCEPCIÓN, desde el ciclo 13A: `ConteoAtribucion`. El módulo decía "cero
+// tablas, cero migraciones" y dejó de ser cierto — se corrige aquí en vez de
+// dejar el encabezado mintiendo, que es la deriva que el 10E vino a cortar. La
+// tabla existe porque el evento que mide no deja rastro en ninguna otra: un
+// intento de atribución incrementa un contador ajeno y desaparece. **No guarda
+// un dato sobre nadie**: no tiene identidades y su grano más fino es el día,
+// justamente para que no se pueda emparejar un alta con su invitación.
 //
 // Tres reglas que gobiernan cada función de este archivo:
 //   1. Una consulta agregada por métrica (agrupando en la base), nunca un
 //      ciclo con un conteo por día — ver `diaMx()` y las consultas UNION ALL.
-//   2. El día se trunca en America/Mexico_City, no en UTC (ver `diaMx`).
+//   2. El día se trunca en America/Mexico_City, no en UTC (ver `diaMx`, y
+//      `diaMexico.js` para el caso en que el truncado ocurre al escribir).
 //   3. Ningún desglose expone un segmento con menos de UMBRAL_SUPRESION
-//      elementos — se colapsa en "otros" (ver `suprimir`).
+//      elementos — se colapsa en "otros" (ver `suprimir`). Con una excepción
+//      argumentada en el propio sitio: el desglose de atribución, cuyos
+//      segmentos son escalones de un recorrido y no grupos de personas.
 const { Prisma } = require('@prisma/client');
 const prisma = require('./prisma');
 
@@ -105,9 +115,13 @@ function entreDiasMx(col, alias, desdeISO, hastaISO) {
 
 // "Hoy" en hora de México, como 'YYYY-MM-DD' — independiente de en qué huso
 // corra el proceso de Node (en Render puede ser UTC).
-function hoyMexicoISO() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
-}
+//
+// Desde el 13A vive en su propio módulo porque `atribucion.js` necesita el
+// MISMO cálculo al escribir sus conteos. Importarlo en vez de copiarlo es la
+// misma decisión que ya se tomó con LAT_CELLS/LON_CELLS arriba: dos copias de
+// una regla de zona horaria es cómo se producen desfases de seis horas que no
+// fallan, solo cuentan mal.
+const { diaMexicoISO: hoyMexicoISO } = require('./diaMexico');
 
 function sumarDiasISO(fechaISO, delta) {
   const d = new Date(`${fechaISO}T00:00:00Z`);
@@ -292,6 +306,26 @@ async function consultaReportesPorDia(desdeConsulta) {
     SELECT reason::text || '::' || status::text AS sub, ${diaMx('createdAt')} AS dia, count(*)::int AS valor
     FROM "Report" WHERE "createdAt" >= ${desdeConsulta}
     GROUP BY reason, status, dia
+  `;
+}
+
+// G-bis. Atribución de altas por día y resultado (ciclo 13A).
+//
+// ÚNICA CONSULTA DEL MÓDULO QUE LEE UNA TABLA PREAGREGADA. Las demás cuentan
+// filas de tablas que ya existían; ésta lee conteos que `atribucion.js` fue
+// sumando al vuelo, porque el evento que mide —un intento de atribución— no
+// deja ninguna fila propia en ningún lado: incrementa un contador ajeno y se
+// va. La alternativa era guardar una fila por intento con su marca de tiempo,
+// y eso permitiría emparejar cada alta con su invitación por cercanía
+// temporal. Ver el comentario del modelo en schema.prisma.
+//
+// `dia` ya viene truncado en calendario de México desde la escritura, así que
+// aquí NO se aplica diaMx(): hacerlo lo truncaría dos veces.
+async function consultaAtribucionPorDia(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT "resultado" AS sub, "dia" AS dia, "conteo"::int AS valor
+    FROM "ConteoAtribucion"
+    WHERE "dia" >= ${desdeConsulta}::date
   `;
 }
 
@@ -481,7 +515,8 @@ async function calcularCatalogo(dias) {
 
   const [
     simples, altasProveedor, feed, reacciones, foro, amistad, reportes,
-    instantaneas, subforosVivos, seguidores, concentracion, tiempoRespuesta, reincidencia
+    instantaneas, subforosVivos, seguidores, concentracion, tiempoRespuesta, reincidencia,
+    atribucion
   ] = await Promise.all([
     consultaSeriesSimples(v.desdeConsulta),
     consultaAltasPorProveedor(v.desdeConsulta),
@@ -495,7 +530,8 @@ async function calcularCatalogo(dias) {
     consultaSeguidoresPorSubforo(),
     consultaConcentracion(v.desdeActual, v.hasta),
     consultaTiempoRespuesta(v.desdeActual, v.hasta),
-    consultaReincidencia(v.desdeActual, v.hasta)
+    consultaReincidencia(v.desdeActual, v.hasta),
+    consultaAtribucionPorDia(v.desdeConsulta)
   ]);
 
   const porFuente = (fuente) => simples.filter(f => f.fuente === fuente);
@@ -513,6 +549,29 @@ async function calcularCatalogo(dias) {
   const bloqueosTendencia = conTendencia(porFuente('bloqueos'), v);
   const altasTendencia = conTendencia(porFuente('altas'), v);
 
+  // Atribución (13A): serie por resultado + totales del periodo.
+  //
+  // POR QUÉ ESTE DESGLOSE NO PASA POR `suprimir()`, contra la regla 3 del
+  // encabezado — y es una excepción argumentada, no un olvido:
+  //
+  // `suprimir` colapsa en "Otros" todo segmento con menos de 5. Existe porque
+  // un segmento chico de PERSONAS las señala (cuatro seguidores de un subforo
+  // son cuatro personas identificables si se cruzan con otra cosa). Acá los
+  // segmentos son ESCALONES DE UN RECORRIDO, no grupos de personas: "3
+  // enlaces sin destino" no describe a nadie. Y con el volumen real de la red
+  // —13 altas en la última semana— todos los escalones caen bajo el umbral,
+  // así que aplicarlo dejaría un único cubo "Otros" y borraría exactamente lo
+  // único que este indicador vino a contestar: en qué escalón se cae la
+  // gente. Protegería a nadie y costaría todo.
+  //
+  // Lo que SÍ protege está aguas arriba, en el modelo: la fila no tiene
+  // identidades y el día es el grano más fino que existe.
+  const atribucionPorResultado = conTendenciaPorSubclave(atribucion, v);
+  const totalesAtribucion = Object.fromEntries(
+    Object.entries(atribucionPorResultado).map(([sub, t]) => [sub, t.total])
+  );
+  const intentosPeriodo = Object.values(totalesAtribucion).reduce((a, n) => a + n, 0);
+
   return {
     dias,
     periodo: { desde: v.desdeActual, hasta: v.hasta },
@@ -522,7 +581,17 @@ async function calcularCatalogo(dias) {
       cuentasConMetodosMultiples: instantaneas.cuentasConMetodosMultiples,
       eliminacionesPorDia: conTendencia(porFuente('eliminaciones'), v),
       exportacionesPorDia: conTendencia(porFuente('exportaciones'), v),
-      cuentasEnCuarentena: instantaneas.cuentasEnCuarentena
+      cuentasEnCuarentena: instantaneas.cuentasEnCuarentena,
+      // 13A. `altasDelPeriodo` va aquí adentro a propósito: el número de
+      // intentos no significa nada solo. "7 intentos" es bueno con 8 altas y
+      // malo con 60, y quien mire el tablero no tiene por qué ir a buscar el
+      // denominador a otra tarjeta.
+      atribucion: {
+        porResultado: atribucionPorResultado,
+        totalesPeriodo: totalesAtribucion,
+        intentosPeriodo,
+        altasDelPeriodo: altasTendencia.total
+      }
     },
     actividad: {
       postsPorDia: conTendencia(feed.filter(f => f.sub === 'post'), v),
