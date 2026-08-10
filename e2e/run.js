@@ -28,13 +28,22 @@ function abortar(mensaje) {
   process.exit(1);
 }
 
-if (!fs.existsSync(ENV_TEST)) {
-  abortar(
-    'Falta backend/.env.test — las specs E2E corren contra el mismo schema de ' +
-    'pruebas que la suite de integración (ver backend/tests/run.js).'
-  );
+// En local el entorno sale de backend/.env.test; en CI ya viene inyectado en
+// el ambiente, igual que en backend/tests/run.js. Exigir el archivo era lo que
+// impedía correr esto en el runner de GitHub (ciclo 12A).
+const EN_CI = Boolean(process.env.CI);
+if (EN_CI) {
+  if (!process.env.DATABASE_URL) abortar('En CI hace falta DATABASE_URL en el entorno.');
+  if (!process.env.JWT_SECRET) abortar('En CI hace falta JWT_SECRET en el entorno.');
+} else {
+  if (!fs.existsSync(ENV_TEST)) {
+    abortar(
+      'Falta backend/.env.test — las specs E2E corren contra el mismo schema de ' +
+      'pruebas que la suite de integración (ver backend/tests/run.js).'
+    );
+  }
+  require('dotenv').config({ path: ENV_TEST, override: true });
 }
-require('dotenv').config({ path: ENV_TEST, override: true });
 
 const entornoBackend = {
   ...process.env,
@@ -79,17 +88,48 @@ async function main() {
   if (!await esperar(`${BACKEND_URL}/health`)) abortar('El backend de pruebas no respondió a tiempo.');
   console.log('  backend listo');
 
-  console.log('\nLevantando el frontend, apuntando al backend de pruebas…');
-  frontendProc = spawn('npm', ['start'], {
-    cwd: FRONTEND,
-    env: { ...process.env, PORT: String(FRONTEND_PORT), REACT_APP_API_URL: BACKEND_URL, BROWSER: 'none' },
-    stdio: 'inherit',
-    shell: SHELL
-  });
-  frontendProc.on('error', e => abortar(`No se pudo iniciar el frontend: ${e.message}`));
-  // El primer arranque de react-scripts puede tardar bastante en compilar.
-  if (!await esperar(FRONTEND_URL, 180)) abortar('El frontend de pruebas no respondió a tiempo.');
-  console.log('  frontend listo\n');
+  // En CI se sirve el frontend COMPILADO; en local, el servidor de desarrollo.
+  // El porqué está en servidorEstatico.js — resumido: en CI interesa probar lo
+  // que se despliega, y el dev server de CRA es lento y a veces se cuelga en
+  // runners sin TTY.
+  if (EN_CI) {
+    console.log('\nCompilando el frontend contra el backend de pruebas…');
+    // CRA incrusta REACT_APP_* en tiempo de COMPILACIÓN, no de ejecución: si
+    // esta variable no está aquí, el bundle apunta al backend equivocado y
+    // todas las specs fallan con errores de red que no dicen por qué.
+    const build = spawnSync('npm', ['run', 'build'], {
+      cwd: FRONTEND,
+      env: { ...process.env, REACT_APP_API_URL: BACKEND_URL, CI: 'true' },
+      stdio: 'inherit', shell: SHELL
+    });
+    if (build.status !== 0) abortar('No se pudo compilar el frontend.');
+
+    // EN SU PROPIO PROCESO, no en éste. Abajo se corre Playwright con
+    // `spawnSync`, que **bloquea el event loop** de este proceso durante toda
+    // la tanda: un servidor levantado aquí adentro acepta la conexión y no
+    // contesta jamás. Costó una corrida entera de diagnóstico — las 10 specs
+    // agotaron su timeout de 1.7 min cada una contra un servidor mudo, y
+    // Playwright no dice "el servidor no responde", dice "no encontré el
+    // elemento".
+    frontendProc = spawn('node', ['servidorEstatico.js', String(FRONTEND_PORT)], {
+      cwd: __dirname, stdio: 'inherit'
+    });
+    frontendProc.on('error', e => abortar(`No se pudo servir el frontend compilado: ${e.message}`));
+    if (!await esperar(FRONTEND_URL, 30)) abortar('El frontend compilado no respondió.');
+    console.log(`  frontend compilado sirviéndose en ${FRONTEND_URL}\n`);
+  } else {
+    console.log('\nLevantando el frontend, apuntando al backend de pruebas…');
+    frontendProc = spawn('npm', ['start'], {
+      cwd: FRONTEND,
+      env: { ...process.env, PORT: String(FRONTEND_PORT), REACT_APP_API_URL: BACKEND_URL, BROWSER: 'none' },
+      stdio: 'inherit',
+      shell: SHELL
+    });
+    frontendProc.on('error', e => abortar(`No se pudo iniciar el frontend: ${e.message}`));
+    // El primer arranque de react-scripts puede tardar bastante en compilar.
+    if (!await esperar(FRONTEND_URL, 180)) abortar('El frontend de pruebas no respondió a tiempo.');
+    console.log('  frontend listo\n');
+  }
 
   const pw = spawnSync('npx', ['playwright', 'test'], {
     cwd: __dirname,

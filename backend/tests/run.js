@@ -76,8 +76,41 @@ const migracion = spawnSync('npx', ['prisma', 'migrate', 'deploy'], {
   shell: process.platform === 'win32'
 });
 if (migracion.status !== 0) {
-  console.error(migracion.stdout || '');
-  console.error(migracion.stderr || '');
+  const salida = `${migracion.stdout || ''}${migracion.stderr || ''}`;
+  console.error(salida);
+
+  // Diagnóstico específico del advisory lock de migraciones (deuda 8I).
+  //
+  // Prisma toma `pg_advisory_lock(72707369)` antes de migrar y se rinde a los
+  // 10 s con un P1002 que menciona un "timeout" — que se lee como "la base no
+  // responde" cuando en realidad significa "alguien más tiene el lock". Ese
+  // malentendido ya costó una sesión entera de diagnóstico.
+  //
+  // Lo que se comprobó al investigarlo (2026-08-09), y por qué esto es un
+  // MENSAJE y no una limpieza automática:
+  //   · `migrate deploy` sí toma el lock — verificado muestreando pg_locks
+  //     cada 50 ms durante una corrida.
+  //   · Matar el proceso que lo tiene lo libera en menos de 2 s.
+  //   · Tras el timeout del cliente, la petición del servidor SOBREVIVE unos
+  //     segundos en la cola del lock (se ve como `esperando` en pg_locks) —
+  //     ésa es la mitad real del 8I— pero al liberarse el lock **no se queda
+  //     con él**: Postgres cierra esa sesión sola.
+  // O sea: la cascada que dejó la base inutilizable ya no se reproduce, muy
+  // probablemente porque desde el 2026-08-08 las pruebas corren contra otro
+  // proyecto de Supabase. Meter limpieza automática sería código permanente
+  // contra un fallo que hoy no ocurre; un mensaje que ahorra el diagnóstico
+  // cuesta nada y sirve igual si vuelve.
+  if (/advisory lock|P1002/i.test(salida)) {
+    console.error(
+      '  ⚠ Esto NO es que la base esté caída: alguien tiene tomado el advisory\n' +
+      '    lock de migraciones. Casi siempre es una corrida anterior que murió\n' +
+      '    a medias. Para ver quién y liberarlo, en el SQL Editor de Supabase:\n\n' +
+      "      SELECT pid, granted, state FROM pg_locks l\n" +
+      "        JOIN pg_stat_activity a USING (pid)\n" +
+      "        WHERE l.locktype = 'advisory';\n" +
+      '      SELECT pg_terminate_backend(<pid>);\n'
+    );
+  }
   abortar('No se pudieron aplicar las migraciones a la base de pruebas.');
 }
 console.log('  migraciones al día');

@@ -80,6 +80,82 @@ jobs:
         working-directory: backend
         run: npm test
 
+  # Ciclo 12A. Las specs de Playwright existían desde el ciclo 1, pasaban en
+  # local y NO PROTEGÍAN NADA en cada push — el mismo patrón que el 7E cazó
+  # para las unitarias del frontend. El 8C lo documentó con honestidad en el
+  # README, pero documentar un hueco no lo cierra.
+  #
+  # Va en su propio job, no pegado al de backend: tarda más que los otros dos y
+  # así no retrasa la señal rápida. Mismo Postgres efímero, misma razón — las
+  # specs borran datos.
+  e2e:
+    name: E2E · navegador real
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weedtown_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/weedtown_e2e?schema=weedtown_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/weedtown_e2e?schema=weedtown_test
+      API_LIMITER_MAX: 5000
+      # Un navegador de verdad hace muchas más peticiones que la suite de
+      # integración, y todas desde la misma IP.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
+          npm ci --prefix e2e
+
+      - name: Generar el cliente de Prisma
+        working-directory: backend
+        run: npx prisma generate
+
+      # `--with-deps` instala las librerías del sistema que Chromium necesita
+      # en el runner. Sin eso, el navegador arranca y muere sin explicar nada.
+      - name: Instalar Chromium para Playwright
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Generar JWT_SECRET de la tanda
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      # e2e/run.js detecta CI: toma el entorno inyectado en vez de .env.test, y
+      # sirve el frontend COMPILADO en vez del servidor de desarrollo.
+      - name: Ciclo E2E completo
+        working-directory: e2e
+        run: npm test
+
+      # Las trazas y capturas solo se generan al fallar (playwright.config.js).
+      # Sin esto, un fallo en CI es un mensaje sin nada que mirar.
+      - name: Guardar evidencia si algo falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidencia
+          path: e2e/test-results/
+          retention-days: 7
+
   frontend:
     name: Frontend · compilación
     runs-on: ubuntu-latest

@@ -56,7 +56,7 @@
 | Exportar mis datos y eliminar (anonimizar) mi cuenta, con bitácora propia | ✅ Funcionando |
 | Cuarentena de altas nuevas para contacto directo (toque, chat), diferenciada por método de acceso — HU-SEG-006/007 | ✅ Funcionando |
 | Control de spam: contenido repetido en ráfaga y exceso de enlaces por posteo | ✅ Funcionando |
-| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando localmente — **no corre en CI** (ver [Integración continua](#integración-continua)) |
+| Pruebas E2E en navegador real (Playwright): passkey, enlace mágico, crear/comentar posteos, navegación móvil | ✅ Funcionando, **y corriendo en CI** en cada push desde el ciclo 12A |
 | Posteo público por enlace (`/p/:id`, visible sin sesión si es `PUBLIC`); un posteo oculto por moderación deja de resolverse para cualquiera, incluida su propia autora | ✅ Funcionando |
 | Bloque de invitación bajo un posteo público para quien no tiene sesión, con atribución de altas (`?ref=post`) sin migración — solo una línea en el log estructurado | ✅ Funcionando |
 | Posteo no accesible (de amistades o inexistente) sin sesión → redirige a iniciar sesión y regresa al mismo enlace tras el alta, sin bucles ni distinguir "privado" de "no existe" | ✅ Funcionando |
@@ -469,6 +469,7 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **Atribucion** | HU-CTA-002/HU-ATR-001: `ref` fuera de la lista blanca se descarta en silencio, exige sesión, y el limitador propio (5/15min) corta antes que el general |
 | **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
 | **Hashtags** | Ciclo 9C: `#RolarEnLaTarde` guarda llave `rolarenlatarde` y grafía `RolarEnLaTarde`; `#Rolar` y `#rolar` son una sola fila y gana la primera grafía vista (también al editar); las palabras del diccionario de descarte no generan fila; y el texto del posteo vuelve **idéntico**, con sus `#de` adentro |
+| **DocumentacionApi** | Ciclo 12A: que la lista de rutas de `swagger.json` coincida con las que el servidor monta de verdad. No valida el contenido de cada entrada —eso es criterio humano—, sino que no falte ninguna ni sobre una inventada. Existe porque el 10E encontró **21 rutas desfasadas, 13 de ellas acumuladas de ciclos anteriores**: no fue el descuido de nadie, era que no había ningún paso que lo impidiera. En su primera corrida atrapó una ruta del ciclo 11B sin documentar |
 | **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las demás |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
@@ -539,11 +540,18 @@ El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin d
 | Trabajo | Qué hace |
 |---|---|
 | **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` (integración) |
+| **E2E** | Su propio Postgres efímero, Chromium con `--with-deps`, frontend compilado y servido estático, y las specs de Playwright. Va aparte del backend para no retrasar la señal rápida |
 | **Frontend** | `npm test` (70 unitarias — `worker.test.js`, `rutaInterna.test.js`, `intencionCerca.test.js`, `recorte.test.js`, `invitador.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
 
 El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se pisarían. El Postgres del runner nace y muere con el trabajo, así que tampoco hay secretos que guardar — el `JWT_SECRET` se genera con `openssl rand` al vuelo. No hace falta configurar nada en el repositorio para que funcione.
 
-**Lo que NO corre en CI:** las pruebas E2E de Playwright (`e2e/`). Viven y pasan en local (ver más abajo), pero levantar backend + frontend compilado + Chromium dentro del runner no está armado todavía — es trabajo de infraestructura de pruebas pendiente, no una omisión silenciosa: quien lea esta sección ya sabe que esa cobertura depende de que alguien la corra a mano antes de confiar en ella.
+**Las E2E también corren en CI desde el ciclo 12A**, en su propio job. Existían desde el ciclo 1 y pasaban en local, pero no protegían nada en cada push — el mismo patrón que el 7E ya había cazado para las unitarias del frontend. El 8C lo documentó con honestidad aquí mismo, y documentar un hueco no lo cierra.
+
+El job levanta el mismo Postgres 16 efímero, compila el frontend y lo sirve **estático** (`e2e/servidorEstatico.js`, veinte líneas con fallback de SPA, sin dependencia nueva). En local el ciclo sigue usando el servidor de desarrollo, que da recarga en caliente. Dos razones para compilarlo en CI: es lo que de verdad se despliega, y el dev server de Create React App a veces se cuelga en runners sin TTY.
+
+> **La trampa que costó una corrida entera:** la primera versión levantaba el servidor estático **dentro del proceso** de `e2e/run.js`. Como Playwright se lanza con `spawnSync`, que **bloquea el event loop**, ese servidor aceptaba conexiones y no contestaba ninguna: las 10 specs agotaron su timeout de 1.7 min cada una. Y Playwright no dice "el servidor no responde", dice "no encontré el elemento". Va en su propio proceso, y por eso `servidorEstatico.js` se puede ejecutar suelto.
+
+Al fallar, el job sube las trazas y capturas de Playwright como artefacto (7 días). Sin eso, un fallo en CI es un mensaje sin nada que mirar.
 
 El runner de pruebas detecta dónde está corriendo: en local lee `.env.test`, y en CI toma las variables ya inyectadas en el entorno. Los tres guardias se aplican igual en ambos casos.
 
