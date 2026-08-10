@@ -341,13 +341,31 @@ async function main() {
     // no sirve para recuperar tiene que decirlo desde el nombre.
     const archivo = path.join(destinoAbs, `weedtown-${donde.proyecto}-${sello}${esParcial ? '-parcial' : ''}.json`);
 
-    // `Bytes` (Passkey.publicKey) no sobrevive a JSON.stringify: sale como
-    // {"0":4,"1":91,...}, que al restaurar deja de ser un Buffer y la llave de
-    // acceso queda inservible. Se marca explícitamente para poder revertirlo.
-    const reemplazo = (_clave, valor) =>
-      (valor?.type === 'Buffer' && Array.isArray(valor.data))
-        ? { __bytes: Buffer.from(valor.data).toString('base64') }
-        : valor;
+    // `Bytes` (Passkey.publicKey) no sobrevive a JSON.stringify y hay que
+    // marcarlo para poder revertirlo al restaurar.
+    //
+    // LA VERSIÓN ANTERIOR DE ESTO ESTABA MAL, y solo se vio al verificar un
+    // respaldo real de producción (12D). Comprobaba `valor.type === 'Buffer'`,
+    // que es la forma que produce `Buffer.toJSON()`. Pero **Prisma 6 devuelve
+    // Bytes como `Uint8Array`, no como Buffer**, y `Uint8Array` no tiene
+    // `toJSON`: se serializa como {"0":4,"1":91,…}. El reemplazo nunca
+    // disparaba y las 20 llaves de acceso del respaldo quedaron en esa forma.
+    //
+    // Por qué la prueba de viaje redondo no lo atrapó: la base de desarrollo
+    // tiene **0 llaves de acceso**. Las 25 tablas cuadraron porque el caso no
+    // estaba presente. Una verificación pasa por lo que cubre, no por lo que
+    // uno cree que cubre.
+    //
+    // Se mira `this[clave]` —el valor ANTES de `toJSON`— porque es lo único
+    // que distingue las dos formas de una sola manera. Función normal, no
+    // flecha: hace falta `this`.
+    const reemplazo = function (clave, valor) {
+      const bruto = this[clave];
+      if (ArrayBuffer.isView(bruto)) {
+        return { __bytes: Buffer.from(bruto.buffer, bruto.byteOffset, bruto.byteLength).toString('base64') };
+      }
+      return valor;
+    };
 
     fs.writeFileSync(archivo, JSON.stringify({
       version: 2,

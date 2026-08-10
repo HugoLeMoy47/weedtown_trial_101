@@ -39,7 +39,6 @@ function abortar(m) { console.error(`\n  ✖ ${m}\n`); process.exit(1); }
 
 if (!archivo) abortar('Falta --archivo con la ruta del respaldo.');
 if (!fs.existsSync(archivo)) abortar(`No existe: ${path.resolve(archivo)}`);
-if (!url) abortar('No hay base destino: define DATABASE_URL o pasa --url.');
 
 // Igual que en respaldo.js: lo que identifica una base de Supabase es el
 // PROJECT REF del usuario, no el host — todos los proyectos de una región
@@ -60,9 +59,72 @@ function describir(c) {
 }
 
 // Al leer, deshacemos la marca que `respaldo.js` puso sobre los Bytes.
-const reviver = (_c, v) => (v && typeof v === 'object' && typeof v.__bytes === 'string')
-  ? Buffer.from(v.__bytes, 'base64')
-  : v;
+//
+// Y también se rescatan los respaldos VIEJOS. Hasta el 12D el reemplazo de
+// `respaldo.js` no reconocía los `Uint8Array` que devuelve Prisma 6, así que
+// las claves públicas de las llaves de acceso quedaron guardadas como
+// {"0":4,"1":91,…} en vez de base64. Los datos ESTÁN completos, solo con otra
+// forma: se reconocen y se reconstruyen aquí en vez de exigir volver a tomar
+// el respaldo. Un respaldo que ya existe y se puede leer vale más que uno
+// perfecto que hay que rehacer — y el de producción del 2026-08-09 es ése.
+function esBytesNumerado(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const claves = Object.keys(v);
+  if (!claves.length) return false;
+  // Todas las claves son índices consecutivos desde 0, y los valores son bytes.
+  return claves.every((k, i) => k === String(i) && Number.isInteger(v[k]) && v[k] >= 0 && v[k] <= 255);
+}
+
+const reviver = (_c, v) => {
+  if (v && typeof v === 'object' && typeof v.__bytes === 'string') return Buffer.from(v.__bytes, 'base64');
+  if (esBytesNumerado(v)) return Buffer.from(Object.values(v));
+  return v;
+};
+
+// --revisar-archivo: coherencia del archivo consigo mismo, SIN base de datos.
+//
+// Existe porque fue esta comprobación la que encontró que las claves públicas
+// de las llaves de acceso se habían guardado mal (12D) — algo que el viaje
+// redondo contra la base de desarrollo NO podía ver, porque ahí no hay
+// ninguna llave. Verificar contra una base solo prueba lo que esa base
+// contiene; verificar el archivo prueba el archivo.
+//
+// NO IMPRIME NINGÚN DATO: solo nombres de tabla, conteos y booleanos. El
+// archivo lleva correos, teléfonos y mensajes privados de personas reales, y
+// comprobarlo no es motivo para leerlos.
+if (bandera('--revisar-archivo')) {
+  const j = JSON.parse(fs.readFileSync(archivo, 'utf8'), reviver);
+  const mb = (fs.statSync(archivo).size / 1048576).toFixed(2);
+  console.log(`\n  ${path.basename(archivo)} · ${mb} MB · versión ${j.version}`);
+  console.log(`  proyecto ${j.origen?.proyecto || j.origen?.host} · migración ${j.migracion}`);
+  // `completo` no existe antes de la versión 2: esos respaldos son completos
+  // por construcción, porque el modo selectivo todavía no existía.
+  const completo = j.version >= 2 ? j.completo === true : true;
+  console.log(`  alcance: ${completo ? 'completo' : 'PARCIAL'}\n`);
+
+  let fallos = 0;
+  const revisar = (ok, msg) => { console.log(`  ${ok ? '✓' : '✖'} ${msg}`); if (!ok) fallos++; };
+
+  revisar(Array.isArray(j.orden) && j.orden.length > 0, `${j.orden?.length} tablas en el orden de restauración`);
+  const descuadres = (j.orden || []).filter(t => (j.datos?.[t]?.length ?? -1) !== j.conteos?.[t]);
+  revisar(descuadres.length === 0,
+    descuadres.length ? `el manifiesto NO cuadra en: ${descuadres.join(', ')}` : 'el manifiesto cuadra con los datos');
+
+  // Los campos Bytes son los que se rompen en silencio: si no vuelven como
+  // Buffer, restaurar deja una llave de acceso inservible y nadie se entera
+  // hasta que alguien intenta recuperar su cuenta.
+  const llaves = j.datos?.Passkey || [];
+  revisar(llaves.every(k => Buffer.isBuffer(k.publicKey)),
+    llaves.length ? `${llaves.length} llaves de acceso con su clave pública legible` : 'sin llaves de acceso que revisar');
+
+  const total = Object.values(j.conteos || {}).reduce((a, b) => a + b, 0);
+  console.log(`\n  ${total} filas en total.`);
+  console.log(fallos ? `\n  ✖ ${fallos} problemas.\n` : '\n  ✔ El archivo es coherente y legible.\n');
+  process.exit(fallos ? 1 : 0);
+}
+
+// A partir de aquí sí hace falta una base: --revisar-archivo ya salió arriba.
+if (!url) abortar('No hay base destino: define DATABASE_URL o pasa --url.');
 
 async function main() {
   const respaldo = JSON.parse(fs.readFileSync(archivo, 'utf8'), reviver);

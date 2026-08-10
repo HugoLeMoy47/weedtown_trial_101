@@ -199,6 +199,20 @@ Sin `--url` escribe en `DATABASE_URL`, o sea tu base de desarrollo — el defaul
 
 **Lo de las secuencias no es un detalle.** Al insertar con ids explícitos, los contadores autoincrementales se quedan en 1, y la app choca con llaves duplicadas la primera vez que alguien publica — horas después de que la restauración pareció exitosa. Es el error clásico de restaurar así.
 
+#### Revisar un archivo sin tocar ninguna base
+
+```bash
+npm run restaurar -- --archivo "D:\respaldos-weedtown\weedtown-....json" --revisar-archivo
+```
+
+Comprueba que el archivo es coherente consigo mismo: que el manifiesto cuadra con los datos, que están todas las tablas y que **los campos `Bytes` se leen de vuelta como bytes**. No necesita base de datos y **no imprime ningún dato** — solo nombres de tabla, conteos y booleanos.
+
+> **Esta comprobación encontró un bug que el viaje redondo no podía ver.** La verificación de la Ola 3 restauró un respaldo completo y dijo "las 25 tablas coinciden". Parecía suficiente. No lo era: **la base de desarrollo tiene 0 llaves de acceso**, así que el único campo `Bytes` del esquema (`Passkey.publicKey`) nunca se ejercitó. Al revisar el primer respaldo real de producción —que sí tiene 20 llaves— apareció el fallo: **Prisma 6 devuelve `Bytes` como `Uint8Array`, no como `Buffer`**, y el reemplazo de `respaldo.js` solo reconocía la forma de Buffer. Las claves públicas se guardaron como `{"0":4,"1":91,…}` y al restaurar no habrían vuelto a ser bytes: 20 personas sin poder entrar con su llave, y nadie se habría enterado hasta intentar recuperar una cuenta.
+>
+> Ya está corregido, y `restaurar.js` **sabe leer los respaldos viejos**: reconoce esa forma y la reconstruye, así que el respaldo de producción del 2026-08-09 sigue sirviendo sin volver a tomarlo. Hay una prueba (`tests/respaldoBytes.test.js`) que cubre las tres formas.
+>
+> La lección, que vale más que el arreglo: **una verificación pasa por lo que cubre, no por lo que uno cree que cubre.** Verificar contra una base solo prueba lo que esa base contiene.
+
 **Se niega a escribir sobre la base de la que salió el respaldo** (`--forzar` para una recuperación real), y **se niega si la migración del destino no coincide** con la del respaldo. La primera guardia importa porque restaurar es borrar primero: equivocarse ahí destruye justo los datos que se estaban protegiendo.
 
 Esa comparación es **por project ref, no por host** — por la misma razón de arriba. Comparando por host tenía una consecuencia concreta: se disparaba al restaurar un respaldo de producción en desarrollo, que es exactamente la verificación que uno quiere poder hacer.
