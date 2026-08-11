@@ -25,6 +25,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
+const { MODELOS } = require('./lib/respaldo-tablas');
 
 const args = process.argv.slice(2);
 const opcion = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
@@ -187,15 +188,43 @@ async function main() {
 
     const delegado = (modelo) => prisma[modelo[0].toLowerCase() + modelo.slice(1)];
 
+    // EL ORDEN DE CARGA LO MANDA EL MAPA ACTUAL, no el que trae el archivo.
+    //
+    // Parece un detalle y es la diferencia entre tener respaldos y no tenerlos.
+    // El 2026-08-11, la primera vez que se probó una restauración con un
+    // archivo real de producción, falló: `Reaction` iba antes que `ForumPost`
+    // porque su FK hacia el foro es opcional y el orden solo contemplaba las
+    // obligatorias. Se corrigió el mapa — pero **todos los respaldos ya
+    // tomados llevan el orden viejo grabado adentro**, así que respetarlo los
+    // condenaba a seguir siendo irrestaurables para siempre.
+    //
+    // El orden correcto es una propiedad del ESQUEMA, no del archivo: vive en
+    // el código, se corrige en el código, y así una corrección de hoy rescata
+    // los respaldos de ayer. Del archivo se toma QUÉ tablas trae; de aquí, en
+    // qué secuencia entran.
+    const enElArchivo = new Set(respaldo.orden);
+    const orden = MODELOS.filter(m => enElArchivo.has(m));
+    const desconocidas = respaldo.orden.filter(m => !MODELOS.includes(m));
+    if (desconocidas.length) {
+      abortar(
+        `El archivo trae tablas que el mapa actual no conoce: ${desconocidas.join(', ')}.\n\n` +
+        '    Restaurarlas sin saber su lugar en el orden dejaría la base a medias.\n' +
+        '    Agrégalas a scripts/lib/respaldo-tablas.js.'
+      );
+    }
+    if (orden.join('|') !== respaldo.orden.join('|')) {
+      console.log('  ℹ Se reordenan las tablas según el mapa actual (el archivo traía otro orden).');
+    }
+
     if (!soloVerificar) {
       // Vaciar en orden inverso al de carga: los hijos antes que los padres.
       console.log('  Vaciando el destino…');
-      for (const modelo of [...respaldo.orden].reverse()) {
+      for (const modelo of [...orden].reverse()) {
         await delegado(modelo).deleteMany({});
       }
 
       console.log('  Cargando…');
-      for (const modelo of respaldo.orden) {
+      for (const modelo of orden) {
         const filas = respaldo.datos[modelo] || [];
         if (!filas.length) continue;
         // createMany en lotes: de un jalón, un respaldo grande revienta el
@@ -210,7 +239,7 @@ async function main() {
       // una llave duplicada. Es el error clásico de restaurar así, y aparece
       // horas después, cuando alguien intenta publicar.
       console.log('  Reajustando secuencias…');
-      for (const modelo of respaldo.orden) {
+      for (const modelo of orden) {
         const filas = respaldo.datos[modelo] || [];
         if (!filas.length || typeof filas[0].id !== 'number') continue;
         const max = Math.max(...filas.map(f => f.id));
@@ -223,7 +252,7 @@ async function main() {
     // Verificación: contar en el destino y comparar contra el manifiesto.
     console.log('\n  Verificando…\n');
     let fallas = 0;
-    for (const modelo of respaldo.orden) {
+    for (const modelo of orden) {
       const esperado = respaldo.conteos[modelo] ?? 0;
       const real = await delegado(modelo).count();
       const ok = real === esperado;
