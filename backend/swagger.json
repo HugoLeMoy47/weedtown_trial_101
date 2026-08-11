@@ -4601,6 +4601,55 @@
           }
         }
       }
+    },
+    "/api/nearby/poke/responder": {
+      "post": {
+        "tags": [
+          "Cerca"
+        ],
+        "summary": "Contestar un toque recibido 👋 (ciclo 13D)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Cierra el circuito del toque: se contesta a quien te saludó, en un gesto y desde la notificación. A diferencia de POST /api/nearby/poke, **no exige compartir zona ni cercanía actual** — contestar un saludo no es asomarse al mapa de nadie, y quien saludó ya sabía que estabas en su cuadrícula. Tampoco consume el enfriamiento de 12 h, que existe para que nadie insista y no aplica a una respuesta solicitada; en su lugar se permite **una respuesta por saludo recibido**. La ventana para contestar es de 48 horas. Bloqueos, suspensión y cuarentena aplican igual que en el toque original.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saludo contestado. Devuelve `saludoMutuo: true` cuando los dos ya se saludaron."
+          },
+          "400": {
+            "description": "userId inválido o respuesta a ti mismo"
+          },
+          "403": {
+            "description": "Cuenta suspendida o en cuarentena"
+          },
+          "404": {
+            "description": "No hay un toque reciente de esa persona que contestar (mismo 404 si hay bloqueo: el motivo no se revela)"
+          },
+          "429": {
+            "description": "Ya contestaste ese saludo"
+          }
+        }
+      }
     }
   }
 }

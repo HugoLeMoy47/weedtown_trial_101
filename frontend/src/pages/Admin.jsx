@@ -625,6 +625,13 @@ const Indicadores = () => {
             <MiniSerie titulo="Mensajes de chat" datos={datos.actividad.mensajesPorDia} />
             <MiniSerie titulo="Imágenes subidas" datos={datos.actividad.imagenesPorDia} />
             <MiniSerie titulo="Toques en Cerca" datos={datos.actividad.toquesPorDia} />
+            {datos.actividad.saludosMutuos != null && (
+              <Tile
+                label="Saludos que cerraron el circuito"
+                valor={`${datos.actividad.saludosMutuos} de ${datos.actividad.toquesPorDia.total} toques`}
+                ayuda="Toques correspondidos dentro de 48 h. El toque es el gesto más usado de la red; esto dice si lleva a algún lado."
+              />
+            )}
             <Tile label="Compartiendo zona en Cerca ahora" valor={datos.actividad.personasCompartiendoZona} />
           </Bloque>
 

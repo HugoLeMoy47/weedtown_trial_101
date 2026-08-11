@@ -11,6 +11,7 @@ const { requireAuth, requireNotSuspended, requireEstablished } = require('../mid
 const { isValidCell, centroid, neighborsGrid, cellDistanceKm } = require('../lib/geogrid');
 const { blockedWith, isBlockedBetween } = require('../lib/blocks');
 const { friendIds } = require('../lib/friends');
+const { toqueReciente, seSaludaron } = require('../lib/saludos');
 
 const CELL_TTL_DAYS = 7;
 const GRID_RINGS = 5; // 11×11 celdas de ~2 km ≈ radio efectivo ~11 km
@@ -305,10 +306,88 @@ router.post('/poke', requireAuth, requireNotSuspended, requireEstablished, nearb
     await prisma.notification.create({
       data: { type: 'POKE', recipientId: targetId, actorId: req.user.id }
     });
-    res.json({ ok: true });
+    res.json({ ok: true, saludoMutuo: await seSaludaron(req.user.id, targetId) });
   } catch (e) {
     console.error('Error al mandar toque:', e);
     res.status(500).json({ error: 'No se pudo mandar el toque' });
+  }
+});
+
+// POST /api/nearby/poke/responder { userId } — devolver un toque (ciclo 13D)
+//
+// POR QUÉ EXISTE UNA RUTA APARTE y no se reusa /poke: el circuito no cerraba.
+// Recibías «Fulano te mandó un toque 👋», hacías clic, y la campana te llevaba
+// a /cerca — A LA LISTA, no a la persona. Para contestar había que buscarla, y
+// si su celda había cambiado ni siquiera estaba. La alternativa era escribirle,
+// que es exactamente el costo que el toque venía a evitar.
+//
+// Las diferencias con /poke son las tres decisiones del ciclo, y cada una tiene
+// su porqué:
+//
+//   1. NO EXIGE COMPARTIR ZONA. /poke sí lo exige, y ahí está bien: es
+//      reciprocidad, quien mira el mapa se deja ver. Pero contestar un saludo
+//      no es asomarse al mapa de nadie. Exigirlo aquí convertiría una cortesía
+//      en una coacción para encender la ubicación, y no revela nada nuevo:
+//      quien saludó ya sabía que estabas en su cuadrícula cuando lo hizo.
+//
+//   2. NO EXIGE CERCANÍA ACTUAL. Contestas a quien te habló, no a una celda.
+//      Que se haya movido no vuelve inválido su saludo.
+//
+//   3. NO CONSUME NI RESPETA EL ENFRIAMIENTO DE 12 h. Ese enfriamiento existe
+//      para que A no insista; una respuesta es, por definición, solicitada. Lo
+//      que sí se limita es a UNA respuesta por saludo recibido — si no, el
+//      camino nuevo sería el rodeo al antispam del viejo, que es justo lo que
+//      no puede ser.
+//
+// Lo que NO cambia: bloqueos, suspensión y cuarentena aplican igual. La
+// cuarentena crea un pequeño callejón (una cuenta nueva no puede contestar por
+// unas horas) y se resuelve como en el 13B: diciéndole cuándo podrá, no
+// dejándola en un error genérico.
+router.post('/poke/responder', requireAuth, requireNotSuspended, requireEstablished, nearbyLimiter, async (req, res) => {
+  const targetId = Number(req.body.userId);
+  if (!targetId) return res.status(400).json({ error: 'userId requerido' });
+  if (targetId === req.user.id) return res.status(400).json({ error: 'No puedes saludarte a ti' });
+  try {
+    // La autorización de esta ruta ES el saludo recibido: solo se puede
+    // contestar a quien te habló primero, y dentro de la ventana. Sin eso
+    // sería un /poke sin comprobación de cercanía — es decir, el "ping a
+    // cualquier userId" que HU-SEG-004 cerró.
+    const suSaludo = await toqueReciente(targetId, req.user.id);
+    if (!suSaludo) {
+      return res.status(404).json({ error: 'No hay un toque reciente de esa persona que contestar' });
+    }
+
+    // Mismo 404 que el resto de Cerca: el motivo no se revela.
+    if (await isBlockedBetween(req.user.id, targetId)) {
+      return res.status(404).json({ error: 'No hay un toque reciente de esa persona que contestar' });
+    }
+
+    // Una respuesta por saludo. Se mide contra la fecha de SU toque, no contra
+    // un enfriamiento fijo: si vuelve a saludarte mañana, puedes contestarle
+    // otra vez.
+    const yaContesté = await prisma.notification.findFirst({
+      where: {
+        type: 'POKE',
+        actorId: req.user.id,
+        recipientId: targetId,
+        createdAt: { gte: suSaludo.createdAt }
+      },
+      select: { id: true }
+    });
+    if (yaContesté) {
+      return res.status(429).json({ error: 'Ya le contestaste el saludo 🌿' });
+    }
+
+    await prisma.notification.create({
+      data: { type: 'POKE', recipientId: targetId, actorId: req.user.id }
+    });
+    // Siempre true por construcción (acabamos de crear la vuelta y su ida
+    // existe), pero se calcula en vez de asumirse: el día que la ventana
+    // cambie, este valor sigue diciendo la verdad.
+    res.json({ ok: true, saludoMutuo: await seSaludaron(req.user.id, targetId) });
+  } catch (e) {
+    console.error('Error al contestar el toque:', e);
+    res.status(500).json({ error: 'No se pudo contestar el toque' });
   }
 });
 

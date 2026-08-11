@@ -262,6 +262,37 @@ module.exports = async function run() {
         `(altas ${conBio.altas}, porcentaje ${conBio.porcentaje})`);
     }
 
+    // Ciclo 13D. Igual que las de arriba: contra un cálculo independiente en
+    // JS, no contra un número fijo. La consulta hace un self-join y divide
+    // entre dos (cada par aparece una vez por dirección); un absoluto se
+    // rompería en cuanto otra suite mande un toque más.
+    console.log('\n  — 13D: saludos mutuos (toques correspondidos) —');
+    const rSaludos = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
+    const saludos = rSaludos.data.actividad?.saludosMutuos;
+    check('el indicador viene en la respuesta', typeof saludos === 'number', `(fue ${saludos})`);
+    if (typeof saludos === 'number') {
+      const VENTANA_MS = 48 * 3600 * 1000;
+      const toques = await prisma.notification.findMany({
+        where: { type: 'POKE' },
+        select: { actorId: true, recipientId: true, createdAt: true }
+      });
+      const pares = new Set();
+      for (const a of toques) {
+        for (const b of toques) {
+          if (a.actorId !== b.recipientId || a.recipientId !== b.actorId) continue;
+          if (Math.abs(a.createdAt - b.createdAt) > VENTANA_MS) continue;
+          pares.add([a.actorId, a.recipientId].sort((x, y) => x - y).join('-'));
+        }
+      }
+      // El indicador filtra por ventana de días; el cálculo de aquí no. Solo
+      // puede ser menor o igual.
+      check('cuenta pares cruzados reales, sin inventarse ninguno',
+        saludos <= pares.size, `(indicador ${saludos}, pares en la base ${pares.size})`);
+      check('y nunca supera la mitad de los toques del periodo',
+        saludos * 2 <= rSaludos.data.actividad.toquesPorDia.total + 1,
+        `(saludos ${saludos}, toques ${rSaludos.data.actividad.toquesPorDia.total})`);
+    }
+
     console.log('\n  — Caché: incluye calculadoEn y no recalcula en la siguiente consulta —');
     r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
     check('trae calculadoEn', Boolean(r.data.calculadoEn));

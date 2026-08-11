@@ -34,6 +34,9 @@ const CELL_TTL_DIAS = 7; // = CELL_TTL_DAYS en nearbyRoutes.js; mantener sincron
 // STEP_DEG cambia ahí, este indicador no puede quedarse midiendo con los
 // viejos. Es justo la clase de desincronización que este ciclo vino a cazar.
 const { LAT_CELLS, LON_CELLS } = require('./geogrid');
+// 13D: la misma ventana que aplica la ruta, importada y no copiada — la lección
+// del 12C, donde dos indicadores medían con reglas que ya habían cambiado.
+const { VENTANA_SALUDO_H } = require('./saludos');
 
 // Cuarentena: LAS MISMAS VENTANAS QUE APLICA requireAuth.js, no una sola.
 //
@@ -356,6 +359,26 @@ async function consultaAltasConBio(desdeActualISO, hastaISO) {
   };
 }
 
+// G-quater. Saludos mutuos: toques que fueron correspondidos (ciclo 13D).
+//
+// El toque ya se contaba (`toques` en las series simples). Lo que faltaba es
+// cuántos CERRARON el circuito, que es la pregunta de producto: si la gente
+// prefiere el gesto barato sobre el chat, ¿ese gesto lleva a algún lado?
+//
+// Un saludo mutuo son dos toques cruzados dentro de la ventana, así que se
+// cuenta con un self-join y se divide entre dos — cada par aparece dos veces,
+// una por cada dirección. Nunca sale quién saludó a quién: solo el conteo.
+async function consultaSaludosMutuos(desdeActualISO, hastaISO) {
+  const filas = await prisma.$queryRaw`
+    SELECT count(*)::int AS cruces FROM "Notification" a
+    JOIN "Notification" b
+      ON b.type = 'POKE' AND b."actorId" = a."recipientId" AND b."recipientId" = a."actorId"
+     AND abs(EXTRACT(EPOCH FROM (b."createdAt" - a."createdAt"))) <= ${VENTANA_SALUDO_H * 3600}
+    WHERE a.type = 'POKE' AND ${entreDiasMx('createdAt', 'a', desdeActualISO, hastaISO)}
+  `;
+  return Math.floor(filas[0].cruces / 2);
+}
+
 // H. Instantáneas de "ahora mismo" que no son series de tiempo — combinadas en
 // una sola consulta con subconsultas escalares.
 async function consultaInstantaneas() {
@@ -543,7 +566,7 @@ async function calcularCatalogo(dias) {
   const [
     simples, altasProveedor, feed, reacciones, foro, amistad, reportes,
     instantaneas, subforosVivos, seguidores, concentracion, tiempoRespuesta, reincidencia,
-    atribucion, altasConBio
+    atribucion, altasConBio, saludosMutuos
   ] = await Promise.all([
     consultaSeriesSimples(v.desdeConsulta),
     consultaAltasPorProveedor(v.desdeConsulta),
@@ -559,7 +582,8 @@ async function calcularCatalogo(dias) {
     consultaTiempoRespuesta(v.desdeActual, v.hasta),
     consultaReincidencia(v.desdeActual, v.hasta),
     consultaAtribucionPorDia(v.desdeConsulta),
-    consultaAltasConBio(v.desdeActual, v.hasta)
+    consultaAltasConBio(v.desdeActual, v.hasta),
+    consultaSaludosMutuos(v.desdeActual, v.hasta)
   ]);
 
   const porFuente = (fuente) => simples.filter(f => f.fuente === fuente);
@@ -634,7 +658,11 @@ async function calcularCatalogo(dias) {
       mensajesPorDia: conTendencia(porFuente('mensajes'), v),
       personasCompartiendoZona: instantaneas.personasCompartiendoZona,
       imagenesPorDia: conTendencia(porFuente('imagenes'), v),
-      toquesPorDia: conTendencia(porFuente('toques'), v)
+      toquesPorDia: conTendencia(porFuente('toques'), v),
+      // 13D. Va pegado a los toques a propósito: el número solo significa algo
+      // al lado de cuántos hubo. 14 toques con 1 saludo cerrado y 14 con 9 son
+      // dos redes distintas.
+      saludosMutuos
     },
     saludSocial: {
       amistad: {

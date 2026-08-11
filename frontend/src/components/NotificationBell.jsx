@@ -6,6 +6,7 @@ import {
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import api from '../services/api';
 import FechaRelativa from './FechaRelativa';
+import SaludoDeVuelta from './SaludoDeVuelta';
 
 const POLL_MS = 30000;
 
@@ -139,9 +140,17 @@ const NotificationBell = () => {
               </ListItemAvatar>
               <ListItemText
                 primary={describe(n)}
-                secondary={<FechaRelativa fecha={n.createdAt} />}
+                secondary={
+                  <>
+                    <FechaRelativa fecha={n.createdAt} />
+                    {/* 13D: el toque se contesta desde aquí, que es donde la
+                        persona se entera. Antes este clic llevaba a /cerca —
+                        a la lista, no a quien saludó. */}
+                    {n.type === 'POKE' && n.actor?.id && <SaludoDeVuelta notificacion={n} />}
+                  </>
+                }
                 primaryTypographyProps={{ variant: 'body2' }}
-                secondaryTypographyProps={{ variant: 'caption' }}
+                secondaryTypographyProps={{ variant: 'caption', component: 'div' }}
               />
             </MenuItem>
           ))
