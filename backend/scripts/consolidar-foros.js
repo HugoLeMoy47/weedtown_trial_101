@@ -55,6 +55,29 @@ if (!url) { console.error(`\n  ✖ No hay URL de base para --base ${base}.\n`); 
 
 const refProyecto = /postgres\.([a-z0-9]{20})/.exec(url)?.[1] || '(sin ref)';
 
+// GUARDIA: escribir en producción exige haberlo PEDIDO POR SU NOMBRE.
+//
+// Sin esto, `--url <la url de producción> --aplicar` escribe en producción sin
+// que nada lo distinga de una corrida de pruebas — y `--url` es justo la forma
+// que usan las pruebas automatizadas. El 2026-08-10 la consolidación apareció
+// aplicada en producción sin que se pudiera reconstruir qué invocación la
+// ejecutó; el estado final era el correcto y aprobado, pero "salió bien" no es
+// lo mismo que "no pudo salir mal".
+//
+// Es la misma lección que respaldo.js aprendió el 2026-08-09 con la base
+// equivocada: la elección de base tiene que ser explícita, y lo implícito
+// tiene que fallar ruidoso en vez de funcionar en silencio.
+const refProduccion = /postgres\.([a-z0-9]{20})/.exec(process.env.RESPALDO_DATABASE_URL || '')?.[1];
+if (aplicar && refProduccion && refProyecto === refProduccion && base !== 'produccion' && base !== 'prod') {
+  console.error(
+    `\n  ✖ Esta URL es la de PRODUCCIÓN (proyecto ${refProyecto}) y no la pediste por su nombre.\n\n` +
+    '    Para escribir en producción:  --base produccion --aplicar\n' +
+    '    `--url` sirve para bases sueltas y para las pruebas; con --aplicar\n' +
+    '    nunca va a tocar producción por descarte.\n'
+  );
+  process.exit(1);
+}
+
 // ---------------------------------------------------------------------------
 // EL MAPA. Lo decidió el PO el 2026-08-10 sobre la propuesta del análisis; el
 // script no elige nada. Cada destino REUTILIZA una sala existente (se le

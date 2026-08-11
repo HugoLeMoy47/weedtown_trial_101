@@ -87,6 +87,17 @@ module.exports = async function run() {
       cwd: RAIZ, encoding: 'utf8'
     });
     check('el plan corre sin error', plan.status === 0, `(salida ${plan.status}: ${plan.stderr?.slice(0, 200)})`);
+
+    // GUARDIA, y no es teatro: este es el único archivo de la suite que lanza
+    // un script capaz de escribir en CUALQUIER base. Si algún día el hijo
+    // resolviera otra URL que la del schema de pruebas, esta aserción lo dice
+    // antes de que la siguiente corrida —la que sí lleva --aplicar— escriba
+    // donde no debe. Se compara el ref del proyecto que el script imprime
+    // contra el de la URL que la suite está usando.
+    const refSuite = /postgres\.([a-z0-9]{20})/.exec(process.env.DATABASE_URL || '')?.[1] || '(local)';
+    check('el script apuntó a la MISMA base que la suite, no a otra',
+      (plan.stdout || '').includes(refSuite),
+      `(la suite usa ${refSuite}; el script dijo: ${(plan.stdout || '').split('\n').find(l => l.includes('Base:'))?.trim()})`);
     const sinTocar = await prisma.subForum.findUnique({ where: { id: absorbida.id }, select: { archivedAt: true } });
     check('la sala a absorber sigue activa después del plan', sinTocar.archivedAt === null);
 
