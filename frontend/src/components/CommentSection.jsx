@@ -10,6 +10,7 @@ import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import AparicionSuave from './AparicionSuave';
 import { useAuth } from '../hooks/useAuth';
+import FechaRelativa from './FechaRelativa';
 
 const CommentItem = ({ comment, onEdited, onDeleted, onBlocked, disabled = false }) => {
   const { user } = useAuth();
@@ -50,9 +51,7 @@ const CommentItem = ({ comment, onEdited, onDeleted, onBlocked, disabled = false
           <Typography variant="subtitle2">{comment.author?.name || 'Anónimo'}</Typography>
           {date && (
             <Typography variant="caption" color="text.secondary">
-              <time dateTime={date.toISOString()}>
-                {date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}
-              </time>
+              <FechaRelativa fecha={date} />
             </Typography>
           )}
           {isMine ? (

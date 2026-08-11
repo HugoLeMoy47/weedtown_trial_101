@@ -708,3 +708,42 @@ model Media {
   userId    Int?
   createdAt DateTime @default(now())
 }
+
+// Conteo diario de intentos de atribución de alta (ciclo 13A).
+//
+// POR QUÉ EXISTE: el 11A construyó el mecanismo de invitación completo y su
+// única señal de operación es una línea de log (`alta_atribuida`), que en
+// Render —plan gratuito, contenedor que reinicia solo— se pierde. El total de
+// ÉXITOS sí sobrevive: es SUM(User.invitaciones). Lo que no existía es el
+// denominador: cuántos intentos hubo y en qué escalón se cayeron los que no
+// llegaron. Sin eso, "13 altas y 0 atribuidas" no se puede distinguir de un
+// mecanismo roto, y cualquier campaña sería inmedible.
+//
+// POR QUÉ ES UN CONTADOR DIARIO Y NO UNA BITÁCORA DE EVENTOS: una tabla con
+// una fila por intento y su marca de tiempo sería más simple de escribir y
+// **peor**. El alta de la cuenta nueva deja su propio `createdAt` a segundos
+// de distancia, así que por cercanía temporal se sabría CUÁL de las altas del
+// día llegó por un enlace. Es exactamente la reconstrucción por correlación
+// que authRoutes.js describe al explicar por qué el log quedó sin `pid`. Con
+// el conteo por día lo máximo que se aprende es "N de las altas de hoy
+// traían enlace", que es la pregunta de producto sin la parte que identifica.
+//
+// AQUÍ NO HAY NADIE. Ni userId, ni handle, ni IP, ni identificador de sesión,
+// ni de quien llega ni de quien invitó. Esa ausencia es la razón por la que
+// esta tabla puede existir sin reabrir el canal que el contador ciego cerró
+// a propósito, y hay una prueba que la asegura contra el esquema.
+//
+// El día se guarda en calendario de MÉXICO, no UTC — misma regla 2 del
+// panóptico (ver src/lib/diaMexico.js). Se decide al escribir porque la fila
+// ya viene agregada; no hay marca de tiempo que truncar después.
+model ConteoAtribucion {
+  id        Int      @id @default(autoincrement())
+  dia       DateTime @db.Date
+  // Ver RESULTADOS en src/lib/atribucion.js: ahí está la lista y el porqué de
+  // cada uno. Texto y no enum a propósito: agregar un escalón nuevo al
+  // diagnóstico no debería costar una migración.
+  resultado String
+  conteo    Int      @default(0)
+
+  @@unique([dia, resultado])
+}

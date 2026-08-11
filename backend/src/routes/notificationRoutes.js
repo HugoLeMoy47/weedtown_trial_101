@@ -6,6 +6,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middlewares/requireAuth');
 const { blockedWith, excludeBlocked } = require('../lib/blocks');
 const { MOTIVO_TEXTO } = require('../lib/moderation');
+const { marcarSaludosMutuos } = require('../lib/saludos');
 
 const PAGE_SIZE = 20;
 
@@ -44,7 +45,11 @@ router.get('/', requireAuth, async (req, res) => {
       }),
       prisma.notification.count({ where: { ...where, readAt: null } })
     ]);
-    res.json({ notifications: notifications.map(serializar), unread });
+    // 13D: los toques que ya fueron correspondidos viajan marcados, para que
+    // la campana pueda ofrecer conversación solo cuando los dos se saludaron.
+    // Una consulta para toda la página, no una por fila.
+    const conSaludos = await marcarSaludosMutuos(notifications, req.user.id);
+    res.json({ notifications: conSaludos.map(serializar), unread });
   } catch (e) {
     console.error('Error al listar notificaciones:', e);
     res.status(500).json({ error: 'Error al obtener notificaciones' });

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Card, CardContent, CircularProgress, Typography, Alert, Button, Stack } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import { tomarNextPendiente, registrarAltaSiCorresponde } from '../lib/attribution';
+import { marcarAltaNueva } from '../lib/altaNueva';
 
 const AuthCallback = () => {
   const navigate = useNavigate();
@@ -28,6 +29,9 @@ const AuthCallback = () => {
     loginWithToken(token)
       .then(async () => {
         await registrarAltaSiCorresponde(esNueva);
+        // 13B: se marca aquí y no dentro de la atribución porque TODA alta debe
+        // recibir la pregunta, no solo las que vinieron con un `ref`.
+        marcarAltaNueva(esNueva);
         // HU-CTA-003: mismo destino pendiente que consume Login.jsx para el
         // flujo de llave de acceso.
         navigate(tomarNextPendiente() || '/feed', { replace: true });

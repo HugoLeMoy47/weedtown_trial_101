@@ -14,6 +14,7 @@ import api, { API_ORIGIN } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { mensajeCuarentena } from '../lib/cuarentena';
 import { avisarChatAbierto, BOTTOM_DOCK_RESERVED_HEIGHT } from '../lib/mobileNav';
+import { etiquetaDeDia, fechaCompleta } from '../lib/fechas';
 
 const SOCKET_URL = API_ORIGIN;
 
@@ -268,10 +269,34 @@ const Chat = () => {
                   {loadingThread ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress size={28} /></Box>
                   ) : (
-                    messages.map(msg => {
+                    messages.map((msg, i) => {
                       const mine = msg.senderId === user?.id;
+                      // Ciclo 13E. Dentro de una conversación la hora es lo que
+                      // se lee, así que cada burbuja conserva su "14:32". Lo
+                      // que faltaba era el DÍA: sin separadores, un "14:32" no
+                      // distingue entre hoy y hace dos semanas, y en un chat
+                      // con poca actividad —4 mensajes en la última semana—
+                      // esa confusión es lo normal, no la excepción.
+                      const anterior = messages[i - 1];
+                      const cambiaDeDia = !anterior ||
+                        new Date(anterior.createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
                       return (
-                        <Box key={msg.id} sx={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', mb: 1 }}>
+                        <React.Fragment key={msg.id}>
+                        {cambiaDeDia && (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', my: 1.5 }}>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              component="time"
+                              dateTime={new Date(msg.createdAt).toISOString().slice(0, 10)}
+                              title={fechaCompleta(msg.createdAt)}
+                              sx={{ px: 1.5, py: 0.25, borderRadius: 4, bgcolor: 'action.hover' }}
+                            >
+                              {etiquetaDeDia(msg.createdAt)}
+                            </Typography>
+                          </Box>
+                        )}
+                        <Box sx={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', mb: 1 }}>
                           <Paper
                             elevation={0}
                             sx={{
@@ -286,6 +311,7 @@ const Chat = () => {
                             </Typography>
                           </Paper>
                         </Box>
+                        </React.Fragment>
                       );
                     })
                   )}

@@ -9,6 +9,7 @@ const avatar = require('../lib/avatar');
 const { generarUnico: generarHandleUnico, esValido: esHandleValido, normalizar: normalizarHandle } = require('../lib/handle');
 const { requireAuth } = require('../middlewares/requireAuth');
 const { log } = require('../lib/logger');
+const { RESULTADOS, registrar } = require('../lib/atribucion');
 
 const SCOPES = 'read:accounts';
 
@@ -299,8 +300,15 @@ const attributionLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => `attr:${req.user.id}`,
   message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' },
-  handler: (req, res, next, options) => {
+  // `async` y con `await`: si el conteo se disparara sin esperar, la respuesta
+  // saldría antes que la escritura y la prueba leería el contador todavía sin
+  // actualizar. Cuesta un viaje a la base en una respuesta que ya es de error.
+  handler: async (req, res, next, options) => {
     log('rate_limit_excedido', { limitador: 'attribution', ruta: req.originalUrl, requestId: req.id });
+    // 13A: también es un escalón del recorrido, y el único que no pasa por el
+    // manejador de abajo. Sin contarlo aquí, un tope de limitador se vería en
+    // el tablero como "no hubo intentos", que es la lectura contraria.
+    await registrar(RESULTADOS.LIMITADA, req.id);
     res.status(options.statusCode).json(options.message);
   }
 });
@@ -314,28 +322,58 @@ const attributionLimiter = rateLimit({
 // quien invitó, el alta de la cuenta nueva deja su propia línea con marca de
 // tiempo cercana, y **el grafo se reconstruye por correlación aunque la base
 // no lo guarde**. El contador ciego no sirve de nada si el log lo delata.
+// 13A: cada salida de este manejador registra su escalón en el conteo diario
+// (src/lib/atribucion.js). La RESPUESTA NO CAMBIA — sigue siendo 204 siempre,
+// pase lo que pase. Distinguir los casos hacia afuera convertiría el endpoint
+// en el oráculo de existencia de handles que el 10A cerró; el diagnóstico vive
+// en un agregado que solo ve un ADMIN, y sin identidades.
 router.post('/attribution', requireAuth, attributionLimiter, async (req, res) => {
   const ref = REF_WHITELIST.includes(req.body?.ref) ? req.body.ref : null;
-  if (!ref) return res.status(204).end();
+  if (!ref) {
+    await registrar(RESULTADOS.REF_NO_VALIDO, req.id);
+    return res.status(204).end();
+  }
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { createdAt: true } });
+    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { createdAt: true, handle: true } });
     const enVentana = user && Date.now() - new Date(user.createdAt).getTime() < ATRIBUCION_VENTANA_MS;
-    if (!enVentana) return res.status(204).end();
+    if (!enVentana) {
+      await registrar(RESULTADOS.FUERA_DE_VENTANA, req.id);
+      return res.status(204).end();
+    }
 
     log('alta_atribuida', { ref, requestId: req.id });
 
     const invitadoPor = typeof req.body?.invitadoPor === 'string' ? normalizarHandle(req.body.invitadoPor) : null;
-    if (ref === 'perfil' && invitadoPor && esHandleValido(invitadoPor)) {
+    if (ref !== 'perfil' || !invitadoPor) {
+      // Llegó por un CTA sin invitador (un posteo público, un enlace directo).
+      // Es una atribución de canal válida; no incrementa el contador de nadie.
+      await registrar(RESULTADOS.SIN_INVITADOR, req.id);
+    } else if (!esHandleValido(invitadoPor)) {
+      await registrar(RESULTADOS.HANDLE_MAL_FORMADO, req.id);
+    } else if (user.handle && invitadoPor === user.handle) {
+      // Se detecta ANTES del updateMany, que también lo excluiría: sin esta
+      // rama caería en `enlace_sin_destino` y el tablero diría "el enlace
+      // apunta a nadie" cuando en realidad alguien probó su propia liga —
+      // que es justo lo que hace el PO al validar, y lo que hará cualquiera
+      // que estrene la suya.
+      await registrar(RESULTADOS.AUTO_INVITACION, req.id);
+    } else {
       // `updateMany` y no `update`: un handle que no existe simplemente
       // actualiza cero filas. Con `update` habría que capturar el error de
       // "no encontrado", y distinguir ese caso es empezar a construir el
       // oráculo de existencia de handles que 10A cerró.
       //
-      // Nadie se puede auto-invitar: sería el fraude más barato posible.
-      await prisma.user.updateMany({
+      // Nadie se puede auto-invitar: sería el fraude más barato posible. La
+      // condición se conserva aquí aunque la rama de arriba ya lo filtre —
+      // es la defensa real, no una optimización.
+      const { count } = await prisma.user.updateMany({
         where: { handle: invitadoPor, id: { not: req.user.id }, deletedAt: null },
         data: { invitaciones: { increment: 1 } }
       });
+      // `count` se ignoraba. Es el único lugar del sistema que sabe si el
+      // enlace resolvió a alguien, y ahí es donde vivía el punto ciego que
+      // este ciclo vino a cerrar.
+      await registrar(count > 0 ? RESULTADOS.ATRIBUIDA : RESULTADOS.ENLACE_SIN_DESTINO, req.id);
     }
   } catch (e) {
     console.error('Error registrando atribución de alta:', e);

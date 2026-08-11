@@ -19,12 +19,13 @@ import { compartirEnlace } from '../lib/compartir';
 //
 // El contador exacto se muestra aquí y solo aquí, porque este es tu perfil.
 // Hacia afuera viaja una cubeta — ver src/lib/invitaciones.js en el backend.
-const MiEnlaceDeInvitacion = ({ handle, invitaciones }) => {
+const MiEnlaceDeInvitacion = ({ handle, invitaciones, bio }) => {
   const [aviso, setAviso] = useState('');
   if (!handle) return null;
 
   const url = `${window.location.origin}/@${handle}`;
   const n = Number(invitaciones) || 0;
+  const sinBio = !bio || !bio.trim();
 
   const compartir = async () => {
     const mensaje = await compartirEnlace({
@@ -58,6 +59,34 @@ const MiEnlaceDeInvitacion = ({ handle, invitaciones }) => {
         >
           {url}
         </Box>
+
+        {/* Ciclo 13B: el empujón va AQUÍ y no en un aviso permanente arriba
+            del perfil. Un "completa tu perfil" que aparece siempre se aprende
+            a ignorar en dos días. Este momento es distinto: la persona está a
+            punto de mandar su enlace a alguien, y lo que ve es exactamente lo
+            que va a recibir la otra persona. El vacío deja de ser una
+            regañina abstracta y se vuelve una consecuencia visible.
+
+            Con bio no se pinta nada. Un empujón que aparece siempre no es un
+            empujón, es decoración. */}
+        {sinBio && (
+          <Box
+            sx={{
+              mb: 2, p: 1.5, borderRadius: 1,
+              border: 1, borderColor: 'divider', borderStyle: 'dashed'
+            }}
+          >
+            {/* El texto NO repite el handle a secas. Lo hacía —«así se ve tu
+                enlace: @fulano»— y eso puso un segundo elemento con ese texto
+                exacto en la página, rompiendo la prueba E2E del perfil por
+                modo estricto. Además era redundante: el enlace completo ya
+                está justo arriba, en el recuadro. */}
+            <Typography variant="body2" color="text.secondary">
+              Tu enlace no dice nada de ti todavía: quien lo abra va a ver tu nombre y
+              nada más. Una línea en tu biografía —aquí arriba— lo cambia.
+            </Typography>
+          </Box>
+        )}
 
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
           <Button variant="contained" startIcon={<ShareIcon />} onClick={compartir}>

@@ -236,6 +236,63 @@ module.exports = async function run() {
       compartiendo === 1,
       `(fueron ${compartiendo}; contando las inválidas o caducadas serían 2-4)`);
 
+    // Ciclo 13B. La conversión que dice si la pregunta del alta sirvió. Se
+    // asserta contra un conteo calculado aquí, no contra un número fijo: un
+    // absoluto envejecería con cada caso nuevo que la suite siembre, que es
+    // exactamente cómo se escribió la aserción de cuarentena que tumbó el CI
+    // en la Ola 4.
+    console.log('\n  — 13B: altas del periodo que llenaron su biografía —');
+    // Con su propia llamada, no reusando la `r` de la sección anterior: ahí
+    // arriba `r` quedó apuntando a otra respuesta, y depender de eso es cómo
+    // una prueba empieza a asertar sobre lo que no cree estar asertando.
+    const rBio = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
+    const conBio = rBio.data.crecimiento?.altasConBio;
+    check('el indicador viene en la respuesta', Boolean(conBio), `(fue ${JSON.stringify(conBio)})`);
+    if (conBio) {
+      const bíosEnBase = await prisma.user.count({
+        where: { deletedAt: null, bio: { not: null }, NOT: { bio: '' } }
+      });
+      // El indicador filtra por la ventana; la cuenta de arriba no. Solo puede
+      // ser menor o igual, nunca mayor.
+      check('cuenta bios reales, sin pasarse del total de la base',
+        conBio.conBio <= bíosEnBase && conBio.conBio >= 0,
+        `(indicador ${conBio.conBio}, total en base ${bíosEnBase})`);
+      check('el porcentaje es null cuando no hubo altas, no un 0% engañoso',
+        conBio.altas > 0 ? typeof conBio.porcentaje === 'number' : conBio.porcentaje === null,
+        `(altas ${conBio.altas}, porcentaje ${conBio.porcentaje})`);
+    }
+
+    // Ciclo 13D. Igual que las de arriba: contra un cálculo independiente en
+    // JS, no contra un número fijo. La consulta hace un self-join y divide
+    // entre dos (cada par aparece una vez por dirección); un absoluto se
+    // rompería en cuanto otra suite mande un toque más.
+    console.log('\n  — 13D: saludos mutuos (toques correspondidos) —');
+    const rSaludos = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
+    const saludos = rSaludos.data.actividad?.saludosMutuos;
+    check('el indicador viene en la respuesta', typeof saludos === 'number', `(fue ${saludos})`);
+    if (typeof saludos === 'number') {
+      const VENTANA_MS = 48 * 3600 * 1000;
+      const toques = await prisma.notification.findMany({
+        where: { type: 'POKE' },
+        select: { actorId: true, recipientId: true, createdAt: true }
+      });
+      const pares = new Set();
+      for (const a of toques) {
+        for (const b of toques) {
+          if (a.actorId !== b.recipientId || a.recipientId !== b.actorId) continue;
+          if (Math.abs(a.createdAt - b.createdAt) > VENTANA_MS) continue;
+          pares.add([a.actorId, a.recipientId].sort((x, y) => x - y).join('-'));
+        }
+      }
+      // El indicador filtra por ventana de días; el cálculo de aquí no. Solo
+      // puede ser menor o igual.
+      check('cuenta pares cruzados reales, sin inventarse ninguno',
+        saludos <= pares.size, `(indicador ${saludos}, pares en la base ${pares.size})`);
+      check('y nunca supera la mitad de los toques del periodo',
+        saludos * 2 <= rSaludos.data.actividad.toquesPorDia.total + 1,
+        `(saludos ${saludos}, toques ${rSaludos.data.actividad.toquesPorDia.total})`);
+    }
+
     console.log('\n  — Caché: incluye calculadoEn y no recalcula en la siguiente consulta —');
     r = await call('GET', '/api/admin/indicadores?dias=30', { tok: tAdmin });
     check('trae calculadoEn', Boolean(r.data.calculadoEn));

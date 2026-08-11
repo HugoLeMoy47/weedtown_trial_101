@@ -12,6 +12,7 @@ import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
 import { REACTION_SCORE } from '../lib/forum';
+import FechaRelativa from './FechaRelativa';
 
 const ForumPostCard = ({ post, showSubforum = false, detail = false, onUpdated, onDeleted, onBlocked }) => {
   const { user } = useAuth();
@@ -92,7 +93,7 @@ const ForumPostCard = ({ post, showSubforum = false, detail = false, onUpdated, 
             </Avatar>
             <Typography variant="caption" color="text.secondary">
               {post.author?.name || 'Anónimo'}
-              {date && <> · <time dateTime={date.toISOString()}>{date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}</time></>}
+              {date && <> · <FechaRelativa fecha={date} /></>}
             </Typography>
           </Stack>
           {detail && isMine && (

@@ -14,6 +14,7 @@ import { rutaPerfil } from '../lib/rutaPerfil';
 import { compartirEnlace } from '../lib/compartir';
 import ContentActions from './ContentActions';
 import { useAuth } from '../hooks/useAuth';
+import FechaRelativa from './FechaRelativa';
 
 const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = false, commentCount: externalCommentCount }) => {
   const { user } = useAuth();
@@ -130,11 +131,7 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
           </Typography>
         ) : authorName}
         titleTypographyProps={perfilHref ? undefined : { fontWeight: 600 }}
-        subheader={date ? (
-          <time dateTime={date.toISOString()}>
-            {date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}
-          </time>
-        ) : null}
+        subheader={date ? <FechaRelativa fecha={date} /> : null}
         action={isMine ? (
           <OwnerActions
             deleteLabel="este posteo y sus comentarios"
