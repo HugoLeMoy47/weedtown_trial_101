@@ -41,7 +41,11 @@ const DEPENDE_DE = {
   Notification: ['User'],
   MarketItem: ['User'],
   PrivacyAction: ['User'],
-  Media: []
+  Media: [],
+  // Sin dependencias: no apunta a nadie, y ésa es exactamente la propiedad que
+  // la hace admisible (ciclo 13A). Un conteo diario de intentos de atribución,
+  // sin identidades.
+  ConteoAtribucion: []
 };
 
 // Orden de exportación = orden de restauración. Las tablas sin llaves foráneas
@@ -57,7 +61,8 @@ const MODELOS = [
   'ForumPost', 'ForumComment',
   'Chat', 'Message',
   'Report', 'ModerationAction', 'Notification',
-  'MarketItem', 'PrivacyAction', 'Media'
+  'MarketItem', 'PrivacyAction', 'Media',
+  'ConteoAtribucion'
 ];
 
 // Grupos con nombre, para no tener que acordarse de qué tablas componen una
@@ -68,7 +73,11 @@ const GRUPOS = {
   foros: ['SubForum', 'SubForumFollow', 'ForumPost', 'ForumComment'],
   social: ['Block', 'FriendRequest', 'Notification'],
   chats: ['Chat', 'Message'],
-  moderacion: ['Report', 'ModerationAction', 'PalabraDescartada', 'PrivacyAction']
+  moderacion: ['Report', 'ModerationAction', 'PalabraDescartada', 'PrivacyAction'],
+  // Métricas de la red que no cuelgan de ninguna cuenta. Grupo propio para que
+  // un recorte de "cuentas" o "feed" no las arrastre sin querer, y para poder
+  // pedirlas solas.
+  metricas: ['ConteoAtribucion']
 };
 
 /** Resuelve una lista de nombres (tablas y/o grupos) a un Set de tablas reales. */
