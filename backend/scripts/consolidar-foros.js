@@ -55,6 +55,19 @@ if (!url) { console.error(`\n  ✖ No hay URL de base para --base ${base}.\n`); 
 
 const refProyecto = /postgres\.([a-z0-9]{20})/.exec(url)?.[1] || '(sin ref)';
 
+// Las señas de la base SIN credenciales: host, puerto, base y schema. El ref
+// del proyecto solo existe en Supabase —el Postgres efímero del CI no tiene
+// uno— así que esto es lo único que identifica la base en todos los entornos.
+// Se imprime para que quien lea la salida sepa dónde se escribió, y para que
+// la prueba pueda comprobarlo (ver tests/consolidacionForos.test.js).
+function señasDeLaBase(u) {
+  try {
+    const x = new URL(u);
+    return `${x.hostname}:${x.port || 5432}${x.pathname}?schema=${x.searchParams.get('schema') || 'public'}`;
+  } catch { return '(url ilegible)'; }
+}
+const señas = señasDeLaBase(url);
+
 // GUARDIA: escribir en producción exige haberlo PEDIDO POR SU NOMBRE.
 //
 // Sin esto, `--url <la url de producción> --aplicar` escribe en producción sin
@@ -127,7 +140,7 @@ const ARCHIVAR_SUELTAS = ['senadito-420'];
 const prisma = new PrismaClient({ datasources: { db: { url } } });
 
 async function main() {
-  console.log(`\n  Base: ${fuente}  ·  proyecto ${refProyecto}`);
+  console.log(`\n  Base: ${fuente}  ·  proyecto ${refProyecto}  ·  ${señas}`);
   console.log(`  Modo: ${aplicar ? 'APLICAR (escribe)' : 'plan (no toca nada)'}\n`);
 
   const todas = await prisma.subForum.findMany({

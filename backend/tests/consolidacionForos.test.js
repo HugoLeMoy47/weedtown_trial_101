@@ -92,12 +92,19 @@ module.exports = async function run() {
     // un script capaz de escribir en CUALQUIER base. Si algún día el hijo
     // resolviera otra URL que la del schema de pruebas, esta aserción lo dice
     // antes de que la siguiente corrida —la que sí lleva --aplicar— escriba
-    // donde no debe. Se compara el ref del proyecto que el script imprime
-    // contra el de la URL que la suite está usando.
-    const refSuite = /postgres\.([a-z0-9]{20})/.exec(process.env.DATABASE_URL || '')?.[1] || '(local)';
+    // donde no debe.
+    //
+    // Se comparan HOST, PUERTO, BASE Y SCHEMA, no el ref del proyecto de
+    // Supabase. La primera versión comparaba el ref y daba un FALSO NEGATIVO
+    // en CI: el Postgres efímero del runner no tiene ref, así que la suite
+    // decía "(local)" y el script "(sin ref)". Verde en local, roja en el
+    // runner, sin que nada estuviera mal — justo el tipo de prueba que enseña
+    // a ignorar el CI.
+    const u = new URL(process.env.DATABASE_URL);
+    const señasSuite = `${u.hostname}:${u.port || 5432}${u.pathname}?schema=${u.searchParams.get('schema') || 'public'}`;
     check('el script apuntó a la MISMA base que la suite, no a otra',
-      (plan.stdout || '').includes(refSuite),
-      `(la suite usa ${refSuite}; el script dijo: ${(plan.stdout || '').split('\n').find(l => l.includes('Base:'))?.trim()})`);
+      (plan.stdout || '').includes(señasSuite),
+      `(la suite usa ${señasSuite}; el script dijo: ${(plan.stdout || '').split('\n').find(l => l.includes('Base:'))?.trim()})`);
     const sinTocar = await prisma.subForum.findUnique({ where: { id: absorbida.id }, select: { archivedAt: true } });
     check('la sala a absorber sigue activa después del plan', sinTocar.archivedAt === null);
 
