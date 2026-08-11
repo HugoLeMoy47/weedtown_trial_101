@@ -41,23 +41,45 @@ const DEPENDE_DE = {
   Notification: ['User'],
   MarketItem: ['User'],
   PrivacyAction: ['User'],
-  Media: []
+  Media: [],
+  // Sin dependencias: no apunta a nadie, y ésa es exactamente la propiedad que
+  // la hace admisible (ciclo 13A). Un conteo diario de intentos de atribución,
+  // sin identidades.
+  ConteoAtribucion: []
 };
 
 // Orden de exportación = orden de restauración. Las tablas sin llaves foráneas
 // primero, y cada una después de aquellas a las que apunta. Restaurar en otro
 // orden falla por violación de FK, así que el orden vive aquí y no en la
 // cabeza de quien restaure a las 3 de la mañana.
+//
+// EL ORDEN RESPETA TODAS LAS LLAVES FORÁNEAS, no solo las obligatorias de
+// DEPENDE_DE. Es una distinción que costó una restauración fallida el
+// 2026-08-11, la primera vez que se probó con un archivo real de producción:
+// `Reaction` estaba antes que `ForumPost` porque su FK hacia el foro es
+// OPCIONAL y por lo tanto no aparece en DEPENDE_DE. Pero opcional significa
+// "puede ser null", no "no hay filas que la usen" — y había 80 reacciones,
+// algunas de posts del foro. Postgres rechazó la inserción entera.
+//
+// Las dos listas responden preguntas distintas y por eso no se pueden fundir:
+// DEPENDE_DE dice qué hace falta para que un RECORTE tenga sentido; este orden
+// dice en qué secuencia se puede insertar TODO. `respaldoTablas.test.js` valida
+// esta segunda propiedad contra el esquema, que es la única fuente que conoce
+// también las relaciones opcionales.
 const MODELOS = [
   'User', 'Identity', 'Passkey', 'MagicLink', 'MastodonApp',
   'Block', 'FriendRequest',
   'SubForum', 'SubForumFollow',
   'Post', 'Hashtag', 'HashtagOnPost', 'PalabraDescartada',
-  'Comment', 'Reaction',
+  'Comment',
   'ForumPost', 'ForumComment',
+  // Después del foro: una reacción puede apuntar a un post del feed, a un
+  // comentario, a un post del foro o a un comentario del foro.
+  'Reaction',
   'Chat', 'Message',
   'Report', 'ModerationAction', 'Notification',
-  'MarketItem', 'PrivacyAction', 'Media'
+  'MarketItem', 'PrivacyAction', 'Media',
+  'ConteoAtribucion'
 ];
 
 // Grupos con nombre, para no tener que acordarse de qué tablas componen una
@@ -68,7 +90,11 @@ const GRUPOS = {
   foros: ['SubForum', 'SubForumFollow', 'ForumPost', 'ForumComment'],
   social: ['Block', 'FriendRequest', 'Notification'],
   chats: ['Chat', 'Message'],
-  moderacion: ['Report', 'ModerationAction', 'PalabraDescartada', 'PrivacyAction']
+  moderacion: ['Report', 'ModerationAction', 'PalabraDescartada', 'PrivacyAction'],
+  // Métricas de la red que no cuelgan de ninguna cuenta. Grupo propio para que
+  // un recorte de "cuentas" o "feed" no las arrastre sin querer, y para poder
+  // pedirlas solas.
+  metricas: ['ConteoAtribucion']
 };
 
 /** Resuelve una lista de nombres (tablas y/o grupos) a un Set de tablas reales. */
