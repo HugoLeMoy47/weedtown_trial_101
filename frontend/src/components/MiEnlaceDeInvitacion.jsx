@@ -76,10 +76,14 @@ const MiEnlaceDeInvitacion = ({ handle, invitaciones, bio }) => {
               border: 1, borderColor: 'divider', borderStyle: 'dashed'
             }}
           >
+            {/* El texto NO repite el handle a secas. Lo hacía —«así se ve tu
+                enlace: @fulano»— y eso puso un segundo elemento con ese texto
+                exacto en la página, rompiendo la prueba E2E del perfil por
+                modo estricto. Además era redundante: el enlace completo ya
+                está justo arriba, en el recuadro. */}
             <Typography variant="body2" color="text.secondary">
-              Así se ve tu enlace ahora mismo: <strong>@{handle}</strong>, sin nada más.
-              Quien lo abra no va a saber quién eres. Una línea en tu biografía —aquí
-              arriba— lo cambia.
+              Tu enlace no dice nada de ti todavía: quien lo abra va a ver tu nombre y
+              nada más. Una línea en tu biografía —aquí arriba— lo cambia.
             </Typography>
           </Box>
         )}
