@@ -247,6 +247,7 @@ app.use('/api/posts', require('./src/routes/postRoutes'));
 app.use('/api/comments', require('./src/routes/commentRoutes'));
 app.use('/api/media', require('./src/routes/mediaRoutes'));
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
+app.use('/api/push', require('./src/routes/pushRoutes'));
 app.use('/api/nearby', require('./src/routes/nearbyRoutes'));
 app.use('/api/blocks', require('./src/routes/blockRoutes'));
 app.use('/api/friends', require('./src/routes/friendRoutes'));

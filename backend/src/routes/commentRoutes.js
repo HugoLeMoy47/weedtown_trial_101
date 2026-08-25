@@ -8,6 +8,7 @@ const { REACTION_TYPES, toggleReaction, reactionCounts } = require('../lib/react
 const { isBlockedBetween } = require('../lib/blocks');
 const { soloVisible } = require('../lib/moderation');
 const storage = require('../lib/storage');
+const { crearNotificacion } = require('../lib/notifications');
 
 // Reaccionar a un comentario: misma reacción = quitar, distinta = reemplazar
 router.post('/:id/reaction', requireAuth, async (req, res) => {
@@ -26,8 +27,12 @@ router.post('/:id/reaction', requireAuth, async (req, res) => {
     }
     const { myReaction } = await toggleReaction(req.user.id, { commentId }, type);
     if (myReaction && comment.authorId !== req.user.id) {
-      await prisma.notification.create({
-        data: { type: 'REACTION', recipientId: comment.authorId, actorId: req.user.id, commentId }
+      await crearNotificacion({
+        type: 'REACTION',
+        recipientId: comment.authorId,
+        actorId: req.user.id,
+        commentId,
+        actorName: req.user.name
       });
     }
     const reactions = await reactionCounts({ commentId });

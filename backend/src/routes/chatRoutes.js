@@ -8,6 +8,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireNotSuspended, estaEstablecida } = require('../middlewares/requireAuth');
 const { emitToUser } = require('../lib/chatSocket');
 const { blockedWith, isBlockedBetween } = require('../lib/blocks');
+const { crearNotificacion } = require('../lib/notifications');
 
 const MAX_MESSAGE_LENGTH = 1000;
 const MESSAGES_PAGE_SIZE = 50;
@@ -211,8 +212,12 @@ router.post('/conversations/:id/messages', requireAuth, requireNotSuspended, asy
         select: { id: true }
       });
       if (yaHayNoLeida) return;
-      await prisma.notification.create({
-        data: { type: 'CHAT_MESSAGE', recipientId: u.id, actorId: req.user.id, chatId }
+      await crearNotificacion({
+        type: 'CHAT_MESSAGE',
+        recipientId: u.id,
+        actorId: req.user.id,
+        chatId,
+        actorName: req.user.name
       });
     }));
 

@@ -13,6 +13,7 @@ const { soloVisible, estaSuspendido } = require('../lib/moderation');
 const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
 const { armarFicha } = require('../lib/preview');
 const { seDescarta } = require('../lib/diccionarioDescarte');
+const { crearNotificacion } = require('../lib/notifications');
 
 // Topes de contenido: defensa contra payloads abusivos
 const MAX_POST_LENGTH = 2000;
@@ -483,8 +484,12 @@ async function reactToPost(req, res, type) {
     // (myReaction null) no notifica, igual que a nadie le avisan que le
     // quitaron un like.
     if (myReaction && post.authorId !== req.user.id) {
-      await prisma.notification.create({
-        data: { type: 'REACTION', recipientId: post.authorId, actorId: req.user.id, postId }
+      await crearNotificacion({
+        type: 'REACTION',
+        recipientId: post.authorId,
+        actorId: req.user.id,
+        postId,
+        actorName: req.user.name
       });
     }
     const reactions = await reactionCounts({ postId });
@@ -552,8 +557,12 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
       include: commentInclude
     });
     if (post.authorId !== req.user.id) {
-      await prisma.notification.create({
-        data: { type: 'REPLY_POST', recipientId: post.authorId, actorId: req.user.id, postId }
+      await crearNotificacion({
+        type: 'REPLY_POST',
+        recipientId: post.authorId,
+        actorId: req.user.id,
+        postId,
+        actorName: req.user.name
       });
     }
     res.json(serializeComment(comment, req.user.id));

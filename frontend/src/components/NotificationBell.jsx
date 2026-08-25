@@ -7,8 +7,9 @@ import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import api from '../services/api';
 import FechaRelativa from './FechaRelativa';
 import SaludoDeVuelta from './SaludoDeVuelta';
+import { useSocket } from '../context/SocketContext';
 
-const POLL_MS = 30000;
+const POLL_MS = 60000;
 
 // Recorte corto del contenido de un post/comentario del feed principal, para
 // darle contexto a la notificación sin tener página de detalle a la que
@@ -19,7 +20,7 @@ function recorte(texto, max = 40) {
 }
 
 function describe(n) {
-  const actor = n.actor?.name || 'Alguien';
+  const actor = n.actor?.name || (n.actor?.handle ? '@' + n.actor.handle : 'Alguien');
   const title = n.forumPost?.title ? `«${n.forumPost.title}»` : 'tu publicación';
   switch (n.type) {
     case 'REPLY_POST': {
@@ -64,6 +65,7 @@ function targetPath(n) {
 
 const NotificationBell = () => {
   const navigate = useNavigate();
+  const socketContext = useSocket();
   const [anchor, setAnchor] = useState(null);
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState([]);
@@ -75,11 +77,19 @@ const NotificationBell = () => {
       .catch(() => {});
   }, []);
 
+  // Recargar conteo al montar y cada 60s
   useEffect(() => {
     refreshCount();
     const timer = setInterval(refreshCount, POLL_MS);
     return () => clearInterval(timer);
   }, [refreshCount]);
+
+  // Actualización inmediata en tiempo real por WebSocket
+  useEffect(() => {
+    if (socketContext?.unreadDelta) {
+      refreshCount();
+    }
+  }, [socketContext?.unreadDelta, refreshCount]);
 
   const handleOpen = async (e) => {
     setAnchor(e.currentTarget);
@@ -91,6 +101,7 @@ const NotificationBell = () => {
         await api.post('/notifications/read-all');
       }
       setUnread(0);
+      socketContext?.resetUnreadDelta();
     } catch {
       setItems([]);
     } finally {
