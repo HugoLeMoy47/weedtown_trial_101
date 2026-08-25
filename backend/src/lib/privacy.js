@@ -106,6 +106,7 @@ async function anonimizarCuenta(userId) {
     prisma.block.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } }),
     prisma.friendRequest.deleteMany({ where: { OR: [{ requesterId: userId }, { addresseeId: userId }] } }),
     prisma.subForumFollow.deleteMany({ where: { userId } }),
+    prisma.pushSubscription.deleteMany({ where: { userId } }),
     // Solo su bandeja de entrada: una notificación donde ES el actor le
     // pertenece en parte a quien la recibió, no se borra.
     prisma.notification.deleteMany({ where: { recipientId: userId } }),

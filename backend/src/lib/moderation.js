@@ -82,8 +82,14 @@ async function registrar({ moderatorId, type, targetType, targetId, reason = nul
 async function avisar({ recipientId, moderatorId, type, reason, forumPostId = null, forumCommentId = null }) {
   if (recipientId === moderatorId) return; // moderarse a sí mismo no se notifica
   try {
-    await prisma.notification.create({
-      data: { type, recipientId, actorId: moderatorId, reason, forumPostId, forumCommentId }
+    const { crearNotificacion } = require('./notifications');
+    await crearNotificacion({
+      type,
+      recipientId,
+      actorId: moderatorId,
+      reason,
+      forumPostId,
+      forumCommentId
     });
   } catch (e) {
     console.error('No se pudo notificar la acción de moderación:', e);

@@ -13,6 +13,7 @@ const { soloVisible } = require('../lib/moderation');
 const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = require('../lib/antiSpam');
 const { slugify } = require('../lib/slugify');
 const { armarFichaSubforo } = require('../lib/preview');
+const { crearNotificacion } = require('../lib/notifications');
 
 const MAX_SUBFORUMS_PER_USER = 3;
 const PAGE_SIZE = 20;
@@ -330,15 +331,19 @@ router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (r
     prisma.subForumFollow.findMany({
       where: { subforumId: subforum.id, userId: { notIn: [req.user.id, ...hidden] } },
       select: { userId: true }
-    }).then(followers => followers.length && prisma.notification.createMany({
-      data: followers.map(f => ({
-        type: 'NEW_SUBFORUM_POST',
-        recipientId: f.userId,
-        actorId: req.user.id,
-        subforumId: subforum.id,
-        forumPostId: post.id
-      }))
-    })).catch(err => console.error('Error notificando nuevo post:', err));
+    }).then(followers => {
+      if (!followers.length) return;
+      Promise.all(followers.map(f =>
+        crearNotificacion({
+          type: 'NEW_SUBFORUM_POST',
+          recipientId: f.userId,
+          actorId: req.user.id,
+          subforumId: subforum.id,
+          forumPostId: post.id,
+          actorName: req.user.name
+        })
+      )).catch(() => {});
+    }).catch(err => console.error('Error notificando nuevo post:', err));
 
     res.json(serializeForumPost(post, req.user.id));
   } catch (e) {
@@ -520,8 +525,13 @@ router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req,
     const recipientId = parentId ? parentAuthorId : post.authorId;
     const type = parentId ? 'REPLY_COMMENT' : 'REPLY_POST';
     if (recipientId && recipientId !== req.user.id) {
-      prisma.notification.create({
-        data: { type, recipientId, actorId: req.user.id, forumPostId: postId, forumCommentId: comment.id }
+      crearNotificacion({
+        type,
+        recipientId,
+        actorId: req.user.id,
+        forumPostId: postId,
+        forumCommentId: comment.id,
+        actorName: req.user.name
       }).catch(err => console.error('Error notificando respuesta:', err));
     }
 

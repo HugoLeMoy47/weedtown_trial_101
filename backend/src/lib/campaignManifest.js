@@ -33,20 +33,16 @@
 // (`concepto-NN-v1.jpg`) es el que el brief pide para no invalidar el caché
 // de las redes al reemplazar una pieza sin cambiar el nombre.
 const ENTRADAS = [
-  { archivo: 'campaign/concepto-01-v1.jpg', alt: 'Cartel de una llave hecha de tinta que se disuelve en el papel', concepto: '01-sin-contrasena-sin-correo', activo: false },
+  { archivo: 'campaign/concepto-01-v1.jpg', alt: 'Cartel de una llave hecha de tinta que se disuelve en el papel', concepto: '01-sin-contrasena-sin-correo', activo: true },
   { archivo: 'campaign/concepto-02-v1.jpg', alt: 'Máscara de lucha libre estilizada, hecha de formas planas', concepto: '02-tu-seudonimo-es-suficiente', activo: false },
-  { archivo: 'campaign/concepto-03-v1.jpg', alt: 'Un muro de ladrillo grabado que corta el cartel en dos, con una figura del otro lado', concepto: '03-bloquear-es-inmediato-y-silencioso', activo: false },
-  { archivo: 'campaign/concepto-04-v1.jpg', alt: 'Cámara grabada de la que caen coordenadas que se desintegran', concepto: '04-tus-fotos-no-llevan-tu-ubicacion', activo: false },
+  { archivo: 'campaign/concepto-03-v1.jpg', alt: 'Un muro de ladrillo grabado que corta el cartel en dos, con una figura del otro lado', concepto: '03-bloquear-es-inmediato-y-silencioso', activo: true },
+  { archivo: 'campaign/concepto-04-v1.jpg', alt: 'Cámara grabada de la que caen coordenadas que se desintegran', concepto: '04-tus-fotos-no-llevan-tu-ubicacion', activo: true },
   { archivo: 'campaign/concepto-05-v1.jpg', alt: 'Mapa grabado con cuadrícula gruesa donde las zonas brillan sin marcar puntos', concepto: '05-cerca-pero-no-tanto', activo: false },
   { archivo: 'campaign/concepto-06-v1.jpg', alt: 'Círculo de manos grabadas sosteniendo un mismo objeto', concepto: '06-la-comunidad-se-autorregula', activo: false },
-  { archivo: 'campaign/concepto-07-v1.jpg', alt: 'Cartel de una planta creciendo entre las grietas de una banqueta', concepto: '07-sin-estigma', activo: false },
+  { archivo: 'campaign/concepto-07-v1.jpg', alt: 'Cartel de una planta creciendo entre las grietas de una banqueta', concepto: '07-sin-estigma', activo: true },
   { archivo: 'campaign/concepto-08-v1.jpg', alt: 'Puerta abierta grabada con una maleta saliendo, luz cálida del otro lado', concepto: '08-puedes-irte-con-todo', activo: false },
-  // Marcador de posición ACTIVO mientras las 8 piezas de arriba no existan.
-  // Generado por script (rectángulo sólido con el verde del tema, sin texto
-  // ni IA) — no es una pieza de campaña, es infraestructura para que el
-  // sistema funcione de punta a punta. Se apaga (`activo: false`) el día que
-  // la primera pieza real entre al pool.
-  { archivo: 'campaign/placeholder-default.png', alt: 'WeedTown — la red social de la comunidad cannábica de México', concepto: 'placeholder-generico', activo: true }
+  // Marcador de posición desactivado ahora que hay 4 piezas reales en el pool.
+  { archivo: 'campaign/placeholder-default.png', alt: 'WeedTown — la red social de la comunidad cannábica de México', concepto: 'placeholder-generico', activo: false }
 ];
 
 // Fallback absoluto: si el manifiesto quedara vacío o con datos corruptos

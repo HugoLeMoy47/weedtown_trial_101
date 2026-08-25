@@ -12,6 +12,7 @@ const { isValidCell, centroid, neighborsGrid, cellDistanceKm } = require('../lib
 const { blockedWith, isBlockedBetween } = require('../lib/blocks');
 const { friendIds } = require('../lib/friends');
 const { toqueReciente, seSaludaron } = require('../lib/saludos');
+const { crearNotificacion } = require('../lib/notifications');
 
 const CELL_TTL_DAYS = 7;
 const GRID_RINGS = 5; // 11×11 celdas de ~2 km ≈ radio efectivo ~11 km
@@ -303,8 +304,11 @@ router.post('/poke', requireAuth, requireNotSuspended, requireEstablished, nearb
       return res.status(429).json({ error: 'Ya le mandaste un toque hace poco — dale chance de responder 🌿' });
     }
 
-    await prisma.notification.create({
-      data: { type: 'POKE', recipientId: targetId, actorId: req.user.id }
+    await crearNotificacion({
+      type: 'POKE',
+      recipientId: targetId,
+      actorId: req.user.id,
+      actorName: req.user.name
     });
     res.json({ ok: true, saludoMutuo: await seSaludaron(req.user.id, targetId) });
   } catch (e) {
@@ -378,8 +382,11 @@ router.post('/poke/responder', requireAuth, requireNotSuspended, requireEstablis
       return res.status(429).json({ error: 'Ya le contestaste el saludo 🌿' });
     }
 
-    await prisma.notification.create({
-      data: { type: 'POKE', recipientId: targetId, actorId: req.user.id }
+    await crearNotificacion({
+      type: 'POKE',
+      recipientId: targetId,
+      actorId: req.user.id,
+      actorName: req.user.name
     });
     // Siempre true por construcción (acabamos de crear la vuelta y su ida
     // existe), pero se calcula en vez de asumirse: el día que la ventana

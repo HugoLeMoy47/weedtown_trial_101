@@ -11,6 +11,7 @@ import MiEnlaceDeInvitacion from '../components/MiEnlaceDeInvitacion';
 import PrivacidadPerfil, { CAMPOS as CAMPOS_PRIVACIDAD } from '../components/PrivacidadPerfil';
 import AccessMethods from '../components/AccessMethods';
 import AccountPrivacy from '../components/AccountPrivacy';
+import PushNotificationSettings from '../components/PushNotificationSettings';
 import { useAuth } from '../hooks/useAuth';
 
 const emptyForm = { handle: '', phone: '', fullName: '', bio: '', aboutMe: '', age: '', birthdate: '', gender: '' };
@@ -207,6 +208,7 @@ const Profile = () => {
         <MiEnlaceDeInvitacion handle={form.handle} invitaciones={invitaciones} bio={form.bio} />
 
         <AvatarStudio user={user} onSaved={setUser} />
+        <PushNotificationSettings />
         <AccessMethods identities={identities} onChange={cargarPerfil} />
         <BlockedAccounts />
         <AccountPrivacy />

@@ -7,19 +7,19 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import SearchIcon from '@mui/icons-material/Search';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { io } from 'socket.io-client';
 import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
-import api, { API_ORIGIN } from '../services/api';
+import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useSocket } from '../context/SocketContext';
 import { mensajeCuarentena } from '../lib/cuarentena';
 import { avisarChatAbierto, BOTTOM_DOCK_RESERVED_HEIGHT } from '../lib/mobileNav';
 import { etiquetaDeDia, fechaCompleta } from '../lib/fechas';
 
-const SOCKET_URL = API_ORIGIN;
-
 const Chat = () => {
   const { user } = useAuth();
+  const socketContext = useSocket();
+  const socket = socketContext?.socket;
   const location = useLocation();
   const [conversations, setConversations] = useState([]);
   const [selected, setSelected] = useState(null); // conversación activa (objeto)
@@ -73,20 +73,22 @@ const Chat = () => {
       .catch(e => setError(mensajeCuarentena(e) || 'No se pudo abrir la conversación.'));
   }, [routedUser?.id]);
 
-  // Socket autenticado: recibe mensajes en vivo de todas mis conversaciones
+  // Socket autenticado compartido: recibe mensajes en vivo de todas mis conversaciones
   useEffect(() => {
-    const token = localStorage.getItem('weedtown_token');
-    if (!token) return undefined;
-    const socket = io(SOCKET_URL, { auth: { token } });
-    socket.on('chat:message', ({ chatId, message }) => {
+    if (!socket) return undefined;
+    const handleChatMessage = ({ chatId, message }) => {
       // Mi propio POST ya pinta el mensaje; solo agrego los de otras personas
       if (chatId === selectedIdRef.current && message.senderId !== user?.id) {
         setMessages(prev => [...prev, message]);
       }
       bumpConversation(chatId, message);
-    });
-    return () => socket.disconnect();
-  }, [user?.id, bumpConversation]);
+    };
+
+    socket.on('chat:message', handleChatMessage);
+    return () => {
+      socket.off('chat:message', handleChatMessage);
+    };
+  }, [socket, user?.id, bumpConversation]);
 
   // Cargar hilo al seleccionar conversación
   useEffect(() => {

@@ -163,6 +163,7 @@ model User {
   marketItems      MarketItem[]     @relation("UserMarketItems")
   media            Media[]
   privacyActions   PrivacyAction[]
+  pushSubscriptions PushSubscription[]
 
 }
 
@@ -746,4 +747,21 @@ model ConteoAtribucion {
   conteo    Int      @default(0)
 
   @@unique([dia, resultado])
+}
+
+// Suscripciones a Web Push (W3C Push API / VAPID).
+// Cada dispositivo/navegador suscrito registra su endpoint y llaves criptográficas.
+// Se borra en cascada con el usuario para respetar HU-PRIV-001 (anonimización).
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }

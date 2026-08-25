@@ -9,6 +9,7 @@ const { requireAuth, requireEstablished } = require('../middlewares/requireAuth'
 const { isBlockedBetween } = require('../lib/blocks');
 const { findRequestBetween } = require('../lib/friends');
 const { log } = require('../lib/logger');
+const { crearNotificacion } = require('../lib/notifications');
 
 const publicSelect = { id: true, handle: true, displayName: true, name: true, avatar: true };
 
@@ -46,8 +47,11 @@ router.post('/request/:userId', requireAuth, requireEstablished, async (req, res
         where: { id: existente.id },
         data: { status: 'ACCEPTED', respondedAt: new Date() }
       });
-      await prisma.notification.create({
-        data: { type: 'FRIEND_ACCEPTED', recipientId: existente.requesterId, actorId: req.user.id }
+      await crearNotificacion({
+        type: 'FRIEND_ACCEPTED',
+        recipientId: existente.requesterId,
+        actorId: req.user.id,
+        actorName: req.user.name
       });
       log('amistad_aceptada', { por: 'solicitud_cruzada', a: req.user.id, b: targetId, requestId: req.id });
       return res.json({ status: 'accepted', friendRequest: aceptada, user: target });
@@ -61,8 +65,11 @@ router.post('/request/:userId', requireAuth, requireEstablished, async (req, res
       update: { status: 'PENDING', respondedAt: null },
       create: { requesterId: req.user.id, addresseeId: targetId }
     });
-    await prisma.notification.create({
-      data: { type: 'FRIEND_REQUEST', recipientId: targetId, actorId: req.user.id }
+    await crearNotificacion({
+      type: 'FRIEND_REQUEST',
+      recipientId: targetId,
+      actorId: req.user.id,
+      actorName: req.user.name
     });
     log('amistad_solicitada', { requesterId: req.user.id, addresseeId: targetId, requestId: req.id });
     res.json({ status: 'pending', friendRequest: solicitud, user: target });
@@ -88,8 +95,11 @@ router.post('/accept/:requestId', requireAuth, async (req, res) => {
       where: { id },
       data: { status: 'ACCEPTED', respondedAt: new Date() }
     });
-    await prisma.notification.create({
-      data: { type: 'FRIEND_ACCEPTED', recipientId: solicitud.requesterId, actorId: req.user.id }
+    await crearNotificacion({
+      type: 'FRIEND_ACCEPTED',
+      recipientId: solicitud.requesterId,
+      actorId: req.user.id,
+      actorName: req.user.name
     });
     log('amistad_aceptada', { por: 'aceptar_directo', a: solicitud.requesterId, b: req.user.id, requestId: req.id });
     res.json({ status: 'accepted', friendRequest: aceptada });
