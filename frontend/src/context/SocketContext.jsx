@@ -99,7 +99,7 @@ export const SocketProvider = ({ children }) => {
       s.disconnect();
       socketRef.current = null;
     };
-  }, [user?.id, token]);
+  }, [user, token]);
 
   const resetUnreadDelta = useCallback(() => {
     setUnreadDelta(0);

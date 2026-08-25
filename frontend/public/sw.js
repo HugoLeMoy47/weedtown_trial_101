@@ -1,6 +1,6 @@
 // Service Worker para WeedTown (Web Push & Notificaciones en segundo plano)
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 

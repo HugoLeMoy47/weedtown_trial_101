@@ -81,5 +81,11 @@ export default [
     // Las pruebas usan los globales de Vitest (`globals: true` en vite.config).
     files: ['src/**/*.test.{js,jsx}'],
     languageOptions: { globals: { ...globals.node, describe: 'readonly', test: 'readonly', it: 'readonly', expect: 'readonly' } }
+  },
+
+  {
+    // Service Worker para Web Push (corre en contexto de ServiceWorkerGlobalScope)
+    files: ['public/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } }
   }
 ];

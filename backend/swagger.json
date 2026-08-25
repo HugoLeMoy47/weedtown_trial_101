@@ -2308,6 +2308,58 @@
         }
       }
     },
+    "/api/push/public-key": {
+      "get": {
+        "tags": [
+          "Notificaciones"
+        ],
+        "summary": "Obtener clave pública VAPID para suscripción Web Push",
+        "responses": {
+          "200": {
+            "description": "{ publicKey }"
+          },
+          "503": {
+            "description": "{ error: 'Web Push no configurado' }"
+          }
+        }
+      }
+    },
+    "/api/push/subscribe": {
+      "post": {
+        "tags": [
+          "Notificaciones"
+        ],
+        "summary": "Suscribir dispositivo actual a notificaciones Web Push",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ ok: true }"
+          }
+        }
+      }
+    },
+    "/api/push/unsubscribe": {
+      "post": {
+        "tags": [
+          "Notificaciones"
+        ],
+        "summary": "Desuscribir dispositivo de notificaciones Web Push",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ ok: true }"
+          }
+        }
+      }
+    },
     "/api/market": {
       "get": {
         "tags": [

@@ -9,7 +9,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
-import api, { API_ORIGIN } from '../services/api';
+import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useSocket } from '../context/SocketContext';
 import { mensajeCuarentena } from '../lib/cuarentena';

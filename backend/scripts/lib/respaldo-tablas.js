@@ -39,6 +39,7 @@ const DEPENDE_DE = {
   Report: ['User'],
   ModerationAction: ['User'],
   Notification: ['User'],
+  PushSubscription: ['User'],
   MarketItem: ['User'],
   PrivacyAction: ['User'],
   Media: [],
@@ -77,7 +78,7 @@ const MODELOS = [
   // comentario, a un post del foro o a un comentario del foro.
   'Reaction',
   'Chat', 'Message',
-  'Report', 'ModerationAction', 'Notification',
+  'Report', 'ModerationAction', 'Notification', 'PushSubscription',
   'MarketItem', 'PrivacyAction', 'Media',
   'ConteoAtribucion'
 ];
@@ -88,7 +89,7 @@ const GRUPOS = {
   cuentas: ['User', 'Identity', 'Passkey', 'MagicLink'],
   feed: ['Post', 'Hashtag', 'HashtagOnPost', 'Comment', 'Reaction', 'Media'],
   foros: ['SubForum', 'SubForumFollow', 'ForumPost', 'ForumComment'],
-  social: ['Block', 'FriendRequest', 'Notification'],
+  social: ['Block', 'FriendRequest', 'Notification', 'PushSubscription'],
   chats: ['Chat', 'Message'],
   moderacion: ['Report', 'ModerationAction', 'PalabraDescartada', 'PrivacyAction'],
   // Métricas de la red que no cuelgan de ninguna cuenta. Grupo propio para que
