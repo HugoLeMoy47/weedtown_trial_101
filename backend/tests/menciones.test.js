@@ -58,6 +58,28 @@ module.exports = async function run() {
     });
     check('Beto no recibe mención si hay bloqueo mutuo', notifsBetoDespues.length === 1); // sigue teniendo solo la primera
 
+    console.log('\n  — Integración: sugerencias de autocompletado de mención —');
+    const carla = await mkUser('carla');
+    const tCarla = token(carla.id);
+
+    // Ana y Carla son amigas
+    await prisma.friendRequest.create({
+      data: { requesterId: ana.id, addresseeId: carla.id, status: 'ACCEPTED', respondedAt: new Date() }
+    });
+
+    // Ana busca con q=wtmenc
+    r = await call('GET', `/api/profile/mention-suggestions?q=${ana.handle.slice(0, 6)}`, { tok: tAna });
+    check('sugerencias responde 200', r.status === 200);
+    const suggs = r.data?.suggestions || [];
+    check('encuentra a Carla', suggs.some(s => s.id === carla.id));
+    check('marca a Carla como amiga', suggs.find(s => s.id === carla.id)?.isFriend === true);
+    check('no incluye a la propia Ana', !suggs.some(s => s.id === ana.id));
+    check('no incluye a Beto que tiene bloqueo mutuo', !suggs.some(s => s.id === beto.id));
+
+    // Si busca con q vacío devuelve lista vacía
+    r = await call('GET', '/api/profile/mention-suggestions?q=', { tok: tAna });
+    check('con q vacío devuelve lista vacía', (r.data?.suggestions || []).length === 0);
+
   } finally {
     await cleanup();
   }

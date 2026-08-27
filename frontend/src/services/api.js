@@ -36,6 +36,8 @@ function resolverOrigen() {
   const configurada = nueva || vieja;
   if (configurada) return configurada.replace(/\/api$/, '');
 
+  if (typeof window === 'undefined') return 'http://localhost:4000';
+
   const { protocol, hostname, origin } = window.location;
 
   if (import.meta.env.PROD) {

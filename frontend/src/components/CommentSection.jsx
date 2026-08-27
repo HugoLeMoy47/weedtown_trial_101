@@ -10,6 +10,7 @@ import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import AparicionSuave from './AparicionSuave';
 import ContenidoTexto from './ContenidoTexto';
+import MentionInput from './MentionInput';
 import { useAuth } from '../hooks/useAuth';
 import FechaRelativa from './FechaRelativa';
 
@@ -215,9 +216,10 @@ const CommentSection = ({ postId, commentCount = 0, onCountChange, readOnly = fa
       ) : (
         <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1.5 }}>
           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
-            <TextField
+            <MentionInput
               fullWidth
               size="small"
+              multiline={false}
               placeholder="Escribe un comentario…"
               value={input}
               onChange={e => setInput(e.target.value)}

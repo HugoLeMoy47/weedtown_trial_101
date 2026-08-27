@@ -9,6 +9,7 @@ import AddIcon from '@mui/icons-material/Add';
 import Navbar from '../components/Navbar';
 import ForumPostCard from '../components/ForumPostCard';
 import ImagePicker from '../components/ImagePicker';
+import MentionInput from '../components/MentionInput';
 import api from '../services/api';
 import { SORT_OPTIONS, PERIOD_OPTIONS } from '../lib/forum';
 import { DOCK_BOTTOM_OFFSET, DOCK_SIDE_MARGIN_PX } from '../lib/mobileNav';
@@ -57,7 +58,7 @@ const NewForumPostDialog = ({ open, onClose, slug, onCreated }) => {
               required fullWidth autoFocus
               inputProps={{ maxLength: 200 }}
             />
-            <TextField
+            <MentionInput
               label="Contenido"
               value={content}
               onChange={e => setContent(e.target.value)}

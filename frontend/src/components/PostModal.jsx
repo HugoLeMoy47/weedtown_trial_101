@@ -7,6 +7,7 @@ import PublicIcon from '@mui/icons-material/Public';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import api from '../services/api';
 import ImagePicker from './ImagePicker';
+import MentionInput from './MentionInput';
 
 async function uploadImage(file) {
   const form = new FormData();
@@ -55,7 +56,7 @@ const PostModal = ({ open, onClose, onPost }) => {
         <DialogTitle id="post-modal-title">Nuevo posteo</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
+            <MentionInput
               label="¿Qué quieres compartir?"
               value={content}
               onChange={e => setContent(e.target.value)}
