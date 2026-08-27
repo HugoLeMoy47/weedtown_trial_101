@@ -13,6 +13,7 @@ import OwnerActions from './OwnerActions';
 import { rutaPerfil } from '../lib/rutaPerfil';
 import { compartirEnlace } from '../lib/compartir';
 import ContentActions from './ContentActions';
+import ContenidoTexto from './ContenidoTexto';
 import { useAuth } from '../hooks/useAuth';
 import FechaRelativa from './FechaRelativa';
 
@@ -155,7 +156,7 @@ const PostCard = ({ post, onUpdated, onDeleted, onBlocked, disableReactions = fa
         <CardMedia component="img" image={post.image} alt="" sx={{ maxHeight: 420, objectFit: 'cover' }} />
       )}
       <CardContent sx={{ pt: post.image ? 2 : 0, pb: 1 }}>
-        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{post.content}</Typography>
+        <ContenidoTexto texto={post.content} variant="body1" />
         {tags.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
             {/* Ciclo 10D: el hashtag lleva a su tema. Se NAVEGA con la llave

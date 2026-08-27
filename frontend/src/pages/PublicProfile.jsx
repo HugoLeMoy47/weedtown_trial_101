@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import Navbar from '../components/Navbar';
 import ContentActions from '../components/ContentActions';
 import PostCard from '../components/PostCard';
@@ -169,6 +170,19 @@ const PublicProfile = () => {
   const cancelarOQuitar = () => conAccion(() => api.delete(`/friends/${idPerfil}`));
   const aceptar = () => conAccion(() => api.post(`/friends/accept/${perfil.friendRequestId}`));
   const rechazar = () => conAccion(() => api.post(`/friends/reject/${perfil.friendRequestId}`));
+  const iniciarChat = () => {
+    navigate('/chat', {
+      state: {
+        withUser: {
+          id: idPerfil,
+          name: perfil.name,
+          displayName: perfil.displayName,
+          handle: perfil.handle,
+          avatar: perfil.avatar
+        }
+      }
+    });
+  };
 
   // Mientras se decide la redirección al login, no se pinta el error: quien no
   // tiene sesión debe ver el spinner y salir hacia /login, no un "no se
@@ -281,42 +295,55 @@ const PublicProfile = () => {
 
             <Divider sx={{ my: 3 }} />
 
-            {perfil.friendStatus === 'self' && (
-              <Button component={RouterLink} to="/profile" variant="outlined">Editar mi perfil</Button>
-            )}
+            <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="center">
+              {perfil.friendStatus === 'self' ? (
+                <Button component={RouterLink} to="/profile" variant="outlined">Editar mi perfil</Button>
+              ) : (
+                <>
+                  <Button
+                    startIcon={<ChatBubbleOutlineIcon />}
+                    variant="outlined"
+                    color="primary"
+                    onClick={iniciarChat}
+                  >
+                    Enviar mensaje
+                  </Button>
 
-            {perfil.friendStatus === 'none' && (
-              <Button startIcon={<PersonAddIcon />} variant="contained" onClick={agregarAmigo} disabled={busy}>
-                {busy ? 'Enviando…' : 'Agregar amigo'}
-              </Button>
-            )}
+                  {perfil.friendStatus === 'none' && (
+                    <Button startIcon={<PersonAddIcon />} variant="contained" onClick={agregarAmigo} disabled={busy}>
+                      {busy ? 'Enviando…' : 'Agregar amigo'}
+                    </Button>
+                  )}
 
-            {perfil.friendStatus === 'pending_sent' && (
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Chip label="Solicitud enviada" />
-                <Button size="small" onClick={cancelarOQuitar} disabled={busy} color="secondary">
-                  {busy ? 'Cancelando…' : 'Cancelar'}
-                </Button>
-              </Stack>
-            )}
+                  {perfil.friendStatus === 'pending_sent' && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip label="Solicitud enviada" />
+                      <Button size="small" onClick={cancelarOQuitar} disabled={busy} color="secondary">
+                        {busy ? 'Cancelando…' : 'Cancelar'}
+                      </Button>
+                    </Stack>
+                  )}
 
-            {perfil.friendStatus === 'pending_received' && (
-              <Stack direction="row" spacing={1}>
-                <Button startIcon={<HowToRegIcon />} variant="contained" onClick={aceptar} disabled={busy}>
-                  {busy ? 'Aceptando…' : 'Aceptar solicitud'}
-                </Button>
-                <Button onClick={rechazar} disabled={busy} color="secondary">Rechazar</Button>
-              </Stack>
-            )}
+                  {perfil.friendStatus === 'pending_received' && (
+                    <Stack direction="row" spacing={1}>
+                      <Button startIcon={<HowToRegIcon />} variant="contained" onClick={aceptar} disabled={busy}>
+                        {busy ? 'Aceptando…' : 'Aceptar solicitud'}
+                      </Button>
+                      <Button onClick={rechazar} disabled={busy} color="secondary">Rechazar</Button>
+                    </Stack>
+                  )}
 
-            {perfil.friendStatus === 'friends' && (
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Chip color="primary" label="Amigos ✓" />
-                <Button size="small" onClick={cancelarOQuitar} disabled={busy} color="secondary">
-                  {busy ? 'Quitando…' : 'Dejar de ser amigos'}
-                </Button>
-              </Stack>
-            )}
+                  {perfil.friendStatus === 'friends' && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip color="primary" label="Amigos ✓" />
+                      <Button size="small" onClick={cancelarOQuitar} disabled={busy} color="secondary">
+                        {busy ? 'Quitando…' : 'Dejar de ser amigos'}
+                      </Button>
+                    </Stack>
+                  )}
+                </>
+              )}
+            </Stack>
 
             {accionError && <Alert severity="error" role="alert" sx={{ mt: 2 }}>{accionError}</Alert>}
 

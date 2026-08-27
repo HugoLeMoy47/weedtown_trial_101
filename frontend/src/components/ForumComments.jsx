@@ -11,6 +11,7 @@ import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import ImagePicker from './ImagePicker';
 import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
+import ContenidoTexto from './ContenidoTexto';
 import { useAuth } from '../hooks/useAuth';
 import FechaRelativa from './FechaRelativa';
 
@@ -100,27 +101,27 @@ const CommentNode = ({ comment, childrenNodes, onReply, onEdited, onDeleted, onB
   const totalReplies = childrenNodes.length;
 
   return (
-    <Box sx={{ ml: comment.depth > 0 ? 2 : 0, borderLeft: comment.depth > 0 ? 2 : 0, borderColor: 'divider', pl: comment.depth > 0 ? 1.5 : 0, mt: 1.5 }}>
+    <Box sx={{ mt: 1.5, pl: comment.depth > 0 ? (flattened ? 0 : 2) : 0, borderLeft: comment.depth > 0 && !flattened ? 2 : 0, borderColor: 'divider' }}>
       <Stack direction="row" spacing={1} alignItems="flex-start">
         {totalReplies > 0 && (
-          <IconButton size="small" onClick={() => setCollapsed(c => !c)}
-            aria-label={collapsed ? `Expandir rama (${totalReplies} respuestas)` : 'Colapsar rama'} sx={{ mt: 0.25 }}>
+          <IconButton size="small" onClick={() => setCollapsed(c => !c)} sx={{ p: 0.25, mt: 0.5 }} aria-label={collapsed ? 'Expandir respuestas' : 'Colapsar respuestas'}>
             {collapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
           </IconButton>
         )}
-        <Avatar src={comment.author?.avatar || undefined} sx={{ width: 26, height: 26, fontSize: 12, bgcolor: 'secondary.main', mt: 0.25 }}>
+        <Avatar src={comment.author?.avatar || undefined} sx={{ width: 24, height: 24, fontSize: 12, bgcolor: 'secondary.main', mt: 0.5 }}>
           {(comment.author?.name || '?').charAt(0).toUpperCase()}
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
-            <Typography variant="subtitle2">{comment.deleted ? '—' : (comment.author?.name || 'Anónimo')}</Typography>
-            {date && (
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>{comment.author?.name || 'Anónimo'}</Typography>
+            {date && <Typography variant="caption" color="text.secondary"><FechaRelativa fecha={date} /></Typography>}
+            {flattened && comment.parent?.author && (
               <Typography variant="caption" color="text.secondary">
-                <FechaRelativa fecha={date} />
+                en respuesta a <strong>{comment.parent.author.name}</strong>
               </Typography>
             )}
-            {flattened && comment.parent?.author?.name && (
-              <Chip label={`en respuesta a @${comment.parent.author.name}`} size="small" variant="outlined" />
+            {collapsed && totalReplies > 0 && (
+              <Chip size="small" label={`+${totalReplies} respuesta${totalReplies === 1 ? '' : 's'}`} sx={{ height: 18, fontSize: 10 }} />
             )}
             {isMine && !comment.deleted && (
               <OwnerActions
@@ -149,7 +150,7 @@ const CommentNode = ({ comment, childrenNodes, onReply, onEdited, onDeleted, onB
             </Box>
           ) : (
             <>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{comment.content}</Typography>
+              <ContenidoTexto texto={comment.content} variant="body2" />
               {comment.image && (
                 <Box component="img" src={comment.image} alt="Imagen adjunta al comentario" loading="lazy"
                   sx={{ maxWidth: '100%', maxHeight: 280, borderRadius: 2, mt: 0.5, border: 1, borderColor: 'divider', display: 'block' }} />

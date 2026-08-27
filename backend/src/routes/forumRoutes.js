@@ -14,6 +14,7 @@ const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = requir
 const { slugify } = require('../lib/slugify');
 const { armarFichaSubforo } = require('../lib/preview');
 const { crearNotificacion } = require('../lib/notifications');
+const { notificarMenciones } = require('../lib/menciones');
 
 const MAX_SUBFORUMS_PER_USER = 3;
 const PAGE_SIZE = 20;
@@ -345,6 +346,13 @@ router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (r
       )).catch(() => {});
     }).catch(err => console.error('Error notificando nuevo post:', err));
 
+    notificarMenciones({
+      texto: `${title} ${content}`,
+      actorId: req.user.id,
+      actorName: req.user.name,
+      forumPostId: post.id
+    }).catch(() => {});
+
     res.json(serializeForumPost(post, req.user.id));
   } catch (e) {
     console.error('Error al crear post del foro:', e);
@@ -534,6 +542,14 @@ router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req,
         actorName: req.user.name
       }).catch(err => console.error('Error notificando respuesta:', err));
     }
+
+    notificarMenciones({
+      texto: content,
+      actorId: req.user.id,
+      actorName: req.user.name,
+      forumPostId: postId,
+      forumCommentId: comment.id
+    }).catch(() => {});
 
     res.json(serializeForumComment(comment, req.user.id));
   } catch (e) {

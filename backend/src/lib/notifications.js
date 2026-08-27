@@ -109,6 +109,12 @@ async function crearNotificacion({
         pushBody = 'Nuevo post en ' + (notification.subforum?.name || 'un subforo que sigues');
         targetUrl = notification.subforum?.slug ? '/forum/' + notification.subforum.slug : '/forum';
         break;
+      case 'MENTION':
+        pushBody = '📢 ' + nombre + ' te mencionó en una publicación';
+        targetUrl = notification.forumPost?.subforum?.slug
+          ? '/forum/' + notification.forumPost.subforum.slug + '/post/' + notification.forumPost.id
+          : '/feed';
+        break;
       case 'CONTENIDO_OCULTO':
         pushBody = 'Moderación retiró contenido tuyo';
         targetUrl = '/profile';

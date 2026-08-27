@@ -87,6 +87,12 @@ export const SocketProvider = ({ children }) => {
           mensaje = 'Nuevo post en ' + (notif.subforum?.name || 'un subforo');
           ruta = notif.subforum?.slug ? '/forum/' + notif.subforum.slug : '/forum';
           break;
+        case 'MENTION':
+          mensaje = '📢 ' + actorName + ' te mencionó en una publicación';
+          ruta = notif.forumPost?.subforum?.slug
+            ? '/forum/' + notif.forumPost.subforum.slug + '/post/' + notif.forumPost.id
+            : '/feed';
+          break;
       }
 
       setToast({ mensaje, ruta });
