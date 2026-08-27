@@ -50,14 +50,15 @@ module.exports = async function run() {
 
     // Lo que hará la etapa 2: un segundo método hacia la MISMA cuenta.
     // El enum aún no tiene PASSKEY, así que se simula con otra fila de Mastodon.
+    const ext2 = `otra.instancia:${Date.now()}`;
     await prisma.identity.create({
-      data: { userId: ana.id, provider: 'MASTODON', externalId: 'otra.instancia:12345', instance: 'otra.instancia' }
+      data: { userId: ana.id, provider: 'MASTODON', externalId: ext2, instance: 'otra.instancia' }
     });
     const ahora = await prisma.identity.findMany({ where: { userId: ana.id } });
     check('se le puede colgar un segundo método a la misma cuenta', ahora.length === 2);
 
     const porSegunda = await prisma.identity.findUnique({
-      where: { provider_externalId: { provider: 'MASTODON', externalId: 'otra.instancia:12345' } },
+      where: { provider_externalId: { provider: 'MASTODON', externalId: ext2 } },
       select: { userId: true }
     });
     check('entrar por el segundo método lleva a la misma cuenta', porSegunda.userId === ana.id);
@@ -65,7 +66,7 @@ module.exports = async function run() {
     let choque = null;
     try {
       await prisma.identity.create({
-        data: { userId: ana.id, provider: 'MASTODON', externalId: 'otra.instancia:12345' }
+        data: { userId: ana.id, provider: 'MASTODON', externalId: ext2 }
       });
     } catch (e) { choque = e.code; }
     check('la misma identidad no se puede registrar dos veces', choque === 'P2002', `(fue ${choque})`);

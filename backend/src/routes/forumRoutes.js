@@ -346,12 +346,12 @@ router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (r
       )).catch(() => {});
     }).catch(err => console.error('Error notificando nuevo post:', err));
 
-    notificarMenciones({
+    await notificarMenciones({
       texto: `${title} ${content}`,
       actorId: req.user.id,
       actorName: req.user.name,
       forumPostId: post.id
-    }).catch(() => {});
+    });
 
     res.json(serializeForumPost(post, req.user.id));
   } catch (e) {
@@ -543,13 +543,13 @@ router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req,
       }).catch(err => console.error('Error notificando respuesta:', err));
     }
 
-    notificarMenciones({
+    await notificarMenciones({
       texto: content,
       actorId: req.user.id,
       actorName: req.user.name,
       forumPostId: postId,
       forumCommentId: comment.id
-    }).catch(() => {});
+    });
 
     res.json(serializeForumComment(comment, req.user.id));
   } catch (e) {

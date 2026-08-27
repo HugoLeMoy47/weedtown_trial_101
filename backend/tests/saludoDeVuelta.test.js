@@ -108,7 +108,6 @@ module.exports = async function run() {
       sinContestar && sinContestar.saludoMutuo === false,
       `(llegó ${JSON.stringify(sinContestar?.saludoMutuo)})`);
   } finally {
-    await prisma.user.deleteMany({ where: { handle: 'wtsal_nueva' } }).catch(() => {});
     await cleanup();
   }
 

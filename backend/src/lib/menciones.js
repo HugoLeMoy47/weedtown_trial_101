@@ -51,7 +51,7 @@ async function notificarMenciones({
 
     const destinatarios = await prisma.user.findMany({
       where: {
-        handle: { in: handles, mode: 'insensitive' },
+        handle: { in: handles },
         deletedAt: null
       },
       select: { id: true, handle: true }

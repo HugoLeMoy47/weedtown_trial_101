@@ -171,12 +171,12 @@ router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
       },
       include: postInclude
     });
-    notificarMenciones({
+    await notificarMenciones({
       texto: content,
       actorId: req.user.id,
       actorName: req.user.name,
       postId: post.id
-    }).catch(() => {});
+    });
     res.json(serializePost(post, req.user.id));
   } catch (e) {
     console.error('Error al crear posteo:', e);
@@ -572,13 +572,13 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
         actorName: req.user.name
       });
     }
-    notificarMenciones({
+    await notificarMenciones({
       texto: content,
       actorId: req.user.id,
       actorName: req.user.name,
       postId,
       commentId: comment.id
-    }).catch(() => {});
+    });
     res.json(serializeComment(comment, req.user.id));
   } catch (e) {
     console.error('Error al comentar:', e);
