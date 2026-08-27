@@ -9,8 +9,8 @@ const prisma = require('../lib/prisma');
 // mano para poder mantener la antienumeración de los perfiles que NO son
 // públicos.
 const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
-const { isBlockedBetween } = require('../lib/blocks');
-const { friendStatusBetween } = require('../lib/friends');
+const { isBlockedBetween, blockedWith } = require('../lib/blocks');
+const { friendStatusBetween, friendIds } = require('../lib/friends');
 const { camposVisibles, CAMPOS, esVisibilidadValida } = require('../lib/visibilidadPerfil');
 const { cubetaInvitaciones } = require('../lib/invitaciones');
 const { armarFichaPerfil, armarFichaPerfilGenerica } = require('../lib/preview');
@@ -396,6 +396,73 @@ router.get('/handle/:handle/preview', perfilPreviewLimiter, async (req, res) => 
     console.error('Error al armar la ficha del perfil:', e);
     // Ni siquiera un error interno puede delatar que el handle existe.
     res.json(armarFichaPerfilGenerica());
+  }
+});
+
+// GET /api/profile/mention-suggestions?q=... — sugerencias de usuarios para autocompletar @handle
+router.get('/mention-suggestions', requireAuth, async (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  if (q.length < 1) {
+    return res.json({ suggestions: [] });
+  }
+
+  try {
+    const amigosIds = await friendIds(req.user.id);
+    const amigosSet = new Set(amigosIds);
+    const bloqueados = await blockedWith(req.user.id);
+    const ignorarIds = new Set([req.user.id, ...bloqueados]);
+
+    const users = await prisma.user.findMany({
+      where: {
+        AND: [
+          { id: { notIn: Array.from(ignorarIds) } },
+          { deletedAt: null },
+          {
+            OR: [
+              { suspendedUntil: null },
+              { suspendedUntil: { lte: new Date() } }
+            ]
+          },
+          {
+            OR: [
+              { handle: { startsWith: q, mode: 'insensitive' } },
+              { name: { contains: q, mode: 'insensitive' } },
+              { displayName: { contains: q, mode: 'insensitive' } }
+            ]
+          }
+        ]
+      },
+      select: {
+        id: true,
+        handle: true,
+        name: true,
+        displayName: true,
+        avatar: true
+      },
+      take: 20
+    });
+
+    // Priorizar amigos primero, luego alfabéticamente por handle
+    const suggestions = users
+      .map(u => ({
+        id: u.id,
+        handle: u.handle,
+        name: u.name,
+        displayName: u.displayName,
+        avatar: u.avatar,
+        isFriend: amigosSet.has(u.id)
+      }))
+      .sort((a, b) => {
+        if (a.isFriend && !b.isFriend) return -1;
+        if (!a.isFriend && b.isFriend) return 1;
+        return (a.handle || '').localeCompare(b.handle || '');
+      })
+      .slice(0, 8);
+
+    res.json({ suggestions });
+  } catch (error) {
+    console.error('Error al obtener sugerencias de mención:', error);
+    res.status(500).json({ error: 'Error al buscar sugerencias de mención' });
   }
 });
 

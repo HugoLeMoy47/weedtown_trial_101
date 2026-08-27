@@ -1197,6 +1197,59 @@
         }
       }
     },
+    "/api/profile/mention-suggestions": {
+      "get": {
+        "tags": [
+          "Perfil"
+        ],
+        "summary": "Sugerencias de usuarios para autocompletar @handle",
+        "description": "Devuelve usuarios activos y no bloqueados coincidentes con el prefijo q, priorizando amigos.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Texto de búsqueda para el handle o nombre"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de sugerencias",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "suggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer" },
+                          "handle": { "type": "string" },
+                          "name": { "type": "string" },
+                          "displayName": { "type": "string", "nullable": true },
+                          "avatar": { "type": "string", "nullable": true },
+                          "isFriend": { "type": "boolean" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/profile/{id}": {
       "get": {
         "tags": [

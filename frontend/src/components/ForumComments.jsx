@@ -12,6 +12,7 @@ import ImagePicker from './ImagePicker';
 import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import ContenidoTexto from './ContenidoTexto';
+import MentionInput from './MentionInput';
 import { useAuth } from '../hooks/useAuth';
 import FechaRelativa from './FechaRelativa';
 
@@ -43,7 +44,7 @@ const Composer = ({ onSubmit, placeholder, autoFocus = false, onCancel }) => {
   return (
     <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
-        <TextField
+        <MentionInput
           fullWidth size="small" multiline maxRows={6}
           placeholder={placeholder}
           value={content}
