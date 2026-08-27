@@ -143,6 +143,7 @@ function suite(name, mark) {
       await prisma.message.deleteMany({ where: { chatId: { in: chatIds } } });
       await prisma.chat.deleteMany({ where: { id: { in: chatIds } } });
     }
+    await prisma.pushSubscription.deleteMany({ where: { userId: { in: ids } } });
     await prisma.identity.deleteMany({ where: { userId: { in: ids } } });
     // FK RESTRICT hacia User: si queda una fila de bitácora de privacidad sin
     // borrar, el deleteMany de abajo truena para TODAS las suites, no solo la

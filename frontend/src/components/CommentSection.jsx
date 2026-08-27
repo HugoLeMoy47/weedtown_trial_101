@@ -9,6 +9,7 @@ import ImagePicker from './ImagePicker';
 import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
 import AparicionSuave from './AparicionSuave';
+import ContenidoTexto from './ContenidoTexto';
 import { useAuth } from '../hooks/useAuth';
 import FechaRelativa from './FechaRelativa';
 
@@ -80,7 +81,7 @@ const CommentItem = ({ comment, onEdited, onDeleted, onBlocked, disabled = false
             </Stack>
           </Box>
         ) : (
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 0.5 }}>{comment.content}</Typography>
+          <ContenidoTexto texto={comment.content} variant="body2" sx={{ mb: 0.5 }} />
         )}
         {comment.image && (
           <Box

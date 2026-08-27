@@ -14,6 +14,7 @@ const { demasiadosEnlaces, esContenidoRepetido, MAX_LINKS_PER_CONTENT } = requir
 const { armarFicha } = require('../lib/preview');
 const { seDescarta } = require('../lib/diccionarioDescarte');
 const { crearNotificacion } = require('../lib/notifications');
+const { notificarMenciones } = require('../lib/menciones');
 
 // Topes de contenido: defensa contra payloads abusivos
 const MAX_POST_LENGTH = 2000;
@@ -169,6 +170,12 @@ router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
         hashtags: { create: tags.map(conectarHashtag) }
       },
       include: postInclude
+    });
+    await notificarMenciones({
+      texto: content,
+      actorId: req.user.id,
+      actorName: req.user.name,
+      postId: post.id
     });
     res.json(serializePost(post, req.user.id));
   } catch (e) {
@@ -565,6 +572,13 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
         actorName: req.user.name
       });
     }
+    await notificarMenciones({
+      texto: content,
+      actorId: req.user.id,
+      actorName: req.user.name,
+      postId,
+      commentId: comment.id
+    });
     res.json(serializeComment(comment, req.user.id));
   } catch (e) {
     console.error('Error al comentar:', e);

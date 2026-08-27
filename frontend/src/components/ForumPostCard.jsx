@@ -10,6 +10,7 @@ import api from '../services/api';
 import ReactionBar, { applyReaction, EMPTY_COUNTS } from './ReactionBar';
 import OwnerActions from './OwnerActions';
 import ContentActions from './ContentActions';
+import ContenidoTexto from './ContenidoTexto';
 import { useAuth } from '../hooks/useAuth';
 import { REACTION_SCORE } from '../lib/forum';
 import FechaRelativa from './FechaRelativa';
@@ -128,15 +129,14 @@ const ForumPostCard = ({ post, showSubforum = false, detail = false, onUpdated, 
           </Typography>
         )}
 
-        <Typography
+        <ContenidoTexto
+          texto={post.content}
           variant="body1"
-          sx={detail ? { whiteSpace: 'pre-wrap', mt: 1 } : {
-            whiteSpace: 'pre-wrap', mt: 0.5,
+          sx={detail ? { mt: 1 } : {
+            mt: 0.5,
             display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden'
           }}
-        >
-          {post.content}
-        </Typography>
+        />
 
         {post.image && (
           <Box

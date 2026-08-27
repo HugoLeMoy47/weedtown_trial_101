@@ -39,6 +39,11 @@ function describe(n) {
       return fragmento ? `A ${actor} le gustó ${sobre}: «${fragmento}»` : `A ${actor} le gustó ${sobre}`;
     }
     case 'CHAT_MESSAGE': return `${actor} te mandó un mensaje`;
+    case 'MENTION': {
+      if (n.forumPost) return `${actor} te mencionó en el post ${title}`;
+      const fragmento = recorte(n.post?.content || n.comment?.content);
+      return fragmento ? `${actor} te mencionó: «${fragmento}»` : `${actor} te mencionó en una publicación`;
+    }
     // Moderación: el actor viene vacío a propósito — se dice qué pasó y por qué,
     // no quién lo decidió.
     case 'CONTENIDO_OCULTO':
@@ -54,9 +59,9 @@ function targetPath(n) {
   if (n.type === 'CONTENIDO_OCULTO' || n.type === 'CUENTA_SUSPENDIDA') return '/profile';
   if (n.type === 'FRIEND_REQUEST' || n.type === 'FRIEND_ACCEPTED') return '/amigos';
   if (n.type === 'CHAT_MESSAGE') return '/chat';
-  // REPLY_POST/REACTION del feed principal: no hay página de detalle de un
+  // REPLY_POST/REACTION/MENTION del feed principal: no hay página de detalle de un
   // post suelto (a diferencia del foro), así que el destino es el feed.
-  if ((n.type === 'REPLY_POST' && !n.forumPost) || (n.type === 'REACTION' && !n.forumPost)) return '/feed';
+  if (((n.type === 'REPLY_POST' || n.type === 'REACTION' || n.type === 'MENTION') && !n.forumPost)) return '/feed';
   const slug = n.forumPost?.subforum?.slug || n.subforum?.slug;
   if (n.forumPost && slug) return `/forum/${slug}/post/${n.forumPost.id}`;
   if (slug) return `/forum/${slug}`;
