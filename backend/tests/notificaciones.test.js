@@ -82,6 +82,32 @@ module.exports = async function run() {
     check('responde 200', r.status === 200, `(fue ${r.status})`);
     const reaccionListada = r.data.notifications.find(n => n.type === 'REACTION' && n.commentId === commentId);
     check('trae el comentario con su contenido para dar contexto', reaccionListada?.comment?.content === 'wtnotif comentario reaccionable');
+
+    console.log('\n  — Ciclo 15F: recortarContenidoAjeno es allowlist, no denylist —');
+    // NEW_SUBFORUM_POST no está en TIPOS_CON_EXTRACTO (su destinatario es un
+    // seguidor, no el autor del post), así que su forumPost.title debe salir
+    // recortado igual que post.content/comment.content en MENTION.
+    const sub = await prisma.subForum.create({ data: { name: 'wtnotif tema', slug: 'wtnotif-tema', creatorId: ana.id } });
+    await call('POST', `/api/forum/subforums/${sub.slug}/follow`, { tok: tBeto });
+    r = await call('POST', `/api/forum/subforums/${sub.slug}/posts`, {
+      tok: tAna,
+      body: { title: 'Título que no debe salir en la notificación', content: 'contenido del post de foro' }
+    });
+    check('crear post de foro responde 200', r.status === 200, `(fue ${r.status})`);
+    const forumPostId = r.data.id;
+
+    r = await call('GET', '/api/notifications', { tok: tBeto });
+    const notifNuevoPost = (r.data.notifications || []).find(n => n.type === 'NEW_SUBFORUM_POST' && n.forumPost?.id === forumPostId);
+    check('Beto (seguidor) recibe la notificación NEW_SUBFORUM_POST', Boolean(notifNuevoPost));
+    check(
+      'el forumPost del payload NO trae title -- tipo fuera de la allowlist',
+      notifNuevoPost && notifNuevoPost.forumPost && !('title' in notifNuevoPost.forumPost),
+      JSON.stringify(notifNuevoPost?.forumPost)
+    );
+    check(
+      'pero sí trae id y subforum.slug -- hacen falta para el destino del push',
+      notifNuevoPost?.forumPost?.id === forumPostId && notifNuevoPost?.forumPost?.subforum?.slug === sub.slug
+    );
   } finally {
     await cleanup();
   }
