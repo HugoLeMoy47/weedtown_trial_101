@@ -39,9 +39,14 @@ module.exports = async function run() {
   await cleanup();
   try {
     console.log('\n  — la tabla no guarda a nadie (la condición que la hace admisible) —');
+    // `table_schema = current_schema()` no es cosmético: information_schema.columns
+    // lista TODOS los schemas visibles para el rol, y desde que P-01 (ciclo 15F)
+    // puso el schema de pruebas en el MISMO proyecto que producción, sin este
+    // filtro la consulta traía la fila de "public" y la de "weedtown_test" a la
+    // vez -- cada columna duplicada, no una lista distinta.
     const columnas = await prisma.$queryRaw`
       SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'ConteoAtribucion' ORDER BY column_name
+      WHERE table_name = 'ConteoAtribucion' AND table_schema = current_schema() ORDER BY column_name
     `;
     const nombres = columnas.map(c => c.column_name).sort();
     check('las columnas son exactamente id, dia, resultado y conteo',
