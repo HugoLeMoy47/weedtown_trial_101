@@ -44,8 +44,14 @@ module.exports = async function run() {
     check('Ana no se auto-notificó', notifsAna.length === 0);
 
     console.log('\n  — Integración: mención con bloqueo mutuo —');
-    // Beto bloquea a Ana
-    await call('POST', `/api/users/${ana.id}/block`, { tok: tBeto });
+    // Beto bloquea a Ana. NOTA (encontrado al correr esto de verdad por
+    // primera vez desde el ciclo 14): esta llamada apuntaba a
+    // /api/users/:id/block, una ruta que nunca existió -- el bloqueo real
+    // vive en POST /api/blocks con { userId } en el cuerpo (blockRoutes.js).
+    // Como el resultado de `call()` no se revisaba, el 404 se tragó en
+    // silencio y esta prueba nunca bloqueó a nadie desde que se escribió.
+    const rBlock = await call('POST', '/api/blocks', { tok: tBeto, body: { userId: ana.id } });
+    check('Beto bloquea a Ana', rBlock.status === 200, `(fue ${rBlock.status})`);
 
     // Ana postea de nuevo mencionando a Beto
     await call('POST', '/api/posts', {
@@ -56,7 +62,10 @@ module.exports = async function run() {
     const notifsBetoDespues = await prisma.notification.findMany({
       where: { recipientId: beto.id, type: 'MENTION' }
     });
-    check('Beto no recibe mención si hay bloqueo mutuo', notifsBetoDespues.length === 1); // sigue teniendo solo la primera
+    // POST /api/blocks borra las notificaciones existentes entre las dos
+    // partes (blockRoutes.js) -- así que la mención de la línea 39 ya no
+    // está, y la de aquí abajo nunca se crea. El total correcto es 0, no 1.
+    check('Beto no recibe mención si hay bloqueo mutuo', notifsBetoDespues.length === 0, `(quedaron ${notifsBetoDespues.length})`);
 
     console.log('\n  — P0 ciclo 15: mención en post FRIENDS no debe filtrar el contenido a un no-amigo —');
     // Ana y Diego NO son amigos. Ana postea "solo amigos" mencionando a Diego.
