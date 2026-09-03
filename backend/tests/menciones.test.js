@@ -175,6 +175,21 @@ module.exports = async function run() {
     r = await call('GET', '/api/profile/mention-suggestions?q=', { tok: tAna });
     check('con q vacío devuelve lista vacía', (r.data?.suggestions || []).length === 0);
 
+    console.log('\n  — Ciclo 15D: tope de menciones notificadas por texto —');
+    const cincuenta = [];
+    for (let i = 0; i < 50; i++) cincuenta.push(await mkUser(`m${i}`));
+    const textoConCincuenta = cincuenta.map(u => `@${u.handle}`).join(' ');
+    r = await call('POST', '/api/posts', { tok: tAna, body: { content: textoConCincuenta } });
+    check('crear post con 50 menciones responde 200', r.status === 200, `(fue ${r.status})`);
+    const notifsDeEsePost = await prisma.notification.findMany({
+      where: { type: 'MENTION', postId: r.data.id }
+    });
+    check('exactamente 10 notificaciones, no 50', notifsDeEsePost.length === 10, `(fueron ${notifsDeEsePost.length})`);
+    const idsNotificados = new Set(notifsDeEsePost.map(n => n.recipientId));
+    const primerosDiez = new Set(cincuenta.slice(0, 10).map(u => u.id));
+    check('son justo las primeras 10 en orden de aparición en el texto',
+      idsNotificados.size === primerosDiez.size && [...idsNotificados].every(id => primerosDiez.has(id)));
+
   } finally {
     await cleanup();
   }

@@ -6,6 +6,14 @@ const { crearNotificacion } = require('./notifications');
 
 const HANDLE_REGEX = /(?:^|[^a-zA-Z0-9_.+-])@([a-z0-9][a-z0-9_]{1,19})/gi;
 
+// Con el tope de 2000 caracteres de un posteo caben ~200 menciones: sin este
+// límite, una sola petición dispara 200 notificaciones, 200 emisiones por
+// WebSocket y 200 envíos push — y el limitador global no lo ve, porque cuenta
+// peticiones, no destinatarios. El resto se sigue viendo como enlace al
+// renderizar; simplemente no notifica. Vive aquí, no en `extraerHandles`,
+// porque esa extracción también alimenta el resaltado del texto completo.
+const MAX_MENCIONES_NOTIFICADAS = 10;
+
 /**
  * Extrae los handles únicos encontrados en un texto.
  * @param {string} texto
@@ -59,7 +67,10 @@ async function notificarMenciones({
   forumCommentId = null,
   alcance = null
 }) {
-  const handles = extraerHandles(texto);
+  // Se conserva el orden de aparición en el texto: quedarse con "las
+  // primeras" significa las primeras que escribió quien menciona, no las que
+  // devuelva la base en el `findMany` de abajo (Prisma no garantiza ese orden).
+  const handles = extraerHandles(texto).slice(0, MAX_MENCIONES_NOTIFICADAS);
   if (!handles.length) return [];
   if (alcance?.hidden) return [];
 
