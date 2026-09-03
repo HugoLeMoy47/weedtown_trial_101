@@ -19,6 +19,7 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 - **P1:** Cerca publicaba en el feed al compartir zona por defecto (opt-out disfrazado de opt-in) y arrastraba la intención a un posteo público permanente.
 - **P1:** `mention-suggestions` aceptaba `q` de un carácter y buscaba en toda la plataforma sin respetar el perfil público, fuera de la red de quien busca.
 - **P2 × 3 + P3 × 2:** reasignación de suscripción push por endpoint ajeno; SSRF por host de push sin lista blanca; menciones sin tope por texto; regex de mención discrepante entre frontend y backend; `TOKEN_REGEX.lastIndex` compartido entre renders; `notificationclick` del Service Worker secuestrando la pestaña activa.
+- **15F, auditoría del propio ciclo 15:** el recorte de contenido ajeno era una *denylist* por tipo (`type !== 'MENTION'`) que habría dejado pasar cualquier tipo nuevo con destinatario tercero — se invirtió a *allowlist* (`TIPOS_CON_EXTRACTO`). De paso se cerró el mismo patrón en `forumPost.title`, que la primera pasada del ciclo dejó sin recortar. Y una prueba propia del ciclo afirmaba sobre el total de notificaciones en vez del delta, así que nunca podía pasar como estaba escrita — corregida.
 
 ### Añadido
 - Este archivo, y la prueba de CI que exige mantenerlo al día (`backend/tests/changelogAlDia.test.js`).
