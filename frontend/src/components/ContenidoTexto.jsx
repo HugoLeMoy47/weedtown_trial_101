@@ -4,8 +4,15 @@ import { Link as RouterLink } from 'react-router-dom';
 
 const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.|m\.|music\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
 
-// Tokenizador: URLs completas y menciones @handle
-const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(@[a-z0-9][a-z0-9_]{1,19})/gi;
+// Tokenizador: URLs completas y menciones @handle.
+// La mención lleva la misma guarda de carácter previo que
+// backend/src/lib/menciones.js:HANDLE_REGEX — sin ella, "escríbeme a
+// hugo@gmail.com" no notifica a nadie (el backend sí trae la guarda) pero
+// SÍ renderizaba "@gmail" como enlace clicable a /@gmail: quien registre
+// ese handle capta el tráfico de cualquier correo con ese dominio. Las dos
+// reglas viven en archivos separados (no hay paquete compartido entre
+// frontend y backend); si cambias una, cambia la otra.
+const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(?<![a-zA-Z0-9_.+-])(@[a-z0-9][a-z0-9_]{1,19})/gi;
 
 export function extraerYoutubeId(texto) {
   if (!texto) return null;

@@ -35,4 +35,22 @@ describe('ContenidoTexto - Parseo de contenido', () => {
     const res = parsearContenido('Hola @beto visita https://weedtown.social');
     expect(res.length).toBe(4); // 'Hola ', <Link @beto>, ' visita ', <Link url>
   });
+
+  // Ciclo 15D: la mención lleva la misma guarda de carácter previo que el
+  // backend (menciones.js:HANDLE_REGEX). Sin ella, un correo como
+  // hugo@gmail.com no dispara notificación (el backend ya lo filtraba) pero
+  // SÍ renderizaba "@gmail" como enlace clicable a /@gmail.
+  const esEnlaceDeMencion = (el) => Boolean(el && typeof el === 'object' && el.props && typeof el.props.to === 'string');
+
+  test('un correo no produce enlace de mención', () => {
+    const res = parsearContenido('escríbeme a hugo@gmail.com');
+    expect(res.some(esEnlaceDeMencion)).toBe(false);
+  });
+
+  test('una mención real (precedida de espacio) sí produce enlace', () => {
+    const res = parsearContenido('hola @hugo');
+    const enlace = res.find(esEnlaceDeMencion);
+    expect(enlace).toBeTruthy();
+    expect(enlace.props.to).toBe('/@hugo');
+  });
 });

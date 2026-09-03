@@ -4,6 +4,13 @@ const { blockedWith } = require('./blocks');
 const { areFriends } = require('./friends');
 const { crearNotificacion } = require('./notifications');
 
+// La misma guarda de carácter previo vive en
+// frontend/src/components/ContenidoTexto.jsx:TOKEN_REGEX (ahí con lookbehind
+// en vez de consumir el carácter, porque ese tokenizador necesita el índice
+// exacto del '@'). Sin la guarda en los dos lados, un correo como
+// hugo@gmail.com no notifica a nadie aquí, pero el frontend igual renderiza
+// "@gmail" como enlace clicable — no hay paquete compartido entre los dos
+// proyectos; si cambias una regla, cambia la otra.
 const HANDLE_REGEX = /(?:^|[^a-zA-Z0-9_.+-])@([a-z0-9][a-z0-9_]{1,19})/gi;
 
 // Con el tope de 2000 caracteres de un posteo caben ~200 menciones: sin este
