@@ -565,6 +565,8 @@ Al fallar, el job sube las trazas y capturas de Playwright como artefacto (7 dí
 
 El runner de pruebas detecta dónde está corriendo: en local lee `.env.test`, y en CI toma las variables ya inyectadas en el entorno. Los tres guardias se aplican igual en ambos casos.
 
+**Guardia de `CHANGELOG.md` (ciclo 15E).** `backend/tests/changelogAlDia.test.js` truena si hay commits que tocan `backend/src/` o `frontend/src/` desde el último cambio de [`CHANGELOG.md`](CHANGELOG.md) — comparado contra el merge-base con la rama base en un PR, o contra el `before` del push en un push directo. Por eso el job de backend corre con `fetch-depth: 0`: el default (1) no trae ninguno de los dos puntos de comparación. Se salta a propósito con `[skip changelog]` en el mensaje del commit, y eso queda escrito en el historial. Nace del ciclo 14, que entró a `main` sin plan, sin prompt y sin bitácora — `CLAUDE.md` (local, no versionado: ver `.gitignore`) trae la regla completa de las cuatro piezas que todo ciclo cierra.
+
 ### Acceso desde otras máquinas de la red local
 
 El frontend deduce la URL del backend del hostname con el que abriste la página (localhost o IP LAN, puerto 4000), así que basta con:
