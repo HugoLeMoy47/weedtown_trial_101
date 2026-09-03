@@ -54,7 +54,10 @@ const Nearby = () => {
   const [pokes, setPokes] = useState({}); // id -> 'sent' | 'cooldown'
   // Preferencia del momento, no una configuración: nace en 'todas' cada vez que se abre la página
   const [soloAmigos, setSoloAmigos] = useState(false);
-  const [autoPublicar, setAutoPublicar] = useState(true);
+  // Ciclo 15C: opt-in de verdad. Cerca es ~2 km, caduca a 7 días y es
+  // borrable; el posteo que arma es público y queda para siempre — un dato
+  // acotado y perecedero no se convierte en anuncio permanente por defecto.
+  const [autoPublicar, setAutoPublicar] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
   const loadNearby = useCallback(async () => {
@@ -93,17 +96,28 @@ const Nearby = () => {
 
       if (autoPublicar) {
         try {
-          const textoIntencion = miIntencion.intencion
-            ? ` con intención: ${intencionPor(miIntencion.intencion)?.etiqueta || miIntencion.intencion}`
-            : '';
+          // Sin la intención: eso vive en su propio control dentro del mapa
+          // (10C) y arrastrarla aquí la lleva a un canal permanente y sin
+          // control propio. La hora es la variación deliberada del texto —
+          // no la zona, para no precisar en el feed público lo que la
+          // ofuscación de Cerca deliberadamente no precisa — así que dos
+          // actualizaciones separadas por minutos no chocan con
+          // esContenidoRepetido; si caen en el mismo minuto, sí, y esta bien
+          // que el backend lo rechace: es el mismo aviso repetido de verdad.
+          const hora = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
           await api.post('/posts', {
-            content: `📍 ¡Ando cerca en WeedTown! Zona activa en el mapa${textoIntencion} 👋`,
+            content: `📍 ¡Ando cerca en WeedTown! Zona activa en el mapa 👋 (actualizado ${hora})`,
             hashtags: ['cerca', 'comunidad'],
             visibility: 'PUBLIC'
           });
           setSuccessMsg('Ubicación actualizada y compartida como publicación en tu feed.');
-        } catch {
-          setSuccessMsg('Ubicación actualizada en Cerca.');
+        } catch (e) {
+          if (e.response?.status === 429) {
+            setSuccessMsg('Ubicación actualizada en Cerca. No se publicó en el feed: ya compartiste este mismo aviso hace poco.');
+          } else {
+            console.warn('No se pudo publicar la zona en el feed:', e);
+            setSuccessMsg('Ubicación actualizada en Cerca. No se pudo publicar en el feed — intenta de nuevo más tarde.');
+          }
         }
       } else {
         setSuccessMsg('Ubicación actualizada en Cerca.');
