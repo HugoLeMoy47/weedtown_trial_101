@@ -3,7 +3,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container, Box, Paper, Typography, Button, Alert, Stack, List, ListItem,
   ListItemAvatar, ListItemText, Avatar, Chip, CircularProgress, Divider,
-  IconButton, Tooltip, ToggleButtonGroup, ToggleButton
+  IconButton, Tooltip, ToggleButtonGroup, ToggleButton, FormControlLabel, Checkbox
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import LocationOffIcon from '@mui/icons-material/LocationOff';
@@ -54,6 +54,8 @@ const Nearby = () => {
   const [pokes, setPokes] = useState({}); // id -> 'sent' | 'cooldown'
   // Preferencia del momento, no una configuración: nace en 'todas' cada vez que se abre la página
   const [soloAmigos, setSoloAmigos] = useState(false);
+  const [autoPublicar, setAutoPublicar] = useState(true);
+  const [successMsg, setSuccessMsg] = useState('');
 
   const loadNearby = useCallback(async () => {
     try {
@@ -88,6 +90,24 @@ const Nearby = () => {
       await api.put('/nearby/location', { cell });
       setSharing(true);
       await loadNearby();
+
+      if (autoPublicar) {
+        try {
+          const textoIntencion = miIntencion.intencion
+            ? ` con intención: ${intencionPor(miIntencion.intencion)?.etiqueta || miIntencion.intencion}`
+            : '';
+          await api.post('/posts', {
+            content: `📍 ¡Ando cerca en WeedTown! Zona activa en el mapa${textoIntencion} 👋`,
+            hashtags: ['cerca', 'comunidad'],
+            visibility: 'PUBLIC'
+          });
+          setSuccessMsg('Ubicación actualizada y compartida como publicación en tu feed.');
+        } catch {
+          setSuccessMsg('Ubicación actualizada en Cerca.');
+        }
+      } else {
+        setSuccessMsg('Ubicación actualizada en Cerca.');
+      }
     } catch (e) {
       setError(e.response?.data?.error || e.message || 'No se pudo activar Cerca.');
     } finally {
@@ -147,7 +167,11 @@ const Nearby = () => {
         >
           <Typography variant="h5" component="h1">Cerca</Typography>
           {sharing && (
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <FormControlLabel
+                control={<Checkbox size="small" checked={autoPublicar} onChange={e => setAutoPublicar(e.target.checked)} />}
+                label={<Typography variant="caption">Publicar en el feed al actualizar</Typography>}
+              />
               <Button size="small" startIcon={<MyLocationIcon />} onClick={shareZone} disabled={busy}>
                 Actualizar mi zona
               </Button>
@@ -158,6 +182,7 @@ const Nearby = () => {
           )}
         </Stack>
 
+        {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
         {error && <Alert severity="error" role="alert" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
         {sharing === null ? (
@@ -182,6 +207,10 @@ const Nearby = () => {
                   ⏳ Tu zona <strong>caduca a los 7 días</strong> si no la actualizas, y puedes borrarla cuando quieras.
                 </Typography>
               </Stack>
+              <FormControlLabel
+                control={<Checkbox checked={autoPublicar} onChange={e => setAutoPublicar(e.target.checked)} color="primary" />}
+                label={<Typography variant="body2">Publicar en mi feed que ando cerca 📍</Typography>}
+              />
               <Button variant="contained" size="large" startIcon={<MyLocationIcon />} onClick={shareZone} disabled={busy}>
                 {busy ? 'Activando…' : 'Compartir mi zona'}
               </Button>

@@ -11,6 +11,7 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import PostCard from '../components/PostCard';
 import PostModal from '../components/PostModal';
+import PushBanner from '../components/PushBanner';
 import AparicionSuave from '../components/AparicionSuave';
 import { FEED_REFRESH_EVENT } from '../lib/refresh';
 import { DOCK_BOTTOM_OFFSET, DOCK_SIDE_MARGIN_PX } from '../lib/mobileNav';
@@ -159,6 +160,8 @@ function Feed() {
       <Navbar />
       <Container maxWidth="md" component="main" sx={{ py: 3, pb: 12 }}>
         <Typography variant="h5" component="h1" gutterBottom>Feed</Typography>
+
+        <PushBanner />
 
         <Box component="form" onSubmit={handleSearch} role="search" sx={{ mb: 3 }}>
           <TextField

@@ -57,15 +57,28 @@ function describe(n) {
 function targetPath(n) {
   if (n.type === 'POKE') return '/cerca';
   if (n.type === 'CONTENIDO_OCULTO' || n.type === 'CUENTA_SUSPENDIDA') return '/profile';
-  if (n.type === 'FRIEND_REQUEST' || n.type === 'FRIEND_ACCEPTED') return '/amigos';
-  if (n.type === 'CHAT_MESSAGE') return '/chat';
-  // REPLY_POST/REACTION/MENTION del feed principal: no hay página de detalle de un
-  // post suelto (a diferencia del foro), así que el destino es el feed.
-  if (((n.type === 'REPLY_POST' || n.type === 'REACTION' || n.type === 'MENTION') && !n.forumPost)) return '/feed';
+  if (n.type === 'FRIEND_REQUEST' || n.type === 'FRIEND_ACCEPTED') {
+    return n.actor?.handle ? `/@${n.actor.handle}` : '/amigos';
+  }
+  if (n.type === 'CHAT_MESSAGE') {
+    return {
+      pathname: '/chat',
+      state: {
+        chatId: n.chatId,
+        withUser: n.actor ? { id: n.actor.id, name: n.actor.name, displayName: n.actor.name, handle: n.actor.handle, avatar: n.actor.avatar } : undefined
+      }
+    };
+  }
+  // Publicación o comentario en subforo
   const slug = n.forumPost?.subforum?.slug || n.subforum?.slug;
   if (n.forumPost && slug) return `/forum/${slug}/post/${n.forumPost.id}`;
   if (slug) return `/forum/${slug}`;
-  return '/forum';
+
+  // Publicación o comentario del feed principal: llevar directo a /p/:id
+  const postId = n.postId || n.post?.id;
+  if (postId) return `/p/${postId}`;
+
+  return '/feed';
 }
 
 const NotificationBell = () => {
@@ -116,7 +129,12 @@ const NotificationBell = () => {
 
   const handleClick = (n) => {
     setAnchor(null);
-    navigate(targetPath(n));
+    const dest = targetPath(n);
+    if (typeof dest === 'string') {
+      navigate(dest);
+    } else if (dest && dest.pathname) {
+      navigate(dest.pathname, { state: dest.state });
+    }
   };
 
   return (

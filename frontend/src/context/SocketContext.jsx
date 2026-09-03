@@ -49,39 +49,45 @@ export const SocketProvider = ({ children }) => {
       let ruta = '/';
 
       switch (notif.type) {
-        case 'CHAT_MESSAGE':
-          mensaje = '💬 ' + actorName + ' te envió un mensaje';
-          ruta = '/chat';
-          break;
         case 'POKE':
           mensaje = '🌿 ' + actorName + ' te mandó un toque 👋';
           ruta = '/cerca';
           break;
         case 'FRIEND_REQUEST':
           mensaje = '👥 ' + actorName + ' te mandó solicitud de amistad';
-          ruta = '/amigos';
+          ruta = notif.actor?.handle ? '/@' + notif.actor.handle : '/amigos';
           break;
         case 'FRIEND_ACCEPTED':
           mensaje = '🌿 ' + actorName + ' aceptó tu solicitud de amistad';
-          ruta = '/amigos';
+          ruta = notif.actor?.handle ? '/@' + notif.actor.handle : '/amigos';
+          break;
+        case 'CHAT_MESSAGE':
+          mensaje = '💬 ' + actorName + ' te mandó un mensaje';
+          ruta = {
+            pathname: '/chat',
+            state: {
+              chatId: notif.chatId,
+              withUser: notif.actor ? { id: notif.actor.id, name: notif.actor.name, displayName: notif.actor.name, handle: notif.actor.handle, avatar: notif.actor.avatar } : undefined
+            }
+          };
           break;
         case 'REPLY_POST':
           mensaje = actorName + ' comentó en tu publicación';
           ruta = notif.forumPost?.subforum?.slug
             ? '/forum/' + notif.forumPost.subforum.slug + '/post/' + notif.forumPost.id
-            : '/feed';
+            : (notif.postId ? '/p/' + notif.postId : '/feed');
           break;
         case 'REPLY_COMMENT':
           mensaje = actorName + ' respondió a tu comentario';
           ruta = notif.forumPost?.subforum?.slug
             ? '/forum/' + notif.forumPost.subforum.slug + '/post/' + notif.forumPost.id
-            : '/feed';
+            : (notif.postId ? '/p/' + notif.postId : '/feed');
           break;
         case 'REACTION':
           mensaje = '🌿 A ' + actorName + ' le gustó tu publicación';
           ruta = notif.forumPost?.subforum?.slug
             ? '/forum/' + notif.forumPost.subforum.slug + '/post/' + notif.forumPost.id
-            : '/feed';
+            : (notif.postId ? '/p/' + notif.postId : '/feed');
           break;
         case 'NEW_SUBFORUM_POST':
           mensaje = 'Nuevo post en ' + (notif.subforum?.name || 'un subforo');
@@ -91,7 +97,7 @@ export const SocketProvider = ({ children }) => {
           mensaje = '📢 ' + actorName + ' te mencionó en una publicación';
           ruta = notif.forumPost?.subforum?.slug
             ? '/forum/' + notif.forumPost.subforum.slug + '/post/' + notif.forumPost.id
-            : '/feed';
+            : (notif.postId ? '/p/' + notif.postId : '/feed');
           break;
       }
 
@@ -113,7 +119,11 @@ export const SocketProvider = ({ children }) => {
 
   const handleToastClick = () => {
     if (toast?.ruta) {
-      navigate(toast.ruta);
+      if (typeof toast.ruta === 'string') {
+        navigate(toast.ruta);
+      } else if (toast.ruta.pathname) {
+        navigate(toast.ruta.pathname, { state: toast.ruta.state });
+      }
     }
     setToast(null);
   };

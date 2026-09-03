@@ -79,11 +79,11 @@ async function crearNotificacion({
         break;
       case 'FRIEND_REQUEST':
         pushBody = '👥 ' + nombre + ' te mandó una solicitud de amistad';
-        targetUrl = '/amigos';
+        targetUrl = notification.actor?.handle ? '/@' + notification.actor.handle : '/amigos';
         break;
       case 'FRIEND_ACCEPTED':
         pushBody = '🌿 ' + nombre + ' aceptó tu solicitud de amistad';
-        targetUrl = '/amigos';
+        targetUrl = notification.actor?.handle ? '/@' + notification.actor.handle : '/amigos';
         break;
       case 'REPLY_POST':
         pushBody = notification.forumPost
@@ -91,19 +91,19 @@ async function crearNotificacion({
           : nombre + ' comentó en tu publicación';
         targetUrl = notification.forumPost?.subforum?.slug
           ? '/forum/' + notification.forumPost.subforum.slug + '/post/' + notification.forumPost.id
-          : '/feed';
+          : (notification.postId ? '/p/' + notification.postId : '/feed');
         break;
       case 'REPLY_COMMENT':
         pushBody = nombre + ' respondió a tu comentario';
         targetUrl = notification.forumPost?.subforum?.slug
           ? '/forum/' + notification.forumPost.subforum.slug + '/post/' + notification.forumPost.id
-          : '/feed';
+          : (notification.postId ? '/p/' + notification.postId : '/feed');
         break;
       case 'REACTION':
         pushBody = '🌿 A ' + nombre + ' le gustó tu publicación';
         targetUrl = notification.forumPost?.subforum?.slug
           ? '/forum/' + notification.forumPost.subforum.slug + '/post/' + notification.forumPost.id
-          : '/feed';
+          : (notification.postId ? '/p/' + notification.postId : '/feed');
         break;
       case 'NEW_SUBFORUM_POST':
         pushBody = 'Nuevo post en ' + (notification.subforum?.name || 'un subforo que sigues');
@@ -113,7 +113,7 @@ async function crearNotificacion({
         pushBody = '📢 ' + nombre + ' te mencionó en una publicación';
         targetUrl = notification.forumPost?.subforum?.slug
           ? '/forum/' + notification.forumPost.subforum.slug + '/post/' + notification.forumPost.id
-          : '/feed';
+          : (notification.postId ? '/p/' + notification.postId : '/feed');
         break;
       case 'CONTENIDO_OCULTO':
         pushBody = 'Moderación retiró contenido tuyo';
