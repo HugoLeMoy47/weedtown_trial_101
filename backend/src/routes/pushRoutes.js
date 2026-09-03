@@ -23,15 +23,22 @@ router.post('/subscribe', requireAuth, async (req, res) => {
   }
 
   try {
-    const pushSub = await prisma.pushSubscription.upsert({
+    // En un upsert el WHERE es el control de acceso, y este solo miraba el
+    // endpoint: quien conociera el endpoint ajeno se lo apropiaba sin más.
+    // Se resuelve con delete + create (no hay updateMany parcial que decida
+    // solo) y se deja rastro cuando el dueño cambia — legítimo en un
+    // dispositivo compartido, sospechoso en cualquier otro caso.
+    const previa = await prisma.pushSubscription.findUnique({
       where: { endpoint: subscription.endpoint },
-      update: {
-        userId: req.user.id,
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
-        userAgent: req.headers['user-agent'] || null
-      },
-      create: {
+      select: { userId: true }
+    });
+    if (previa && previa.userId !== req.user.id) {
+      log('push_endpoint_reasignado', { deUserId: previa.userId, aUserId: req.user.id });
+    }
+
+    await prisma.pushSubscription.deleteMany({ where: { endpoint: subscription.endpoint } });
+    const pushSub = await prisma.pushSubscription.create({
+      data: {
         userId: req.user.id,
         endpoint: subscription.endpoint,
         p256dh: subscription.keys.p256dh,
