@@ -80,8 +80,19 @@ const señas = señasDeLaBase(url);
 // Es la misma lección que respaldo.js aprendió el 2026-08-09 con la base
 // equivocada: la elección de base tiene que ser explícita, y lo implícito
 // tiene que fallar ruidoso en vez de funcionar en silencio.
+//
+// Ciclo 15F: el proyecto de pruebas dedicado se eliminó y P-01 (una sola base
+// hasta los 5 000 usuarios) puso `weedtown_test` en el MISMO proyecto que
+// producción, distinguido solo por `?schema=`. Comparar nada más el ref de
+// proyecto habría bloqueado tests/consolidacionForos.test.js —que corre este
+// script de verdad, con `--url` y ese schema— como si fuera un intento real de
+// escribir en producción. El guardia se vuelve consciente del schema: lo que
+// de verdad hay que impedir es escribir en el schema `public` del proyecto de
+// producción sin pedirlo por su nombre, no tocar ese proyecto en cualquier
+// schema.
+const schemaObjetivo = /[?&]schema=([^&]+)/.exec(url)?.[1] || 'public';
 const refProduccion = /postgres\.([a-z0-9]{20})/.exec(process.env.RESPALDO_DATABASE_URL || '')?.[1];
-if (aplicar && refProduccion && refProyecto === refProduccion && base !== 'produccion' && base !== 'prod') {
+if (aplicar && refProduccion && refProyecto === refProduccion && schemaObjetivo === 'public' && base !== 'produccion' && base !== 'prod') {
   console.error(
     `\n  ✖ Esta URL es la de PRODUCCIÓN (proyecto ${refProyecto}) y no la pediste por su nombre.\n\n` +
     '    Para escribir en producción:  --base produccion --aplicar\n' +
