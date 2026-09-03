@@ -39,20 +39,34 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const urlToOpen = event.notification.data?.url || '/';
+  const rutaDestino = new URL(urlToOpen, self.location.origin).pathname;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (const client of windowClients) {
-        if (client.url && 'focus' in client) {
-          client.focus();
-          if ('navigate' in client) {
-            return client.navigate(urlToOpen);
-          }
-          return client;
+      // Antes se navegaba SIEMPRE la primera ventana que se encontrara, sin
+      // mirar en qué estaba: tocar la notificación podía llevarse un
+      // posteo largo a medio escribir en otra pestaña. Se prefiere una
+      // ventana que YA esté en el destino (nomás enfocarla, sin recargar);
+      // si no hay ninguna, se abre una nueva en vez de secuestrar la que
+      // esté activa.
+      const yaEnDestino = windowClients.find(client => {
+        try {
+          return new URL(client.url).pathname === rutaDestino;
+        } catch {
+          return false;
         }
+      });
+      if (yaEnDestino) {
+        return yaEnDestino.focus();
       }
       if (self.clients.openWindow) {
         return self.clients.openWindow(urlToOpen);
+      }
+      // Navegadores viejos sin openWindow: mejor reutilizar algo que dejar
+      // la notificación sin ninguna acción.
+      const cualquiera = windowClients[0];
+      if (cualquiera && 'focus' in cualquiera) {
+        return cualquiera.focus();
       }
     })
   );
