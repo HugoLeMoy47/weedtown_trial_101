@@ -23,6 +23,16 @@ export function extraerYoutubeId(texto) {
 export function parsearContenido(texto) {
   if (!texto) return [];
 
+  // TOKEN_REGEX es un literal a nivel de módulo con bandera /g: `lastIndex`
+  // vive en el objeto, y el objeto es el mismo para toda la app. Hoy nunca
+  // falla porque el bucle de abajo siempre agota el texto y el último
+  // `exec` devuelve null (que resetea lastIndex solo) — pero esa invariante
+  // no está escrita en ningún otro lado, y un `break`/`return` temprano en
+  // ese bucle dejaría lastIndex a medias para la SIGUIENTE llamada, con
+  // cualquier texto. Resetear al entrar hace que la función no dependa de
+  // cómo terminó la llamada anterior.
+  TOKEN_REGEX.lastIndex = 0;
+
   const elementos = [];
   let ultimoIndice = 0;
   let match;
