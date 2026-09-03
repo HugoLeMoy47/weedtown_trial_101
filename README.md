@@ -64,6 +64,12 @@
 | Subforos temáticos institucionales sembrados vía script idempotente (`npm run subforos`) | ✅ Funcionando |
 | Ficha de previsualización (Open Graph/Twitter Card) al pegar `/p/:id`, `/forum/:slug` o `/@handle` en WhatsApp, Telegram, Facebook o X: título, descripción, imagen (propia o de campaña) — armada en el borde con un Worker de Cloudflare, sin depender de que React ni el backend respondan a tiempo. Los hilos (`/forum/:slug/post/:id`) **no** tienen ficha, y es una decisión: su título es contenido que exige sesión | ✅ Funcionando |
 | Invitaciones con contador ciego: el enlace de tu perfil, quien llega ve quién la invitó y puede mandarle solicitud; el contador se publica en cubetas y **no existe ningún vínculo persistido** entre las dos cuentas | ✅ Funcionando |
+| Notificaciones Web Push (VAPID + Service Worker) en segundo plano, con campana reactiva en tiempo real y banner suave de adopción (`PushBanner.jsx`) en el feed | ✅ Funcionando |
+| Navegación directa en notificaciones: el clic en campana, toast o push abre exactamente la publicación individual (`/p/:id`), la conversación de chat con esa persona, o el hilo de foro | ✅ Funcionando |
+| Menciones con `@handle` en publicaciones del feed, comentarios y foros, con autocompletado flotante predictivo, debounce y navegación por teclado | ✅ Funcionando |
+| Embebido responsivo nativo de videos de YouTube (16:9 con contenedor adaptable y `youtube-nocookie.com` sin rastreo) en feed y foros | ✅ Funcionando |
+| Botón de chat directo 1 a 1 desde el perfil público (`/@handle`) respetando bloqueos mutuos y cuarentena | ✅ Funcionando |
+| Compartir presencia y zona como publicación al feed al activar o actualizar ubicación en Cerca | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -470,6 +476,8 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
 | **Hashtags** | Ciclo 9C: `#RolarEnLaTarde` guarda llave `rolarenlatarde` y grafía `RolarEnLaTarde`; `#Rolar` y `#rolar` son una sola fila y gana la primera grafía vista (también al editar); las palabras del diccionario de descarte no generan fila; y el texto del posteo vuelve **idéntico**, con sus `#de` adentro |
 | **DocumentacionApi** | Ciclo 12A: que la lista de rutas de `swagger.json` coincida con las que el servidor monta de verdad. No valida el contenido de cada entrada —eso es criterio humano—, sino que no falte ninguna ni sobre una inventada. Existe porque el 10E encontró **21 rutas desfasadas, 13 de ellas acumuladas de ciclos anteriores**: no fue el descuido de nadie, era que no había ningún paso que lo impidiera. En su primera corrida atrapó una ruta del ciclo 11B sin documentar |
+| **Menciones** | Ciclo 14: detección y notificación de `@handle` en publicaciones y foros, exclusión del propio autor y de cuentas mutuamente bloqueadas, y endpoint `/api/profile/mention-suggestions` que prioriza amigos en los primeros resultados |
+| **Push** | Ciclo 14: registro de suscripciones Web Push (`/api/push/subscribe`, `/api/push/unsubscribe`), entrega de clave pública VAPID y despacho en segundo plano ante interacciones |
 | **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las demás |
 
 > ⚠️ **La suite borra datos.** Nunca debe apuntar a la base de desarrollo. El runner se niega a arrancar si falta `.env.test`, si la URL no declara un `?schema=` distinto de `public`, o si esa URL coincide con la de `.env`.
