@@ -3,6 +3,29 @@ const prisma = require('./prisma');
 const { emitToUser } = require('./chatSocket');
 const { enviarPush } = require('./pushService');
 
+// El `include` de abajo trae post.content y comment.content completos. Eso era
+// seguro mientras toda notificación con postId/commentId tuviera como
+// destinatario al AUTOR (REPLY_POST, REACTION…). MENTION rompe esa invariante:
+// el destinatario es un tercero. `notificarMenciones` ya filtra quién puede
+// LEER el contenido al momento de notificar (capa 1), pero el include de acá
+// se resuelve en caliente cada vez que se sirve la notificación — si el
+// contenido se oculta por moderación DESPUÉS de notificar, seguiría saliendo
+// completo. Opción elegida: (a) para MENTION específicamente — nunca viajar
+// content en el payload, ni por WebSocket ni por REST. Se descartó (b)
+// (recortar según lectura) porque exige repetir en cada lectura la misma
+// consulta de amistad que la capa 1 ya hizo una vez, sin ganar nada a cambio.
+// Los demás tipos (REPLY_POST, REACTION) sí necesitan el extracto — la
+// campana (NotificationBell.jsx) lo muestra y su destinatario sigue siendo
+// siempre el autor — así que no se tocan.
+function sinContenidoDeMencion(n) {
+  if (!n || n.type !== 'MENTION') return n;
+  return {
+    ...n,
+    post: n.post ? { id: n.post.id } : n.post,
+    comment: n.comment ? { id: n.comment.id } : n.comment
+  };
+}
+
 /**
  * Crea una notificación, la emite por WebSocket si el usuario está conectado
  * y despacha Web Push en segundo plano si tiene suscripciones activas.
@@ -38,7 +61,7 @@ async function crearNotificacion({
   if (!recipientId || recipientId === actorId) return null;
 
   try {
-    const notification = await prisma.notification.create({
+    const notificationCruda = await prisma.notification.create({
       data: {
         type,
         recipientId,
@@ -59,6 +82,7 @@ async function crearNotificacion({
         comment: { select: { id: true, content: true } }
       }
     });
+    const notification = sinContenidoDeMencion(notificationCruda);
 
     // 1. WebSocket en tiempo real si el usuario tiene sesión abierta
     emitToUser(recipientId, 'notification:new', notification);
@@ -142,5 +166,6 @@ async function crearNotificacion({
 }
 
 module.exports = {
-  crearNotificacion
+  crearNotificacion,
+  sinContenidoDeMencion
 };

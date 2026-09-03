@@ -350,7 +350,11 @@ router.post('/subforums/:slug/posts', requireAuth, requireNotSuspended, async (r
       texto: `${title} ${content}`,
       actorId: req.user.id,
       actorName: req.user.name,
-      forumPostId: post.id
+      forumPostId: post.id,
+      // El foro no tiene niveles de visibilidad propios (forumPrivacidad.test.js):
+      // cualquier cuenta autenticada sin bloqueo puede leerlo. Solo hace falta
+      // el guardia de oculto, y post recién se creó: nunca viene oculto.
+      alcance: { hidden: Boolean(post.hiddenAt) }
     });
 
     res.json(serializeForumPost(post, req.user.id));
@@ -548,7 +552,10 @@ router.post('/posts/:id/comments', requireAuth, requireNotSuspended, async (req,
       actorId: req.user.id,
       actorName: req.user.name,
       forumPostId: postId,
-      forumCommentId: comment.id
+      forumCommentId: comment.id,
+      // `post` viene del findUnique con soloVisible de arriba: ya garantiza
+      // hiddenAt null. El foro no tiene niveles de visibilidad propios.
+      alcance: { hidden: false }
     });
 
     res.json(serializeForumComment(comment, req.user.id));

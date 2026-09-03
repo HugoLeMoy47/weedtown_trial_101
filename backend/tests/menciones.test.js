@@ -58,6 +58,71 @@ module.exports = async function run() {
     });
     check('Beto no recibe mención si hay bloqueo mutuo', notifsBetoDespues.length === 1); // sigue teniendo solo la primera
 
+    console.log('\n  — P0 ciclo 15: mención en post FRIENDS no debe filtrar el contenido a un no-amigo —');
+    // Ana y Diego NO son amigos. Ana postea "solo amigos" mencionando a Diego.
+    const diego = await mkUser('diego');
+    const tDiego = token(diego.id);
+
+    r = await call('POST', '/api/posts', {
+      tok: tAna,
+      body: { content: `algo privado @${diego.handle}`, visibility: 'FRIENDS' }
+    });
+    check('crear post FRIENDS responde 200', r.status === 200);
+    const postPrivadoId = r.data.id;
+
+    r = await call('GET', '/api/notifications', { tok: tDiego });
+    check('crear post FRIENDS responde 200', r.status === 200);
+    const mencionesDiego = (r.data.notifications || []).filter(n => n.type === 'MENTION' && n.postId === postPrivadoId);
+    check('Diego (no amigo) NO recibe notificación de la mención en un post FRIENDS', mencionesDiego.length === 0, `(recibió ${mencionesDiego.length})`);
+
+    // El post sigue siendo inaccesible por la ruta directa (control ya existente)
+    r = await call('GET', `/api/posts/${postPrivadoId}`, { tok: tDiego });
+    check('GET /posts/:id a Diego sigue dando 403/404', r.status === 403 || r.status === 404, `(fue ${r.status})`);
+
+    // Control: si Diego SÍ es amigo de Ana, la mención en FRIENDS sí le llega
+    await prisma.friendRequest.create({
+      data: { requesterId: ana.id, addresseeId: diego.id, status: 'ACCEPTED', respondedAt: new Date() }
+    });
+    r = await call('POST', '/api/posts', {
+      tok: tAna,
+      body: { content: `otra vez privado @${diego.handle}`, visibility: 'FRIENDS' }
+    });
+    const postPrivado2Id = r.data.id;
+    r = await call('GET', '/api/notifications', { tok: tDiego });
+    const mencionesDiego2 = (r.data.notifications || []).filter(n => n.type === 'MENTION' && n.postId === postPrivado2Id);
+    check('Diego (ahora amigo) SÍ recibe la mención en un post FRIENDS', mencionesDiego2.length === 1, `(recibió ${mencionesDiego2.length})`);
+
+    console.log('\n  — P0 ciclo 15: mención en contenido oculto por moderación → cero notificaciones —');
+    const elena = await mkUser('elena');
+    const tElena = token(elena.id);
+    r = await call('POST', '/api/posts', { tok: tAna, body: { content: `hola @${elena.handle}` } });
+    const postElenaId = r.data.id;
+    await prisma.post.update({ where: { id: postElenaId }, data: { hiddenAt: new Date() } });
+    // Volvemos a disparar la notificación como si la ocultación hubiera llegado
+    // antes de notificar (defensa en profundidad: notificarMenciones no debe
+    // asumir que lo que se le pasa sigue visible).
+    const { notificarMenciones } = require('../src/lib/menciones');
+    const postOculto = await prisma.post.findUnique({ where: { id: postElenaId } });
+    await notificarMenciones({
+      texto: postOculto.content,
+      actorId: ana.id,
+      actorName: ana.name,
+      postId: postOculto.id,
+      alcance: { visibility: postOculto.visibility, authorId: postOculto.authorId, hidden: Boolean(postOculto.hiddenAt) }
+    });
+    const notifsElena = await prisma.notification.findMany({ where: { recipientId: elena.id, type: 'MENTION' } });
+    check('contenido oculto por moderación → cero notificaciones de mención', notifsElena.length === 0, `(recibió ${notifsElena.length})`);
+
+    console.log('\n  — P0 ciclo 15: el payload de GET /api/notifications no arrastra content en menciones —');
+    r = await call('GET', '/api/notifications', { tok: tDiego });
+    const notifMencion = (r.data.notifications || []).find(n => n.type === 'MENTION' && n.postId === postPrivado2Id);
+    check('la notificación de mención existe en el payload', Boolean(notifMencion));
+    check(
+      'el payload de la mención NO trae post.content (solo id)',
+      notifMencion && notifMencion.post && Object.keys(notifMencion.post).sort().join(',') === 'id',
+      JSON.stringify(notifMencion?.post)
+    );
+
     console.log('\n  — Integración: sugerencias de autocompletado de mención —');
     const carla = await mkUser('carla');
     const tCarla = token(carla.id);

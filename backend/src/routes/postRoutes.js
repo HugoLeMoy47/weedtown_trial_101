@@ -175,7 +175,8 @@ router.post('/', requireAuth, requireNotSuspended, async (req, res) => {
       texto: content,
       actorId: req.user.id,
       actorName: req.user.name,
-      postId: post.id
+      postId: post.id,
+      alcance: { visibility: post.visibility, authorId: post.authorId, hidden: Boolean(post.hiddenAt) }
     });
     res.json(serializePost(post, req.user.id));
   } catch (e) {
@@ -577,7 +578,10 @@ router.post('/:id/comment', requireAuth, requireNotSuspended, async (req, res) =
       actorId: req.user.id,
       actorName: req.user.name,
       postId,
-      commentId: comment.id
+      commentId: comment.id,
+      // `post` viene del findUnique con soloVisible de arriba: ya garantiza
+      // hiddenAt null, por eso no hace falta volver a leerlo para el alcance.
+      alcance: { visibility: post.visibility, authorId: post.authorId, hidden: false }
     });
     res.json(serializeComment(comment, req.user.id));
   } catch (e) {

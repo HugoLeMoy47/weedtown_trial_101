@@ -1,6 +1,7 @@
 // Extracción y notificación de menciones @handle
 const prisma = require('./prisma');
 const { blockedWith } = require('./blocks');
+const { areFriends } = require('./friends');
 const { crearNotificacion } = require('./notifications');
 
 const HANDLE_REGEX = /(?:^|[^a-zA-Z0-9_.+-])@([a-z0-9][a-z0-9_]{1,19})/gi;
@@ -22,6 +23,7 @@ function extraerHandles(texto) {
  *  - Al propio autor (no auto-notificarse)
  *  - Usuarios con bloqueos mutuos
  *  - Cuentas eliminadas
+ *  - A quien no puede LEER el contenido donde se le mencionó (ver `alcance`)
  *
  * @param {object} params
  * @param {string} params.texto - Contenido a analizar
@@ -31,6 +33,20 @@ function extraerHandles(texto) {
  * @param {number} [params.commentId] - ID del comentario del feed (si aplica)
  * @param {number} [params.forumPostId] - ID del post de foro (si aplica)
  * @param {number} [params.forumCommentId] - ID del comentario de foro (si aplica)
+ * @param {object} [params.alcance] - Quién puede leer el contenido mencionado.
+ *   Lo arma quien llama, con el objeto que ya tiene en mano (no se vuelve a
+ *   leer el post/comentario aquí: una segunda lectura abre una carrera).
+ * @param {boolean} [params.alcance.hidden] - Si el contenido ya está oculto
+ *   por moderación, no se notifica a nadie.
+ * @param {'PUBLIC'|'FRIENDS'} [params.alcance.visibility] - Alcance del post
+ *   del feed. Con 'FRIENDS', solo el propio autor o sus amigos pueden leerlo.
+ *   El foro no tiene niveles de visibilidad propios (ver forumPrivacidad.test.js):
+ *   cualquier cuenta autenticada y sin bloqueo puede leerlo, así que ahí basta
+ *   con `hidden`.
+ * @param {number} [params.alcance.authorId] - Autor del post/comentario padre,
+ *   contra quien se evalúa la amistad cuando `visibility === 'FRIENDS'` — no
+ *   contra `actorId`: en un comentario, quien comenta no es quien fija el
+ *   alcance de lectura, el autor del post sí.
  * @returns {Promise<Array>} Lista de usuarios notificados
  */
 async function notificarMenciones({
@@ -40,10 +56,12 @@ async function notificarMenciones({
   postId = null,
   commentId = null,
   forumPostId = null,
-  forumCommentId = null
+  forumCommentId = null,
+  alcance = null
 }) {
   const handles = extraerHandles(texto);
   if (!handles.length) return [];
+  if (alcance?.hidden) return [];
 
   try {
     const bloqueados = await blockedWith(actorId);
@@ -57,11 +75,20 @@ async function notificarMenciones({
       select: { id: true, handle: true }
     });
 
-    const validos = destinatarios.filter(u => !ignorarIds.has(u.id));
-    if (!validos.length) return [];
+    let candidatos = destinatarios.filter(u => !ignorarIds.has(u.id));
+    if (!candidatos.length) return [];
+
+    if (alcance?.visibility === 'FRIENDS') {
+      const autorId = alcance.authorId;
+      const puedeLeer = await Promise.all(
+        candidatos.map(u => (u.id === autorId ? true : areFriends(autorId, u.id)))
+      );
+      candidatos = candidatos.filter((_, i) => puedeLeer[i]);
+    }
+    if (!candidatos.length) return [];
 
     await Promise.all(
-      validos.map(u =>
+      candidatos.map(u =>
         crearNotificacion({
           type: 'MENTION',
           recipientId: u.id,
@@ -75,7 +102,7 @@ async function notificarMenciones({
       )
     );
 
-    return validos;
+    return candidatos;
   } catch (error) {
     console.error('Error al procesar menciones:', error);
     return [];
