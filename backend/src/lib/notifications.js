@@ -3,26 +3,37 @@ const prisma = require('./prisma');
 const { emitToUser } = require('./chatSocket');
 const { enviarPush } = require('./pushService');
 
-// El `include` de abajo trae post.content y comment.content completos. Eso era
-// seguro mientras toda notificación con postId/commentId tuviera como
-// destinatario al AUTOR (REPLY_POST, REACTION…). MENTION rompe esa invariante:
-// el destinatario es un tercero. `notificarMenciones` ya filtra quién puede
-// LEER el contenido al momento de notificar (capa 1), pero el include de acá
-// se resuelve en caliente cada vez que se sirve la notificación — si el
-// contenido se oculta por moderación DESPUÉS de notificar, seguiría saliendo
-// completo. Opción elegida: (a) para MENTION específicamente — nunca viajar
-// content en el payload, ni por WebSocket ni por REST. Se descartó (b)
-// (recortar según lectura) porque exige repetir en cada lectura la misma
-// consulta de amistad que la capa 1 ya hizo una vez, sin ganar nada a cambio.
-// Los demás tipos (REPLY_POST, REACTION) sí necesitan el extracto — la
-// campana (NotificationBell.jsx) lo muestra y su destinatario sigue siendo
-// siempre el autor — así que no se tocan.
-function sinContenidoDeMencion(n) {
-  if (!n || n.type !== 'MENTION') return n;
+// El `include` de abajo trae post.content, comment.content y forumPost.title
+// completos. Eso era seguro mientras toda notificación con postId/commentId/
+// forumPostId tuviera como destinatario al AUTOR del contenido (REPLY_POST,
+// REPLY_COMMENT, REACTION). MENTION rompe esa invariante: el destinatario es
+// un tercero. `notificarMenciones` ya filtra quién puede LEER el contenido al
+// momento de notificar (capa 1), pero el include de acá se resuelve en
+// caliente cada vez que se sirve la notificación — si el contenido se oculta
+// por moderación DESPUÉS de notificar, seguiría saliendo completo.
+//
+// Ciclo 15F corrigió el ciclo 15: la primera versión de esto era una
+// DENYLIST por tipo (`type !== 'MENTION'`), y el mensaje del commit original
+// prometía que "el include no puede volver a filtrar el día que aparezca
+// otro tipo con destinatario tercero" — promesa falsa, porque una denylist
+// deja pasar cualquier tipo NUEVO por defecto. Es ALLOWLIST: solo los tipos
+// de abajo tienen garantizado que el destinatario ES el autor del contenido,
+// así que solo ellos se quedan con el extracto que la campana
+// (NotificationBell.jsx) muestra. Cualquier otro tipo, presente o futuro,
+// sale sin `content` ni `forumPost.title` por defecto.
+const TIPOS_CON_EXTRACTO = new Set(['REPLY_POST', 'REPLY_COMMENT', 'REACTION']);
+
+function recortarContenidoAjeno(n) {
+  if (!n || TIPOS_CON_EXTRACTO.has(n.type)) return n;
   return {
     ...n,
     post: n.post ? { id: n.post.id } : n.post,
-    comment: n.comment ? { id: n.comment.id } : n.comment
+    comment: n.comment ? { id: n.comment.id } : n.comment,
+    // Se recorta el CAMPO `title`, no el objeto entero: el switch de abajo
+    // arma la URL del push con `forumPost.subforum.slug` y `forumPost.id`
+    // para tipos fuera de esta lista (MENTION, NEW_SUBFORUM_POST) — quitar
+    // `forumPost` completo rompería ese destino.
+    forumPost: n.forumPost ? { id: n.forumPost.id, subforum: n.forumPost.subforum } : n.forumPost
   };
 }
 
@@ -82,7 +93,7 @@ async function crearNotificacion({
         comment: { select: { id: true, content: true } }
       }
     });
-    const notification = sinContenidoDeMencion(notificationCruda);
+    const notification = recortarContenidoAjeno(notificationCruda);
 
     // 1. WebSocket en tiempo real si el usuario tiene sesión abierta
     emitToUser(recipientId, 'notification:new', notification);
@@ -167,5 +178,5 @@ async function crearNotificacion({
 
 module.exports = {
   crearNotificacion,
-  sinContenidoDeMencion
+  recortarContenidoAjeno
 };

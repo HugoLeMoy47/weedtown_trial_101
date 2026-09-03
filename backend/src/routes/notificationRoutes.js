@@ -7,7 +7,7 @@ const { requireAuth } = require('../middlewares/requireAuth');
 const { blockedWith, excludeBlocked } = require('../lib/blocks');
 const { MOTIVO_TEXTO } = require('../lib/moderation');
 const { marcarSaludosMutuos } = require('../lib/saludos');
-const { sinContenidoDeMencion } = require('../lib/notifications');
+const { recortarContenidoAjeno } = require('../lib/notifications');
 
 const PAGE_SIZE = 20;
 
@@ -18,7 +18,7 @@ const TIPOS_MODERACION = ['CONTENIDO_OCULTO', 'CUENTA_SUSPENDIDA'];
 // se retiró y por qué construye confianza; señalar a una persona concreta del
 // equipo solo invita a represalias.
 function serializar(n) {
-  n = sinContenidoDeMencion(n);
+  n = recortarContenidoAjeno(n);
   if (!TIPOS_MODERACION.includes(n.type)) return n;
   const { actor, ...resto } = n;
   return { ...resto, actor: null, reasonText: MOTIVO_TEXTO[n.reason] || null };
