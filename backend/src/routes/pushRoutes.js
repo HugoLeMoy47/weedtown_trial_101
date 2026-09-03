@@ -6,6 +6,36 @@ const { requireAuth } = require('../middlewares/requireAuth');
 const { getPublicKey } = require('../lib/pushService');
 const { log } = require('../lib/logger');
 
+// Únicos servicios de push legítimos: la validación de `web-push` solo exige
+// que el endpoint SEA una URL, no que el host lo sea. Sin esta lista, una
+// cuenta cualquiera podría registrar `https://169.254.254.169/…` o un
+// servicio interno, y cada notificación que le llegara sería un POST del
+// servidor contra esa URL — un SSRF que la propia cuenta puede disparar.
+const HOSTS_PUSH_PERMITIDOS = [
+  'fcm.googleapis.com',
+  'push.services.mozilla.com',
+  'notify.windows.com',
+  'web.push.apple.com'
+];
+
+// Tope holgado por cuenta: no evita un uso legítimo (varios dispositivos),
+// sí evita llenar la tabla registrando endpoints sin fin.
+const MAX_SUBSCRIPCIONES_POR_USUARIO = 10;
+
+function hostPushPermitido(hostname) {
+  return HOSTS_PUSH_PERMITIDOS.some(dominio => hostname === dominio || hostname.endsWith(`.${dominio}`));
+}
+
+function endpointPushValido(endpoint) {
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  return url.protocol === 'https:' && hostPushPermitido(url.hostname);
+}
+
 // GET /api/push/public-key — expone la clave pública VAPID para el navegador
 router.get('/public-key', (req, res) => {
   const publicKey = getPublicKey();
@@ -21,6 +51,9 @@ router.post('/subscribe', requireAuth, async (req, res) => {
   if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
     return res.status(400).json({ error: 'Suscripción Web Push inválida o incompleta.' });
   }
+  if (!endpointPushValido(subscription.endpoint)) {
+    return res.status(400).json({ error: 'El endpoint de la suscripción no pertenece a un servicio de push reconocido.' });
+  }
 
   try {
     // En un upsert el WHERE es el control de acceso, y este solo miraba el
@@ -34,6 +67,14 @@ router.post('/subscribe', requireAuth, async (req, res) => {
     });
     if (previa && previa.userId !== req.user.id) {
       log('push_endpoint_reasignado', { deUserId: previa.userId, aUserId: req.user.id });
+    }
+
+    // El tope cuenta suscripciones, no aplica a renovar una que ya es tuya.
+    if (!previa || previa.userId !== req.user.id) {
+      const total = await prisma.pushSubscription.count({ where: { userId: req.user.id } });
+      if (total >= MAX_SUBSCRIPCIONES_POR_USUARIO) {
+        return res.status(429).json({ error: `No puedes tener más de ${MAX_SUBSCRIPCIONES_POR_USUARIO} suscripciones push activas. Elimina alguna antes de agregar otra.` });
+      }
     }
 
     await prisma.pushSubscription.deleteMany({ where: { endpoint: subscription.endpoint } });

@@ -65,6 +65,43 @@ module.exports = async function run() {
     const filasParaEseEndpoint = await prisma.pushSubscription.count({ where: { endpoint: endpointCompartido } });
     check('sigue habiendo una sola fila para ese endpoint (no una por cuenta)', filasParaEseEndpoint === 1, `(hay ${filasParaEseEndpoint})`);
 
+    console.log('\n  — Ciclo 15D: SSRF por el endpoint de push —');
+    const carla = await mkUser('carla');
+    const tCarla = token(carla.id);
+    r = await call('POST', '/api/push/subscribe', {
+      tok: tCarla,
+      body: { subscription: { endpoint: 'http://169.254.169.254/latest/meta-data', keys: mockSub.keys } }
+    });
+    check('host fuera de la lista blanca → 400', r.status === 400, `(fue ${r.status})`);
+    r = await call('POST', '/api/push/subscribe', {
+      tok: tCarla,
+      body: { subscription: { endpoint: 'https://un-servicio-cualquiera.example.com/x', keys: mockSub.keys } }
+    });
+    check('host que no es un servicio de push conocido → 400', r.status === 400, `(fue ${r.status})`);
+    r = await call('POST', '/api/push/subscribe', {
+      tok: tCarla,
+      body: { subscription: { endpoint: 'http://fcm.googleapis.com/fcm/send/sin-https', keys: mockSub.keys } }
+    });
+    check('host permitido pero sin https → 400', r.status === 400, `(fue ${r.status})`);
+    const sinGuardar = await prisma.pushSubscription.findMany({ where: { userId: carla.id } });
+    check('nada se guardó para Carla', sinGuardar.length === 0, `(hay ${sinGuardar.length})`);
+
+    console.log('\n  — Ciclo 15D: tope de suscripciones por cuenta —');
+    const diego = await mkUser('diego');
+    const tDiego = token(diego.id);
+    for (let i = 0; i < 10; i++) {
+      r = await call('POST', '/api/push/subscribe', {
+        tok: tDiego,
+        body: { subscription: { endpoint: `https://fcm.googleapis.com/fcm/send/wtpush-tope-${i}-${Date.now()}`, keys: mockSub.keys } }
+      });
+      check(`suscripción ${i + 1}/10 se registra`, r.status === 200, `(fue ${r.status})`);
+    }
+    r = await call('POST', '/api/push/subscribe', {
+      tok: tDiego,
+      body: { subscription: { endpoint: `https://fcm.googleapis.com/fcm/send/wtpush-tope-once-${Date.now()}`, keys: mockSub.keys } }
+    });
+    check('la suscripción número 11 se rechaza (tope de 10)', r.status === 429, `(fue ${r.status})`);
+
   } finally {
     await cleanup();
   }
