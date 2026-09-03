@@ -56,7 +56,13 @@ jobs:
       API_LIMITER_MAX: 5000
 
     steps:
+      # fetch-depth 0, no el default (1): changelogAlDia.test.js (15E) compara
+      # contra el merge-base con la rama base o contra el "before" del push, y
+      # ninguno de los dos existe en un checkout superficial. Sin esto la
+      # prueba se omitiría siempre en CI en vez de proteger algo.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
