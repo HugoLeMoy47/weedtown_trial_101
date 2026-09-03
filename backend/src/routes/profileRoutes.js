@@ -400,15 +400,48 @@ router.get('/handle/:handle/preview', perfilPreviewLimiter, async (req, res) => 
 });
 
 // GET /api/profile/mention-suggestions?q=... — sugerencias de usuarios para autocompletar @handle
+//
+// Ciclo 15B: el commit original que trajo este endpoint decía "prioriza
+// amigos en los primeros resultados" — pero priorizar no es acotar, y el
+// universo de búsqueda seguía siendo TODA la plataforma. Con 26 consultas de
+// una letra se enumeraba el padrón completo (handle, nombre y avatar). El
+// universo ahora es: tu red (amigos + amigos de tus amigos, sin más
+// condición — es lo que la UI promete) y, fuera de esa red, solo cuentas con
+// `perfilPublico: true` — la misma señal de "quiero ser encontrable por
+// desconocidos" que ya existe en el modelo de visibilidad del 10B, reusada
+// aquí en vez de inventar un segundo interruptor. `visibilidadPerfil.js` no
+// aplica campo por campo porque este endpoint no expone ningún campo
+// configurable (bio/edad/género) — expone identidad (handle/nombre/avatar),
+// que ese archivo nunca gobernó.
 router.get('/mention-suggestions', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim().toLowerCase();
-  if (q.length < 1) {
+  if (q.length < 2) {
     return res.json({ suggestions: [] });
   }
 
   try {
     const amigosIds = await friendIds(req.user.id);
     const amigosSet = new Set(amigosIds);
+
+    // Red de segundo grado en dos pasos (no una consulta recursiva): amigos
+    // de mis amigos. Se entrega como IDs sueltos porque aquí solo hace falta
+    // saber "pertenece al círculo", no de quién es amigo cada quién.
+    const segundoGrado = amigosIds.length
+      ? await prisma.friendRequest.findMany({
+          where: {
+            status: 'ACCEPTED',
+            OR: [{ requesterId: { in: amigosIds } }, { addresseeId: { in: amigosIds } }]
+          },
+          select: { requesterId: true, addresseeId: true }
+        })
+      : [];
+    const circuloIds = new Set(amigosIds);
+    for (const fila of segundoGrado) {
+      circuloIds.add(fila.requesterId);
+      circuloIds.add(fila.addresseeId);
+    }
+    circuloIds.delete(req.user.id);
+
     const bloqueados = await blockedWith(req.user.id);
     const ignorarIds = new Set([req.user.id, ...bloqueados]);
 
@@ -421,6 +454,15 @@ router.get('/mention-suggestions', requireAuth, async (req, res) => {
             OR: [
               { suspendedUntil: null },
               { suspendedUntil: { lte: new Date() } }
+            ]
+          },
+          // El filtro de autorización va en el WHERE, no después del
+          // findMany: filtrar en JS tras el `take` mutila la página en vez
+          // de acotarla, y el conteo real dependería de a quién bloqueaste.
+          {
+            OR: [
+              { id: { in: Array.from(circuloIds) } },
+              { perfilPublico: true }
             ]
           },
           {

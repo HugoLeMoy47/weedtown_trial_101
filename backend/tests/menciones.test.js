@@ -141,6 +141,36 @@ module.exports = async function run() {
     check('no incluye a la propia Ana', !suggs.some(s => s.id === ana.id));
     check('no incluye a Beto que tiene bloqueo mutuo', !suggs.some(s => s.id === beto.id));
 
+    console.log('\n  — Ciclo 15B: acotar el universo (red + perfilPublico), no solo ordenarlo —');
+    r = await call('GET', `/api/profile/mention-suggestions?q=w`, { tok: tAna });
+    check('q de un carácter devuelve lista vacía', (r.data?.suggestions || []).length === 0, `(${(r.data?.suggestions || []).length} resultados)`);
+
+    // Fabio: fuera de cualquier red, perfilPublico en su default (false).
+    const fabio = await mkUser('fabio');
+    const qFabio = fabio.handle.slice(0, 6);
+
+    r = await call('GET', `/api/profile/mention-suggestions?q=${qFabio}`, { tok: tElena });
+    check('fuera de la red y sin perfil público: invisible para un desconocido',
+      !(r.data?.suggestions || []).some(s => s.id === fabio.id));
+
+    await prisma.friendRequest.create({
+      data: { requesterId: ana.id, addresseeId: fabio.id, status: 'ACCEPTED', respondedAt: new Date() }
+    });
+    r = await call('GET', `/api/profile/mention-suggestions?q=${qFabio}`, { tok: tAna });
+    check('un amigo directo sí lo ve aunque su perfil no sea público',
+      (r.data?.suggestions || []).some(s => s.id === fabio.id));
+
+    await prisma.user.update({ where: { id: fabio.id }, data: { perfilPublico: true } });
+    r = await call('GET', `/api/profile/mention-suggestions?q=${qFabio}`, { tok: tElena });
+    check('con perfilPublico true, un desconocido (sin red en común) sí lo ve',
+      (r.data?.suggestions || []).some(s => s.id === fabio.id));
+
+    // Control: dos cuentas privadas sin relación ni amigos en común no se ven entre sí
+    const gina = await mkUser('gina');
+    r = await call('GET', `/api/profile/mention-suggestions?q=${gina.handle.slice(0, 6)}`, { tok: tElena });
+    check('dos cuentas sin relación ni amigos en común no se ven entre sí',
+      !(r.data?.suggestions || []).some(s => s.id === gina.id));
+
     // Si busca con q vacío devuelve lista vacía
     r = await call('GET', '/api/profile/mention-suggestions?q=', { tok: tAna });
     check('con q vacío devuelve lista vacía', (r.data?.suggestions || []).length === 0);
