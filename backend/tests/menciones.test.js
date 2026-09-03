@@ -92,11 +92,20 @@ module.exports = async function run() {
     const mencionesDiego2 = (r.data.notifications || []).filter(n => n.type === 'MENTION' && n.postId === postPrivado2Id);
     check('Diego (ahora amigo) SÍ recibe la mención en un post FRIENDS', mencionesDiego2.length === 1, `(recibió ${mencionesDiego2.length})`);
 
-    console.log('\n  — P0 ciclo 15: mención en contenido oculto por moderación → cero notificaciones —');
+    console.log('\n  — P0 ciclo 15: mención en contenido oculto por moderación → cero notificaciones NUEVAS —');
     const elena = await mkUser('elena');
     const tElena = token(elena.id);
     r = await call('POST', '/api/posts', { tok: tAna, body: { content: `hola @${elena.handle}` } });
     const postElenaId = r.data.id;
+
+    // Ciclo 15F: este post PÚBLICO ya notifica a Elena una vez, y hace bien
+    // -- es una mención legítima. La prueba original medía el TOTAL después
+    // de re-disparar sobre el post oculto y afirmaba "=== 0", lo cual nunca
+    // podía ser cierto con esta notificación de por medio: el código estaba
+    // bien, la prueba estaba mal. Se mide el DELTA, no el total.
+    const notifsAntes = await prisma.notification.count({ where: { recipientId: elena.id, type: 'MENTION' } });
+    check('la mención en el post público sí notificó (si esto falla, "no creció" de abajo no prueba nada)', notifsAntes === 1, `(fueron ${notifsAntes})`);
+
     await prisma.post.update({ where: { id: postElenaId }, data: { hiddenAt: new Date() } });
     // Volvemos a disparar la notificación como si la ocultación hubiera llegado
     // antes de notificar (defensa en profundidad: notificarMenciones no debe
@@ -110,8 +119,8 @@ module.exports = async function run() {
       postId: postOculto.id,
       alcance: { visibility: postOculto.visibility, authorId: postOculto.authorId, hidden: Boolean(postOculto.hiddenAt) }
     });
-    const notifsElena = await prisma.notification.findMany({ where: { recipientId: elena.id, type: 'MENTION' } });
-    check('contenido oculto por moderación → cero notificaciones de mención', notifsElena.length === 0, `(recibió ${notifsElena.length})`);
+    const notifsDespues = await prisma.notification.count({ where: { recipientId: elena.id, type: 'MENTION' } });
+    check('contenido oculto por moderación → el conteo de menciones de Elena NO crece', notifsDespues === notifsAntes, `(antes ${notifsAntes}, después ${notifsDespues})`);
 
     console.log('\n  — P0 ciclo 15: el payload de GET /api/notifications no arrastra content en menciones —');
     r = await call('GET', '/api/notifications', { tok: tDiego });
