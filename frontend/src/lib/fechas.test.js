@@ -7,7 +7,7 @@
 // y día 7): un formateador de fechas se equivoca justo ahí y en ningún otro
 // lado.
 import { describe, it, expect } from 'vitest';
-import { fechaRelativa, fechaCorta, fechaCompleta, etiquetaAccesible, etiquetaDeDia, faltaPara } from './fechas';
+import { fechaRelativa, fechaCorta, fechaCompleta, etiquetaAccesible, etiquetaDeDia, faltaPara, fechaConversacion } from './fechas';
 
 // Un martes a media tarde, para que restarle horas no cruce la medianoche por
 // accidente y las pruebas digan lo que parecen decir.
@@ -162,3 +162,27 @@ describe('faltaPara: el tiempo que falta (13B, aviso de cuarentena)', () => {
     expect(faltaPara(null, AHORA)).toBe('');
   });
 });
+
+describe('fechaConversacion: lista lateral de chats', () => {
+  it('del mismo día devuelve la hora', () => {
+    const mismoDia = new Date('2026-08-11T14:32:00');
+    const res = fechaConversacion(mismoDia, AHORA);
+    expect(res).toMatch(/02:32|14:32/);
+  });
+
+  it('del día anterior dice "ayer"', () => {
+    const ayer = new Date('2026-08-10T10:00:00');
+    expect(fechaConversacion(ayer, AHORA)).toBe('ayer');
+  });
+
+  it('de 2 a 6 días dice "hace X d"', () => {
+    expect(fechaConversacion(hace(3 * DIA), AHORA)).toBe('hace 3 d');
+  });
+
+  it('de 7 días o más devuelve fecha corta', () => {
+    const r = fechaConversacion(hace(10 * DIA), AHORA);
+    expect(r).toContain('1');
+    expect(r).toContain('ago');
+  });
+});
+
