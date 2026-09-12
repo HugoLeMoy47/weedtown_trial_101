@@ -729,9 +729,40 @@ A los demás les viaja **solo el valor**, nunca la fecha de caducidad — cuánt
 
 El **toque 👋** invita a interactuar sin abrir chat: llega como notificación in-app. Hereda las dos reglas de Cerca — solo lo manda quien comparte zona, y solo llega a quien cae dentro de esa cuadrícula — más el rate limit del mapa y un cooldown de 12 h por persona. Un destino inexistente, lejano, que no comparte zona o bloqueado devuelven **la misma respuesta (404)**: el resultado no debe permitir deducir dónde está alguien ni si su cuenta existe. Sin esas comprobaciones el endpoint era un "ping a cualquier `userId`" y, como los ids son enteros consecutivos, bastaba recorrerlos para notificar a toda la base.
 
-### Chat en tiempo real
+### Chat en tiempo real y reciprocidad estricta (Ciclo Chat)
 
-El envío de mensajes entra **por REST** (hereda auth, rate limit y validación) y la entrega en vivo sale **por Socket.IO**: cada usuario autentica el handshake con su JWT (`auth.token`) y se une a su sala personal `user:{id}`, donde recibe el evento `chat:message` de todas sus conversaciones, en todas sus sesiones abiertas. El socket solo entrega a sesiones **conectadas en ese momento** — un mensaje mandado mientras la otra persona no tiene `/chat` abierto se perdía sin dejar rastro, así que cada mensaje **también** crea una notificación in-app (`CHAT_MESSAGE`), con una salvedad: se colapsa, no se apila una fila por mensaje. Mientras la notificación anterior siga sin leerse, una ráfaga de varios mensajes seguidos de la misma persona se ve como "tienes un mensaje nuevo", no como diez.
+El envío de mensajes entra **por REST** (hereda auth, rate limit y validación) y la entrega en vivo sale **por Socket.IO**: cada usuario autentica el handshake con su JWT (`auth.token`) y se une a su sala personal `user:{id}`, donde recibe el evento `chat:message` de todas sus conversaciones, en todas sus sesiones abiertas.
+
+- **Confirmaciones de lectura (Visto ✓✓) con reciprocidad estricta**:
+  - `Message.readAt` guarda la marca de tiempo en que el destinatario abrió y leyó el mensaje.
+  - La privacidad se gestiona en `User.confirmacionesLectura` (booleano, activo por defecto).
+  - **Pacto de reciprocidad comunitaria**: Si una persona desactiva las confirmaciones de lectura, sus mensajes no emiten marca de lectura hacia otros, y a cambio **tampoco puede ver cuándo los demás leen sus mensajes**. La serialización en la API falla en silencio devolviendo `readAt: null` cuando cualquiera de las dos partes tiene la función apagada.
+  - Al abrir o enfocar una conversación se dispara `POST /api/chat/conversations/:id/read`, marcando los mensajes como leídos y descontando automáticamente las notificaciones in-app pendientes sin desfase.
+  - Se emite en vivo `chat:read` por Socket.IO a los participantes para transformar el check simple (✓) en doble check verde (#69f0ae) al instante.
+
+- **Presencia en tiempo real (*En línea*) y privacidad**:
+  - **En memoria, cero escrituras en BD** (`src/lib/presence.js`): Registrar estados de conexión y desconexión en Postgres saturaría la base y generaría una bitácora forense de actividad indeseada. Se gestiona en memoria (`Map<userId, Set<socketId>>`) vinculada a las conexiones activas de Socket.IO.
+  - `User.mostrarEnLinea` (booleano, activo por defecto).
+  - **Reciprocidad estricta**: Quien oculta su presencia tampoco puede ver quién está en línea en la red social. La consulta vía socket (`chat:query_presence`) evalúa la configuración de ambos interlocutores antes de reportar el estado.
+
+- **Decisión deliberada sobre el Typing Indicator ("Escribiendo...")**:
+  - **Evaluado y descartado por diseño**: En una comunidad enfocada en respeto, seguridad y calma, los indicadores de escritura en tiempo real revelan micro-actividad hasta el segundo exacto y generan ansiedad comunicativa (*ghost typing*, presión por responder de inmediato).
+  - Además de la ganancia en privacidad, ahorra ráfagas continuas de tráfico en los WebSockets. Se documenta como una decisión deliberada del producto y no un pendiente técnico.
+
+- **Consistencia multi-pestaña y recuperación**:
+  - Al enviar un mensaje desde una pestaña, el socket entrega el evento a la sala personal `user:{id}`, permitiendo que otras pestañas o ventanas abiertas del mismo usuario sincronicen el hilo y reordenen la lista lateral sin duplicados.
+  - Paginación fluida hacia atrás (`GET /conversations/:id/messages?before=:id`): el frontend compensa la altura del scroll (`scrollHeight`) en el render para que la vista no brinque mientras se lee el historial antiguo.
+  - Auto-scroll inteligente: solo desciende al fondo automáticamente si el usuario ya estaba leyendo al final o si el mensaje fue enviado por él mismo; si estaba leyendo arriba, una pastilla flotante avisa de *"Nuevos mensajes"* sin interrumpir la lectura.
+
+- **Composición, ergonomía y teclado**:
+  - Input auto-expandible (`multiline` fluido hasta 5 líneas).
+  - `Enter` envía directamente en escritorio (`Shift + Enter` para salto de línea); en móvil respeta el salto de línea nativo del teclado virtual.
+  - Contador preventivo discreto que solo se hace visible a partir de los 800 caracteres (de 1,000 permitidos).
+  - Acceso rápido a emojis comunitarios (🌿, 💨, 🔥, 👍, 👋, 👀).
+
+- **Cobertura de pruebas**:
+  - Suite de integración completa en `backend/tests/chat.test.js` cubriendo unitarios de presencia, integración de apertura, límites de caracteres, conteo de no leídos, confirmaciones de lectura, reciprocidad estricta y blindaje ante bloqueos mutuos.
+
 
 ### Notificaciones del feed principal
 

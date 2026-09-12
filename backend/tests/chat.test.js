@@ -159,7 +159,11 @@ module.exports = async function run() {
 
     console.log('\n  — Integración: Bloqueo mutuo en chat —');
     // Ana bloquea a Beto
-    await call('POST', `/api/users/${beto.id}/block`, { tok: tAna });
+    const rBloq = await call('POST', '/api/blocks', {
+      tok: tAna,
+      body: { userId: beto.id }
+    });
+    check('Ana bloquea a Beto correctamente (200)', rBloq.status === 200);
 
     // Intentar leer la conversación responde 404
     let rBloqLectura = await call('GET', `/api/chat/conversations/${chatId}/messages`, { tok: tBeto });
