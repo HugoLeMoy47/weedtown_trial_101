@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { createTheme, ThemeProvider, useMediaQuery, CssBaseline } from '@mui/material';
 
+import { useMesPatrio } from './lib/mesPatrio';
+
 const THEME_KEY = 'weedtown_theme';
 
 const colorModeContext = createContext({ mode: 'light', toggle: () => {} });
@@ -11,9 +13,12 @@ export function useColorMode() {
 
 // Paleta tomada del logo: hojas lima→verde profundo, edificios carbón/plata,
 // swoosh degradado. Claro = blanco con tinte hoja; oscuro = carbón verdoso.
-const BRAND_GRADIENT = 'linear-gradient(90deg, #8bc34a 0%, #388e3c 55%, #455a64 100%)';
+export const BRAND_GRADIENT = 'linear-gradient(90deg, #8bc34a 0%, #388e3c 55%, #455a64 100%)';
 
-function getTheme(mode) {
+// Degradado tricolor patrio (verde bandera, blanco y rojo patrio) para septiembre
+export const PATRIOTIC_GRADIENT = 'linear-gradient(90deg, #006847 0%, #2e7d32 25%, #f5f8f2 50%, #c62828 75%, #ce1126 100%)';
+
+function getTheme(mode, esPatrio = false) {
   return createTheme({
     palette: {
       mode,
@@ -66,12 +71,12 @@ function getTheme(mode) {
       },
       MuiCard: { defaultProps: { elevation: 1 } },
       MuiButton: { defaultProps: { disableElevation: true } },
-      // El swoosh del logo como acento inferior de la barra de navegación
+      // El swoosh del logo o el ribete patrio como acento inferior de la barra de navegación
       MuiAppBar: {
         styleOverrides: {
           root: {
             borderBottom: '3px solid transparent',
-            borderImage: `${BRAND_GRADIENT} 1`
+            borderImage: `${esPatrio ? PATRIOTIC_GRADIENT : BRAND_GRADIENT} 1`
           }
         }
       }
@@ -80,6 +85,7 @@ function getTheme(mode) {
 }
 
 export function ColorModeProvider({ children }) {
+  const { esMesPatrio } = useMesPatrio();
   const systemPrefersDark = useMediaQuery('(prefers-color-scheme: dark)');
   const [override, setOverride] = useState(() => localStorage.getItem(THEME_KEY) || null);
 
@@ -94,7 +100,7 @@ export function ColorModeProvider({ children }) {
     }
   }), [mode]);
 
-  const theme = useMemo(() => getTheme(mode), [mode]);
+  const theme = useMemo(() => getTheme(mode, esMesPatrio), [mode, esMesPatrio]);
 
   return (
     <colorModeContext.Provider value={value}>

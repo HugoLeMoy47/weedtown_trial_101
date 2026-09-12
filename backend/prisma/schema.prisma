@@ -102,6 +102,12 @@ model User {
   // en AMIGOS no sale hacia afuera, porque afuera no hay amistades.
   perfilPublico    Boolean      @default(false)
 
+  // Preferencias de privacidad del chat (Ciclo Chat).
+  // Reciprocidad estricta: si apagas el visto o el estado en línea, tampoco
+  // puedes ver el de las demás personas usuarias.
+  confirmacionesLectura Boolean  @default(true)
+  mostrarEnLinea        Boolean  @default(true)
+
   role             UserRole     @default(USER)
   // Eliminación propia de la cuenta (HU-PRIV-001), distinta de moderar: acá el
   // dueño de los datos ejerce su derecho a que se borren los suyos, no se
@@ -420,13 +426,16 @@ model Chat {
 }
 
 model Message {
-  id        Int      @id @default(autoincrement())
-  chat      Chat     @relation(fields: [chatId], references: [id])
+  id        Int       @id @default(autoincrement())
+  chat      Chat      @relation(fields: [chatId], references: [id])
   chatId    Int
-  sender    User     @relation("UserMessages", fields: [senderId], references: [id])
+  sender    User      @relation("UserMessages", fields: [senderId], references: [id])
   senderId  Int
   content   String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([chatId, readAt])
 }
 
 // Foros estilo Reddit: subforos creados por la comunidad, posts con puntaje

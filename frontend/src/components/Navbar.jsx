@@ -19,6 +19,7 @@ import PolicyIcon from '@mui/icons-material/Policy';
 import { BrandMark, BrandWordmark } from './BrandLogo';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
+import { useMesPatrio } from '../lib/mesPatrio';
 import api from '../services/api';
 import { requestFeedRefresh } from '../lib/refresh';
 import {
@@ -50,6 +51,7 @@ const tieneFab = (pathname) => pathname === '/feed' || /^\/forum\/[^/]+$/.test(p
 const Navbar = () => {
   const { user, logout } = useAuth();
   const { mode, toggle } = useColorMode();
+  const { esMesPatrio, toggleMesPatrio } = useMesPatrio();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
@@ -164,6 +166,23 @@ const Navbar = () => {
             </IconButton>
           </Tooltip>
 
+          {/* Toggle festivo del Mes Patrio */}
+          <Tooltip title={esMesPatrio ? 'Modo Patrio activo — clic para desactivar' : 'Activar Modo Patrio 🇲🇽'}>
+            <IconButton
+              onClick={toggleMesPatrio}
+              aria-label={esMesPatrio ? 'Desactivar Modo Patrio' : 'Activar Modo Patrio 🇲🇽'}
+              sx={{
+                display: { xs: 'none', md: 'inline-flex' },
+                filter: esMesPatrio ? 'none' : 'grayscale(1)',
+                opacity: esMesPatrio ? 1 : 0.6,
+                transition: 'filter 0.2s, opacity 0.2s',
+                '&:hover': { opacity: 1, filter: 'none' }
+              }}
+            >
+              <Box component="span" sx={{ fontSize: '1.25rem', lineHeight: 1 }}>🇲🇽</Box>
+            </IconButton>
+          </Tooltip>
+
           {user && (
             <>
               <NotificationBell />
@@ -231,6 +250,12 @@ const Navbar = () => {
                 <MenuItem onClick={() => { toggle(); setMenuAnchor(null); }}>
                   <ListItemIcon>{mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}</ListItemIcon>
                   <ListItemText>{mode === 'light' ? 'Modo oscuro' : 'Modo claro'}</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => { toggleMesPatrio(); setMenuAnchor(null); }}>
+                  <ListItemIcon>
+                    <Box component="span" sx={{ fontSize: '1.1rem' }}>🇲🇽</Box>
+                  </ListItemIcon>
+                  <ListItemText>{esMesPatrio ? 'Desactivar Modo Patrio' : 'Activar Modo Patrio 🇲🇽'}</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={() => irA('/terms')}>
                   <ListItemIcon><PolicyIcon fontSize="small" /></ListItemIcon>

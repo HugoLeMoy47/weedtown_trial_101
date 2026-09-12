@@ -9,6 +9,7 @@ import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
 import MiEnlaceDeInvitacion from '../components/MiEnlaceDeInvitacion';
 import PrivacidadPerfil, { CAMPOS as CAMPOS_PRIVACIDAD } from '../components/PrivacidadPerfil';
+import PrivacidadChat from '../components/PrivacidadChat';
 import AccessMethods from '../components/AccessMethods';
 import AccountPrivacy from '../components/AccountPrivacy';
 import PushNotificationSettings from '../components/PushNotificationSettings';
@@ -36,6 +37,7 @@ const Profile = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState([]);
   const [privacidad, setPrivacidad] = useState(null);
+  const [privacidadChat, setPrivacidadChat] = useState({ confirmacionesLectura: true, mostrarEnLinea: true });
   // El conteo EXACTO de invitaciones. Solo llega por /profile/me — hacia
   // terceros el servidor manda una cubeta.
   const [invitaciones, setInvitaciones] = useState(0);
@@ -56,6 +58,10 @@ const Profile = () => {
       setIdentities(u.identities || []);
       setInvitaciones(u.invitaciones ?? 0);
       setPrivacidad(preferenciasDe(u));
+      setPrivacidadChat({
+        confirmacionesLectura: u.confirmacionesLectura !== false,
+        mostrarEnLinea: u.mostrarEnLinea !== false
+      });
     })
     .catch(() => setError('No se pudo cargar el perfil.'));
 
@@ -191,7 +197,7 @@ const Profile = () => {
         </Card>
 
         {privacidad && (
-          <Card sx={{ mt: 3 }}>
+          <Card sx={{ mt: 3, mb: 3 }}>
             <CardContent sx={{ p: 4, pt: 2 }}>
               <PrivacidadPerfil
                 valores={privacidad}
@@ -200,6 +206,17 @@ const Profile = () => {
             </CardContent>
           </Card>
         )}
+
+        <PrivacidadChat
+          valores={privacidadChat}
+          onCambio={(u) => {
+            setUser(u);
+            setPrivacidadChat({
+              confirmacionesLectura: u.confirmacionesLectura !== false,
+              mostrarEnLinea: u.mostrarEnLinea !== false
+            });
+          }}
+        />
 
         {/* Va ANTES del estudio del avatar y de los métodos de acceso: es lo
             que alguien viene a buscar cuando quiere invitar a alguien, y

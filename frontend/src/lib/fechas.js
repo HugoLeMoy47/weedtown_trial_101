@@ -143,3 +143,20 @@ export function etiquetaDeDia(valor, ahora = new Date()) {
   if (dias < 7) return `hace ${dias} días`;
   return fechaCorta(d, ahora);
 }
+
+// Hora o fecha corta para la lista lateral de conversaciones:
+// hoy -> "14:32", ayer -> "ayer", semana -> "hace 3 d", anterior -> "12 ago"
+export function fechaConversacion(valor, ahora = new Date()) {
+  const d = aFecha(valor);
+  if (!d) return '';
+  const dias = diasDeCalendario(d, ahora);
+  if (dias <= 0) {
+    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  }
+  if (dias === 1) return 'ayer';
+  if (dias < 7) {
+    return `hace ${dias} d`;
+  }
+  return fechaCorta(d, ahora);
+}
+

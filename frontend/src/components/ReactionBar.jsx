@@ -1,6 +1,55 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stack, Chip, Tooltip } from '@mui/material';
+import { Stack, Chip, Tooltip, Box } from '@mui/material';
 import { usePrefiereMenosMovimiento, DURACION } from '../lib/movimiento';
+import { useMesPatrio } from '../lib/mesPatrio';
+
+/**
+ * Micro-efecto de cohete / chispas festivas tricolores (verde bandera,
+ * blanco, rojo patrio y chispas doradas) para las reacciones en septiembre.
+ * Corre a 60fps con GPU transform sobre el botón pulsado durante 340ms.
+ */
+function ChispasPatrias() {
+  return (
+    <Box
+      component="svg"
+      viewBox="0 0 60 60"
+      aria-hidden="true"
+      sx={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        width: 68,
+        height: 68,
+        transform: 'translate(-50%, -50%)',
+        pointerEvents: 'none',
+        zIndex: 10,
+        overflow: 'visible'
+      }}
+    >
+      <style>{`
+        @keyframes chispaRadialPatria {
+          0% { transform: scale(0.25); opacity: 1; }
+          60% { opacity: 1; }
+          100% { transform: scale(1.35); opacity: 0; }
+        }
+      `}</style>
+      <g style={{ transformOrigin: '30px 30px', animation: 'chispaRadialPatria 340ms cubic-bezier(0.12, 0.8, 0.32, 1) forwards' }}>
+        {/* Partículas tricolores principales */}
+        <circle cx="30" cy="8" r="2.6" fill="#006847" />
+        <circle cx="48" cy="18" r="2.6" fill="#ffffff" stroke="#b0bec5" strokeWidth="0.5" />
+        <circle cx="48" cy="42" r="2.6" fill="#ce1126" />
+        <circle cx="30" cy="52" r="2.2" fill="#ffd54f" />
+        <circle cx="12" cy="42" r="2.6" fill="#006847" />
+        <circle cx="12" cy="18" r="2.6" fill="#ce1126" />
+        {/* Chispitas de bengala intermedias */}
+        <circle cx="39" cy="12" r="1.6" fill="#ffeb3b" />
+        <circle cx="21" cy="48" r="1.6" fill="#ffffff" />
+        <circle cx="44" cy="30" r="1.4" fill="#ffd54f" />
+        <circle cx="16" cy="30" r="1.4" fill="#ffd54f" />
+      </g>
+    </Box>
+  );
+}
 
 // Set de reacciones cannábicas (HU-RC-001)
 export const REACTIONS = [
@@ -39,6 +88,7 @@ export function applyReaction(counts, myReaction, type) {
 // pulso ni se entera.
 const ReactionBar = ({ reactions = EMPTY_COUNTS, myReaction = null, onReact, size = 'medium', disabled = false }) => {
   const menosMovimiento = usePrefiereMenosMovimiento();
+  const { esMesPatrio } = useMesPatrio();
   const [pulsando, setPulsando] = useState(null);
   const temporizador = useRef(null);
 
@@ -52,7 +102,8 @@ const ReactionBar = ({ reactions = EMPTY_COUNTS, myReaction = null, onReact, siz
     if (menosMovimiento || myReaction === type) return;
     clearTimeout(temporizador.current);
     setPulsando(type);
-    temporizador.current = setTimeout(() => setPulsando(null), DURACION.pulso);
+    const duracion = esMesPatrio ? 360 : DURACION.pulso;
+    temporizador.current = setTimeout(() => setPulsando(null), duracion);
   };
 
   return (
@@ -61,30 +112,33 @@ const ReactionBar = ({ reactions = EMPTY_COUNTS, myReaction = null, onReact, siz
         const active = myReaction === type;
         const count = reactions[type] || 0;
         return (
-          <Tooltip key={type} title={tip}>
-            <Chip
-              label={`${emoji} ${count > 0 ? count : ''}`.trim()}
-              size={size === 'small' ? 'small' : 'medium'}
-              color={active ? 'primary' : 'default'}
-              variant={active ? 'filled' : 'outlined'}
-              onClick={disabled ? undefined : () => manejarClic(type)}
-              clickable={!disabled}
-              aria-pressed={active}
-              aria-label={`${label}${count > 0 ? `, ${count}` : ''}${active ? ' (tu reacción)' : ''}`}
-              sx={{
-                // Un solo efecto de escala, no dos. Antes convivían el
-                // `:active` del dedo y —en la primera versión de este ciclo—
-                // el pulso; encimados daban un doble brinco que se veía como
-                // un error de la interfaz, no como una respuesta.
-                transform: pulsando === type ? 'scale(1.18)' : 'scale(1)',
-                // La curva se pasa un poco de 1 y regresa: es lo que hace que
-                // se lea como "resorte" y no como "se infló". Solo `transform`
-                // — nada que obligue a recalcular layout.
-                transition: `transform ${DURACION.pulso}ms cubic-bezier(0.34, 1.56, 0.64, 1)`,
-                '&:active': { transform: 'scale(1.12)' }
-              }}
-            />
-          </Tooltip>
+          <Box key={type} sx={{ position: 'relative', display: 'inline-flex' }}>
+            <Tooltip title={tip}>
+              <Chip
+                label={`${emoji} ${count > 0 ? count : ''}`.trim()}
+                size={size === 'small' ? 'small' : 'medium'}
+                color={active ? 'primary' : 'default'}
+                variant={active ? 'filled' : 'outlined'}
+                onClick={disabled ? undefined : () => manejarClic(type)}
+                clickable={!disabled}
+                aria-pressed={active}
+                aria-label={`${label}${count > 0 ? `, ${count}` : ''}${active ? ' (tu reacción)' : ''}`}
+                sx={{
+                  // Un solo efecto de escala, no dos. Antes convivían el
+                  // `:active` del dedo y —en la primera versión de este ciclo—
+                  // el pulso; encimados daban un doble brinco que se veía como
+                  // un error de la interfaz, no como una respuesta.
+                  transform: pulsando === type ? 'scale(1.18)' : 'scale(1)',
+                  // La curva se pasa un poco de 1 y regresa: es lo que hace que
+                  // se lea como "resorte" y no como "se infló". Solo `transform`
+                  // — nada que obligue a recalcular layout.
+                  transition: `transform ${DURACION.pulso}ms cubic-bezier(0.34, 1.56, 0.64, 1)`,
+                  '&:active': { transform: 'scale(1.12)' }
+                }}
+              />
+            </Tooltip>
+            {esMesPatrio && pulsando === type && !menosMovimiento && <ChispasPatrias />}
+          </Box>
         );
       })}
     </Stack>

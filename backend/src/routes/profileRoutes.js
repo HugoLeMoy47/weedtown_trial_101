@@ -24,6 +24,8 @@ const profileSelect = {
   id: true, handle: true, displayName: true, email: true,
   name: true, avatar: true, mastodonAvatar: true, phone: true, fullName: true,
   bio: true, aboutMe: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true,
+  confirmacionesLectura: true,
+  mostrarEnLinea: true,
   // Sus propias preferencias de visibilidad (10B): solo viajan por /me. Nadie
   // más necesita saber qué decidió esconder — eso también es información.
   perfilPublico: true,
@@ -152,6 +154,18 @@ router.put('/me', requireAuth, async (req, res) => {
         return res.status(400).json({ errors: ['perfilPublico debe ser true o false'] });
       }
       preferencias.perfilPublico = data.perfilPublico;
+    }
+    if (data.confirmacionesLectura !== undefined) {
+      if (typeof data.confirmacionesLectura !== 'boolean') {
+        return res.status(400).json({ errors: ['confirmacionesLectura debe ser true o false'] });
+      }
+      preferencias.confirmacionesLectura = data.confirmacionesLectura;
+    }
+    if (data.mostrarEnLinea !== undefined) {
+      if (typeof data.mostrarEnLinea !== 'boolean') {
+        return res.status(400).json({ errors: ['mostrarEnLinea debe ser true o false'] });
+      }
+      preferencias.mostrarEnLinea = data.mostrarEnLinea;
     }
 
     let nuevoAvatar;
