@@ -110,6 +110,45 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
+// Validar disponibilidad y esquema de un handle propuesto en tiempo real (typing / blur)
+router.get('/check-handle', requireAuth, async (req, res) => {
+  const raw = String(req.query.handle || '').trim();
+  if (!raw) {
+    return res.status(400).json({ disponible: false, motivo: 'El handle no puede estar vacío' });
+  }
+
+  const propuesto = handleLib.normalizar(raw);
+  const motivo = handleLib.motivoInvalido(propuesto);
+  if (motivo) {
+    return res.json({ disponible: false, motivo, propuesto });
+  }
+
+  try {
+    const propio = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { handle: true }
+    });
+
+    if (propio && propio.handle.toLowerCase() === propuesto.toLowerCase()) {
+      return res.json({ disponible: true, esActual: true, propuesto });
+    }
+
+    const tomado = await prisma.user.findUnique({
+      where: { handle: propuesto },
+      select: { id: true }
+    });
+
+    if (tomado) {
+      return res.json({ disponible: false, motivo: 'Ese handle ya está en uso', propuesto });
+    }
+
+    res.json({ disponible: true, propuesto });
+  } catch (e) {
+    console.error('Error al verificar disponibilidad de handle:', e);
+    res.status(500).json({ error: 'Error al verificar disponibilidad de handle' });
+  }
+});
+
 // Actualizar perfil propio
 router.put('/me', requireAuth, async (req, res) => {
   const data = req.body;

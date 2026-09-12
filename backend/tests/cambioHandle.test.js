@@ -73,6 +73,25 @@ module.exports = async function run() {
     });
     check('un handle ya en uso por otra persona da 409', r.status === 409, `(fue ${r.status})`);
 
+    console.log('\n  — Validación en vivo (GET /api/profile/check-handle) —');
+    let c = await call('GET', '/api/profile/check-handle', { tok: tBeto });
+    check('sin parámetro handle da 400', c.status === 400);
+
+    c = await call('GET', '/api/profile/check-handle?handle=ab', { tok: tBeto });
+    check('handle demasiado corto da no disponible', c.status === 200 && c.data.disponible === false);
+
+    c = await call('GET', '/api/profile/check-handle?handle=soporte', { tok: tBeto });
+    check('handle reservado da no disponible', c.status === 200 && c.data.disponible === false);
+
+    c = await call('GET', `/api/profile/check-handle?handle=${beto.handle}`, { tok: tBeto });
+    check('handle propio da disponible y esActual = true', c.status === 200 && c.data.disponible === true && c.data.esActual === true);
+
+    c = await call('GET', '/api/profile/check-handle?handle=wtchgh_libre', { tok: tBeto });
+    check('handle ocupado por otra persona da no disponible', c.status === 200 && c.data.disponible === false && c.data.motivo.includes('ya está en uso'));
+
+    c = await call('GET', '/api/profile/check-handle?handle=wtchgh_totalmente_libre', { tok: tBeto });
+    check('handle libre da disponible = true', c.status === 200 && c.data.disponible === true && !c.data.esActual);
+
   } finally {
     await cleanup();
   }
