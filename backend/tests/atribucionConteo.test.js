@@ -41,7 +41,7 @@ module.exports = async function run() {
     console.log('\n  — la tabla no guarda a nadie (la condición que la hace admisible) —');
     const columnas = await prisma.$queryRaw`
       SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'ConteoAtribucion' ORDER BY column_name
+      WHERE table_name = 'ConteoAtribucion' AND table_schema = current_schema() ORDER BY column_name
     `;
     const nombres = columnas.map(c => c.column_name).sort();
     check('las columnas son exactamente id, dia, resultado y conteo',

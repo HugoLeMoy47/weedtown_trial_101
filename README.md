@@ -70,6 +70,8 @@
 | Embebido responsivo nativo de videos de YouTube (16:9 con contenedor adaptable y `youtube-nocookie.com` sin rastreo) en feed y foros | ✅ Funcionando |
 | Botón de chat directo 1 a 1 desde el perfil público (`/@handle`) respetando bloqueos mutuos y cuarentena | ✅ Funcionando |
 | Compartir presencia y zona como publicación al feed al activar o actualizar ubicación en Cerca | ✅ Funcionando |
+| Chat 1 a 1 en vivo con confirmaciones de lectura (`readAt`), presencia en memoria y pacto de reciprocidad estricta | ✅ Funcionando |
+| Temática visual estacional "Mes Patrio" (septiembre): doodles charros, chispas tricolores en reacciones y banner festivo | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 
@@ -762,6 +764,23 @@ El envío de mensajes entra **por REST** (hereda auth, rate limit y validación)
 
 - **Cobertura de pruebas**:
   - Suite de integración completa en `backend/tests/chat.test.js` cubriendo unitarios de presencia, integración de apertura, límites de caracteres, conteo de no leídos, confirmaciones de lectura, reciprocidad estricta y blindaje ante bloqueos mutuos.
+
+
+### Temática visual estacional: Mes Patrio (Septiembre)
+
+Desarrollada e integrada en paralelo con el ciclo de chat, esta mejora conmemora las fiestas patrias de septiembre en México adaptando de forma armónica la interfaz sin comprometer el rendimiento ni la accesibilidad:
+
+- **Activación inteligente y control del usuario** (`frontend/src/lib/mesPatrio.js`):
+  - Detección estacional automática durante todo el mes de septiembre (`new Date().getMonth() === 8`).
+  - Interruptor manual disponible en el menú de usuario (`Navbar.jsx`) para que cualquier persona pueda encenderlo o apagarlo a voluntad en cualquier época del año, persistiendo su elección en `localStorage` y sincronizándola en vivo entre pestañas vía `CustomEvent`.
+- **Doodles vectoriales en la marca** (`frontend/src/components/BrandLogo.jsx`):
+  - Doodle SVG ligero (`SombreritoCharro`): sombrero charro mexicano con ala ancha curvada, hendidura superior y ribete tricolor (verde `#006847`, blanco `#ffffff`, rojo `#ce1126`), superpuesto con inclinación festiva sobre el isotipo sin alterar el flujo de lectura.
+- **Efectos interactivos y micro-animaciones** (`frontend/src/components/ReactionBar.jsx`):
+  - Chispas radiales de cohete patrio (`ChispasPatrias`): al pulsar una reacción en publicaciones, se dispara una explosión de partículas tricolores y doradas a 60 fps mediante transformaciones GPU.
+  - Totalmente respetuoso con la preferencia de reducción de movimiento (`usePrefiereMenosMovimiento()`).
+- **Ribete y banner conmemorativo**:
+  - `Navbar.jsx` incorpora un ribete tricolor sutil en la parte inferior del AppBar.
+  - `Feed.jsx` despliega un banner festivo patrio con opción de descarte temporal persistido en `sessionStorage`.
 
 
 ### Notificaciones del feed principal

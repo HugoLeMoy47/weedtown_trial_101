@@ -2665,6 +2665,37 @@
         }
       }
     },
+    "/api/chat/conversations/{id}/read": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Marcar mensajes de la conversación como leídos y sincronizar confirmaciones de lectura",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mensajes marcados como leídos"
+          },
+          "404": {
+            "description": "Conversación no encontrada o ajena"
+          }
+        }
+      }
+    },
     "/api/nearby/location": {
       "get": {
         "tags": [

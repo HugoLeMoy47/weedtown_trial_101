@@ -45,7 +45,7 @@ module.exports = async function run() {
 
     console.log('\n  — Integración: mención con bloqueo mutuo —');
     // Beto bloquea a Ana
-    await call('POST', `/api/users/${ana.id}/block`, { tok: tBeto });
+    await call('POST', '/api/blocks', { tok: tBeto, body: { userId: ana.id } });
 
     // Ana postea de nuevo mencionando a Beto
     await call('POST', '/api/posts', {
@@ -56,7 +56,7 @@ module.exports = async function run() {
     const notifsBetoDespues = await prisma.notification.findMany({
       where: { recipientId: beto.id, type: 'MENTION' }
     });
-    check('Beto no recibe mención si hay bloqueo mutuo', notifsBetoDespues.length === 1); // sigue teniendo solo la primera
+    check('Beto no recibe mención si hay bloqueo mutuo', notifsBetoDespues.length === 0); // el bloqueo borró las previas y no se creó una nueva
 
     console.log('\n  — Integración: sugerencias de autocompletado de mención —');
     const carla = await mkUser('carla');
