@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Container, Box, Paper, Typography, TextField, IconButton, List, ListItemButton,
   ListItemAvatar, ListItemText, Avatar, Alert, Stack, InputAdornment, CircularProgress,
-  Badge, Chip, Tooltip, Link
+  Badge, Chip, Button
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SearchIcon from '@mui/icons-material/Search';
@@ -127,18 +127,19 @@ const Chat = () => {
       .catch(e => setError(mensajeCuarentena(e) || 'No se pudo abrir la conversación.'));
   }, [routedUser?.id, routedChatId, conversations]);
 
+  const targetUserId = selected?.with?.id;
   // Consulta y actualización de presencia en tiempo real del interlocutor
   const consultarPresencia = useCallback(() => {
-    if (!socket || !selected?.with?.id) {
+    if (!socket || !targetUserId) {
       setIsOtherOnline(false);
       return;
     }
-    socket.emit('chat:query_presence', { targetUserId: selected.with.id }, (res) => {
+    socket.emit('chat:query_presence', { targetUserId }, (res) => {
       if (res && typeof res.isOnline === 'boolean') {
         setIsOtherOnline(res.isOnline);
       }
     });
-  }, [socket, selected?.with?.id]);
+  }, [socket, targetUserId]);
 
   useEffect(() => {
     consultarPresencia();
