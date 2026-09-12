@@ -41,6 +41,14 @@ const Profile = () => {
   // El conteo EXACTO de invitaciones. Solo llega por /profile/me — hacia
   // terceros el servidor manda una cubeta.
   const [invitaciones, setInvitaciones] = useState(0);
+  const [handleUpdatedAt, setHandleUpdatedAt] = useState(null);
+
+  const DIAS_COOLDOWN = 180;
+  const MS_COOLDOWN = DIAS_COOLDOWN * 24 * 60 * 60 * 1000;
+  const transcurrido = handleUpdatedAt ? Date.now() - new Date(handleUpdatedAt).getTime() : Infinity;
+  const enCooldown = handleUpdatedAt ? transcurrido < MS_COOLDOWN : false;
+  const diasRestantes = enCooldown ? Math.ceil((MS_COOLDOWN - transcurrido) / (24 * 60 * 60 * 1000)) : 0;
+  const fechaDisponible = enCooldown ? new Date(new Date(handleUpdatedAt).getTime() + MS_COOLDOWN).toLocaleDateString('es-MX') : null;
 
   const cargarPerfil = () => api.get('/profile/me')
     .then(res => {
@@ -55,6 +63,7 @@ const Profile = () => {
         birthdate: u.birthdate ? u.birthdate.slice(0, 10) : '',
         gender: u.gender || ''
       });
+      setHandleUpdatedAt(u.handleUpdatedAt || null);
       setIdentities(u.identities || []);
       setInvitaciones(u.invitaciones ?? 0);
       setPrivacidad(preferenciasDe(u));
@@ -82,7 +91,16 @@ const Profile = () => {
   };
 
   const handleChange = e => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    if (e.target.name === 'handle') {
+      const limpio = e.target.value
+        .replace(/^@+/, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '')
+        .slice(0, 20);
+      setForm(prev => ({ ...prev, handle: limpio }));
+      return;
+    }
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async e => {
@@ -99,10 +117,15 @@ const Profile = () => {
     try {
       const res = await api.put('/profile/me', form);
       setUser(res.data.user);
+      if (res.data.user?.handleUpdatedAt) {
+        setHandleUpdatedAt(res.data.user.handleUpdatedAt);
+      }
       setSuccess('Perfil actualizado correctamente');
     } catch (err) {
       if (err.response?.data?.errors) {
         setFieldErrors(err.response.data.errors);
+      } else if (err.response?.data?.error) {
+        setError(err.response.data.error);
       } else {
         setError('No se pudo actualizar el perfil');
       }
@@ -149,9 +172,24 @@ const Profile = () => {
                     onChange={handleChange}
                     fullWidth
                     required
-                    InputProps={{ startAdornment: <Box sx={{ color: 'text.secondary', mr: 0.5 }}>@</Box> }}
+                    disabled={enCooldown}
+                    InputProps={{
+                      startAdornment: <Box sx={{ color: 'text.secondary', mr: 0.5 }}>@</Box>,
+                      endAdornment: enCooldown ? (
+                        <Box sx={{ color: 'warning.main', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
+                          🔒 Congelado
+                        </Box>
+                      ) : null
+                    }}
                     inputProps={{ maxLength: 20, autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
-                    helperText="Tu nombre público en WeedTown: aparece en el feed, foros, chat y Cerca. Minúsculas, números y guion bajo."
+                    helperText={
+                      enCooldown
+                        ? `🔒 Handle congelado: Cambiado recientemente. Podrás cambiarlo nuevamente el ${fechaDisponible} (en ${diasRestantes} días).`
+                        : "Tu nombre público en WeedTown: aparece en feed, foros, chat y Cerca. Política: máx. 2 cambios al año (cada 6 meses)."
+                    }
+                    FormHelperTextProps={{
+                      sx: { color: enCooldown ? 'warning.main' : 'text.secondary' }
+                    }}
                   />
                   <TextField name="fullName" label="Nombre completo" value={form.fullName} onChange={handleChange} fullWidth />
                   <TextField name="phone" label="Teléfono" value={form.phone} onChange={handleChange} fullWidth

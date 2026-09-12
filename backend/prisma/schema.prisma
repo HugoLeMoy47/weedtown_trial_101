@@ -39,6 +39,9 @@ model User {
   // hay proveedores donde no existe (en Telegram el usuario es opcional; con
   // llave de acceso o correo no hay ninguno).
   handle           String       @unique
+  // Fecha del último cambio de handle (política: máx 2 veces al año / cooldown de 6 meses).
+  // null = nunca cambiado manualmente (primer cambio libre).
+  handleUpdatedAt  DateTime?
   displayName      String?
   email            String?      @unique
   name             String

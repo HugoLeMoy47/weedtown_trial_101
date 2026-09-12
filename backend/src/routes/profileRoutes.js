@@ -26,6 +26,7 @@ const profileSelect = {
   bio: true, aboutMe: true, age: true, birthdate: true, gender: true, createdAt: true, updatedAt: true,
   confirmacionesLectura: true,
   mostrarEnLinea: true,
+  handleUpdatedAt: true,
   // Sus propias preferencias de visibilidad (10B): solo viajan por /me. Nadie
   // más necesita saber qué decidió esconder — eso también es información.
   perfilPublico: true,
@@ -117,23 +118,48 @@ router.put('/me', requireAuth, async (req, res) => {
     return res.status(400).json({ errors });
   }
   try {
-    // El handle es el identificador público: cambiarlo exige validarlo y
-    // comprobar que esté libre. Se normaliza primero para que "Hugo LeMoy" y
-    // "hugolemoy" no sean dos intentos distintos.
+    // El handle es el identificador público: cambiarlo exige validarlo,
+    // comprobar que esté libre y respetar la política de congelamiento
+    // (cooldown de 180 días / máx 2 veces al año).
     let nuevoHandle;
+    let actualizarHandleTimestamp = false;
     if (data.handle !== undefined) {
       const propuesto = handleLib.normalizar(data.handle);
       const motivo = handleLib.motivoInvalido(propuesto);
       if (motivo) return res.status(400).json({ errors: [motivo] });
 
-      const tomado = await prisma.user.findUnique({
-        where: { handle: propuesto },
-        select: { id: true }
+      const usuarioActual = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { handle: true, handleUpdatedAt: true }
       });
-      if (tomado && tomado.id !== req.user.id) {
-        return res.status(409).json({ errors: ['Ese handle ya está en uso'] });
+
+      if (usuarioActual && propuesto !== usuarioActual.handle) {
+        const tomado = await prisma.user.findUnique({
+          where: { handle: propuesto },
+          select: { id: true }
+        });
+        if (tomado && tomado.id !== req.user.id) {
+          return res.status(409).json({ errors: ['Ese handle ya está en uso'] });
+        }
+
+        // Política de congelamiento: 180 días (6 meses) entre cambios.
+        // Si handleUpdatedAt es null, es el primer cambio manual de la cuenta.
+        const DIAS_COOLDOWN = 180;
+        const MS_COOLDOWN = DIAS_COOLDOWN * 24 * 60 * 60 * 1000;
+        if (usuarioActual.handleUpdatedAt) {
+          const transcurrido = Date.now() - new Date(usuarioActual.handleUpdatedAt).getTime();
+          if (transcurrido < MS_COOLDOWN) {
+            const diasRestantes = Math.ceil((MS_COOLDOWN - transcurrido) / (24 * 60 * 60 * 1000));
+            const fechaDisponible = new Date(new Date(usuarioActual.handleUpdatedAt).getTime() + MS_COOLDOWN).toLocaleDateString('es-MX');
+            return res.status(400).json({
+              errors: [`Solo puedes cambiar tu handle dos veces al año (cada 6 meses). Podrás cambiarlo nuevamente el ${fechaDisponible} (en ${diasRestantes} días).`]
+            });
+          }
+        }
+
+        nuevoHandle = propuesto;
+        actualizarHandleTimestamp = true;
       }
-      nuevoHandle = propuesto;
     }
 
     // Preferencias de visibilidad (10B). Se aceptan sueltas: mandar solo
@@ -184,6 +210,7 @@ router.put('/me', requireAuth, async (req, res) => {
       data: {
         name: data.name || undefined,
         ...(nuevoHandle !== undefined && { handle: nuevoHandle }),
+        ...(actualizarHandleTimestamp && { handleUpdatedAt: new Date() }),
         ...(nuevoAvatar !== undefined && { avatar: nuevoAvatar }),
         // Solo se toca lo que VIENE en el cuerpo.
         //
