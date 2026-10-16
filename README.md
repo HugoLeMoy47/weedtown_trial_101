@@ -560,7 +560,7 @@ El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin d
 |---|---|
 | **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` (integración) |
 | **E2E** | Su propio Postgres efímero, Chromium con `--with-deps`, frontend compilado y servido estático, y las specs de Playwright. Va aparte del backend para no retrasar la señal rápida |
-| **Frontend** | `npm test` (123 unitarias — 10 suites: `etiquetaspe420.test.js`, `worker.test.js`, `fechas.test.js`, `intencionCerca.test.js`, `recorte.test.js`, `invitador.test.js`, `rutaInterna.test.js`, `PushBanner.test.js`, `ContenidoTexto.test.js`, `MentionInput.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
+| **Frontend** | `npm test` (124 unitarias — 10 suites: `etiquetaspe420.test.js`, `worker.test.js`, `fechas.test.js`, `intencionCerca.test.js`, `recorte.test.js`, `invitador.test.js`, `rutaInterna.test.js`, `PushBanner.test.js`, `ContenidoTexto.test.js`, `MentionInput.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
 
 El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se pisarían. El Postgres del runner nace y muere con el trabajo, así que tampoco hay secretos que guardar — el `JWT_SECRET` se genera con `openssl rand` al vuelo. No hace falta configurar nada en el repositorio para que funcione.
 

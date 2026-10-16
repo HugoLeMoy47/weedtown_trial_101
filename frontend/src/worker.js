@@ -124,7 +124,7 @@ function fichaGenerica(url) {
   return {
     titulo: 'WeedTown',
     descripcion: 'La red social de la comunidad cannábica de México. Un espacio seguro, con respeto y sin estigma.',
-    imagen: `${url.origin}/campaign/placeholder-default.png`,
+    imagen: `${url.origin}/campaign/concepto-07-v1.jpg`,
     imagenAlt: 'WeedTown — la red social de la comunidad cannábica de México',
     tieneImagen: false
   };
@@ -134,7 +134,7 @@ function fichaEtiquetas(url) {
   return {
     titulo: 'Estudio de Etiquetado Artesanal & RRD — WeedTown × PE420',
     descripcion: 'Herramienta comunitaria 100% privada en navegador para generar, auditar e imprimir etiquetas de tópicos (NOM-141), herbolarios (NOM-072) y comestibles artesanales (NOM-051 + Reducción de Riesgos).',
-    imagen: `${url.origin}/campaign/placeholder-default.png`,
+    imagen: `${url.origin}/campaign/concepto-07-v1.jpg`,
     imagenAlt: 'Estudio de Etiquetado Artesanal & Reducción de Riesgos — WeedTown × PE420',
     tieneImagen: false
   };
@@ -318,6 +318,7 @@ ${dimensiones}<meta property="og:image:alt" content="${imagenAlt}">
 <meta name="twitter:title" content="${titulo}">
 <meta name="twitter:description" content="${descripcion}">
 <meta name="twitter:image" content="${imagen}">
+<meta name="twitter:image:alt" content="${imagenAlt}">
 `;
 }
 
