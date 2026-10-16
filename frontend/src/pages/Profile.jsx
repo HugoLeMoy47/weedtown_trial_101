@@ -42,13 +42,14 @@ const Profile = () => {
   // terceros el servidor manda una cubeta.
   const [invitaciones, setInvitaciones] = useState(0);
   const [handleUpdatedAt, setHandleUpdatedAt] = useState(null);
+  const [ahoraMs, setAhoraMs] = useState(() => Date.now());
   const [handleStatus, setHandleStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'current'
   const [handleMessage, setHandleMessage] = useState('');
   const handleDebounceRef = useRef(null);
 
   const DIAS_COOLDOWN = 180;
   const MS_COOLDOWN = DIAS_COOLDOWN * 24 * 60 * 60 * 1000;
-  const transcurrido = handleUpdatedAt ? Date.now() - new Date(handleUpdatedAt).getTime() : Infinity;
+  const transcurrido = handleUpdatedAt ? ahoraMs - new Date(handleUpdatedAt).getTime() : Infinity;
   const enCooldown = handleUpdatedAt ? transcurrido < MS_COOLDOWN : false;
   const diasRestantes = enCooldown ? Math.ceil((MS_COOLDOWN - transcurrido) / (24 * 60 * 60 * 1000)) : 0;
   const fechaDisponible = enCooldown ? new Date(new Date(handleUpdatedAt).getTime() + MS_COOLDOWN).toLocaleDateString('es-MX') : null;
@@ -223,6 +224,7 @@ const Profile = () => {
       setUser(res.data.user);
       if (res.data.user?.handleUpdatedAt) {
         setHandleUpdatedAt(res.data.user.handleUpdatedAt);
+        setAhoraMs(Date.now());
       }
       setHandleStatus('current');
       setHandleMessage('');

@@ -16,6 +16,7 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import GavelIcon from '@mui/icons-material/Gavel';
 import PersonIcon from '@mui/icons-material/Person';
 import PolicyIcon from '@mui/icons-material/Policy';
+import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
 import { BrandMark, BrandWordmark } from './BrandLogo';
 import { useAuth } from '../hooks/useAuth';
 import { useColorMode } from '../theme';
@@ -185,6 +186,18 @@ const Navbar = () => {
 
           {user && (
             <>
+              <Tooltip title="Estudio de Etiquetado PE420">
+                <IconButton
+                  component={RouterLink}
+                  to="/etiquetas"
+                  color={pathname === '/etiquetas' ? 'primary' : 'secondary'}
+                  aria-label="Estudio de Etiquetado PE420"
+                  sx={{ display: { xs: 'none', md: 'inline-flex' } }}
+                >
+                  <LocalOfferOutlinedIcon />
+                </IconButton>
+              </Tooltip>
+
               <NotificationBell />
 
               {/* Escritorio: el avatar sigue siendo el enlace directo a /profile de hoy */}
@@ -246,6 +259,10 @@ const Navbar = () => {
                 <MenuItem onClick={() => irA('/profile')}>
                   <ListItemIcon><PersonIcon fontSize="small" /></ListItemIcon>
                   <ListItemText>Mi perfil</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => irA('/etiquetas')}>
+                  <ListItemIcon><LocalOfferOutlinedIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText>Etiquetas PE420</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={() => { toggle(); setMenuAnchor(null); }}>
                   <ListItemIcon>{mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}</ListItemIcon>

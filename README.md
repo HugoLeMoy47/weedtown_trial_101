@@ -72,6 +72,7 @@
 | Compartir presencia y zona como publicación al feed al activar o actualizar ubicación en Cerca | ✅ Funcionando |
 | Chat 1 a 1 en vivo con confirmaciones de lectura (`readAt`), presencia en memoria y pacto de reciprocidad estricta | ✅ Funcionando |
 | Temática visual estacional "Mes Patrio" (septiembre): doodles charros, chispas tricolores en reacciones y banner festivo | ✅ Funcionando |
+| Estudio de Etiquetado Artesanal & Reducción de Riesgos (`etkt420.weedtown.social` y `/etiquetas`): 4 presets (`NOM-141`, `NOM-072`, `NOM-051 + RRD`), semáforo regulatorio COFEPRIS/PROFECO en vivo, modo demostración para visitantes, edición/impresión exclusiva para miembros y compartir etiqueta en PNG al feed | ✅ Funcionando |
 | Mercado comunitario (tangibles e intangibles) | 📋 Fase posterior |
 | App móvil (Expo) | ❄️ Congelada — demo con datos falsos, sin conexión a la API ([por qué](mobile/README.md)) |
 

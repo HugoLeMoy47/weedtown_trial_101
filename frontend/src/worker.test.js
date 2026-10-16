@@ -293,3 +293,28 @@ describe('noindex por perfil (ciclo 11B)', () => {
     expect(datos.url).toBe('https://weedtown.social/@luna');
   });
 });
+
+describe('Estudio de Etiquetado PE420 (/etiquetas y etkt420.weedtown.social)', () => {
+  test('intercepta /etiquetas en weedtown.social como ficha estática website', () => {
+    expect(get('/etiquetas')).toEqual({
+      ruta: '/etiquetas',
+      api: null,
+      tipoOg: 'website',
+      estatica: true
+    });
+  });
+
+  test('intercepta la raíz de etkt420.weedtown.social pero deja pasar los bundles estáticos', () => {
+    const raizSub = recursoDeLaPeticion({ method: 'GET' }, new URL('https://etkt420.weedtown.social/'));
+    expect(raizSub).toEqual({
+      ruta: '/',
+      api: null,
+      tipoOg: 'website',
+      estatica: true
+    });
+
+    const bundleSub = recursoDeLaPeticion({ method: 'GET' }, new URL('https://etkt420.weedtown.social/assets/index-123.js'));
+    expect(bundleSub).toBeNull();
+  });
+});
+

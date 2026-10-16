@@ -81,6 +81,12 @@ const RUTA_SUBFORO = /^\/forum\/([^/]+)\/?$/;
 // que es exactamente la trampa del 9A repetida.
 const RUTA_PERFIL = /^\/@([A-Za-z0-9][A-Za-z0-9_]{2,19})\/?$/;
 
+// Estudio de Etiquetado Artesanal & RRD (PE420): accesible en /etiquetas o en
+// la raíz del subdominio etkt420.weedtown.social. Su ficha es estática (no
+// depende del backend).
+const RUTA_ETIQUETAS = /^\/(?:pe420\/)?etiquetas\/?$/;
+const HOST_ETIQUETAS = /^etkt420\./i;
+
 // URL del backend: CONFIGURABLE, nunca incrustada (criterio 8 de
 // HU-SHR-002). Vive en `vars.PREVIEW_API_URL` de wrangler.jsonc; en
 // producción apunta a weedtown-api.onrender.com, en `wrangler dev` local cae
@@ -120,6 +126,16 @@ function fichaGenerica(url) {
     descripcion: 'La red social de la comunidad cannábica de México. Un espacio seguro, con respeto y sin estigma.',
     imagen: `${url.origin}/campaign/placeholder-default.png`,
     imagenAlt: 'WeedTown — la red social de la comunidad cannábica de México',
+    tieneImagen: false
+  };
+}
+
+function fichaEtiquetas(url) {
+  return {
+    titulo: 'Estudio de Etiquetado Artesanal & RRD — WeedTown × PE420',
+    descripcion: 'Herramienta comunitaria 100% privada en navegador para generar, auditar e imprimir etiquetas de tópicos (NOM-141), herbolarios (NOM-072) y comestibles artesanales (NOM-051 + Reducción de Riesgos).',
+    imagen: `${url.origin}/campaign/placeholder-default.png`,
+    imagenAlt: 'Estudio de Etiquetado Artesanal & Reducción de Riesgos — WeedTown × PE420',
     tieneImagen: false
   };
 }
@@ -172,6 +188,15 @@ function recursoPerfil(handle) {
     edgeCacheControl: 'public, max-age=3600',
     // Si no hay ficha (backend dormido), no sabemos si este perfil es público.
     indexableSinFicha: false
+  };
+}
+
+function recursoEtiquetas(ruta = '/etiquetas') {
+  return {
+    ruta,
+    api: null,
+    tipoOg: 'website',
+    estatica: true
   };
 }
 
@@ -421,6 +446,11 @@ function prepararParaCliente(respuesta) {
 // fue el correcto (la rancia, no la recién refrescada), solo la latencia
 // observada localmente no fue tan baja como debería ser en el edge real.
 async function servirFicha(recurso, env, ctx, url) {
+  if (recurso.estatica) {
+    const base = await armarHtmlConMeta(env, url, datosMeta(fichaEtiquetas(url), url, recurso));
+    return prepararParaCliente(base);
+  }
+
   const cache = caches.default;
   const cacheKey = new Request(`${url.origin}${recurso.ruta}`, { method: 'GET' });
   const cacheada = await cache.match(cacheKey);
@@ -479,6 +509,14 @@ async function refrescarEnSegundoPlano(recurso, env, cache, cacheKey, url) {
 function recursoDeLaPeticion(request, url) {
   if (request.method !== 'GET') return null;
 
+  if (HOST_ETIQUETAS.test(url.hostname) && (url.pathname === '/' || RUTA_ETIQUETAS.test(url.pathname))) {
+    return recursoEtiquetas(url.pathname === '/' ? '/' : '/etiquetas');
+  }
+
+  if (RUTA_ETIQUETAS.test(url.pathname)) {
+    return recursoEtiquetas('/etiquetas');
+  }
+
   const post = RUTA_POST.exec(url.pathname);
   if (post) return recursoPost(post[1]);
 
@@ -532,8 +570,11 @@ export {
   construirMetaTags,
   datosMeta,
   fichaGenerica,
+  fichaEtiquetas,
   recursoDeLaPeticion,
   recursoPost,
   recursoSubforo,
-  recursoPerfil
+  recursoPerfil,
+  recursoEtiquetas
 };
+

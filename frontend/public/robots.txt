@@ -37,3 +37,4 @@ Disallow: /cerca
 Allow: /p/
 Allow: /forum
 Allow: /@
+Allow: /etiquetas

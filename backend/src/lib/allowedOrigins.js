@@ -6,6 +6,7 @@ const origins = new Set(
   [
     process.env.FRONTEND_URL || 'http://localhost:3000',
     'http://localhost:3000',
+    'https://etkt420.weedtown.social',
     ...(process.env.ALLOWED_ORIGINS || '').split(',')
   ]
     .map(o => o.trim().replace(/\/$/, ''))
