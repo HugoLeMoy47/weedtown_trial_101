@@ -212,6 +212,8 @@ Hasta ahora la cuenta de Mastodon **era** la cuenta: la identidad única era `(m
 Ahora están separados:
 
 - **`User.handle`** es el identificador público, propio de WeedTown y único en la plataforma. Se elige al darse de alta (derivado del origen, con desempate automático) y se puede cambiar desde el perfil. Formato: `^[a-z0-9][a-z0-9_]{2,19}$`, normalizado antes de guardar, con una lista de **palabras reservadas** —`moderacion`, `soporte`, `weedtown`…— para que nadie se haga pasar por el equipo.
+  - **Enfriamiento (cooldown) de 180 días**: Para evitar volatilidad de identidad, fraudes o suplantación recurrente, el cambio de handle está limitado a **un máximo de 2 veces al año** (cada 6 meses / 180 días), gobernado por `User.handleUpdatedAt`. Si se intenta un segundo cambio antes de expirar el plazo, la API responde `400` indicando los días restantes. Actualizaciones de otros campos del perfil (`bio`, `aboutMe`, etc.) enviando el mismo handle o sin enviarlo no son bloqueadas.
+  - **Validación en vivo (`GET /api/profile/check-handle`)**: El formulario de edición valida interactivamente el handle ingresado en tiempo real sin guardar cambios (`disponible`, `esActual`, motivo de reserva o colisión).
 - **`Identity`** guarda cómo entra cada persona: `(provider, externalId)` único, con la instancia y el handle de origen como datos informativos. Una cuenta puede tener **varias identidades**, que es lo que permitirá entrar por cualquier método y, sobre todo, resolver la recuperación: registrar una llave de acceso y dejar un correo de respaldo.
 
 El perfil público **dejó de exponer la instancia de Mastodon**. Era un dato de origen que decía en qué servidor del fediverso está esa persona; con un handle propio ya no hace falta para identificar a nadie, y es un dato menos que correlacionar.
@@ -448,7 +450,7 @@ cp .env.test.example .env.test   # completar con la base de PRUEBAS
 npm test
 ```
 
-Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son **706** (30 suites) y cubren estas áreas:
+Las pruebas son de **integración**: el runner aplica las migraciones, levanta el backend en su propio puerto (4010 por defecto, para no chocar con el que estés usando), habla con la API por HTTP igual que el frontend y limpia lo que sembró. Son **849** (40 suites) y cubren estas áreas:
 
 | Suite | Qué cubre |
 |---|---|
@@ -459,26 +461,30 @@ Las pruebas son de **integración**: el runner aplica las migraciones, levanta e
 | **ModeracionEscritura** | HU-MOD-001: reaccionar, comentar y responder sobre contenido oculto por moderación → 404, en las cuatro superficies (post/comentario de feed y de foro), incluida la respuesta dentro de un post oculto; editar contenido propio oculto sigue permitido |
 | **Almacenamiento** | Subida por la API, y que borrar contenido borre de verdad el archivo del disco — incluido el borrado suave del foro |
 | **Identidad** | Reglas del handle, generación única, varias identidades por cuenta, y que el perfil público ya no exponga la instancia |
+| **CambioHandle** | Cooldown de 180 días (máx. 2 cambios al año), validación en vivo con `GET /api/profile/check-handle`, palabras reservadas y resolución de colisiones |
 | **Avatares** | Determinismo del dibujo, endpoint cacheable, el default generado y que el avatar no acepte URLs externas |
 | **Amistad** | Ciclo solicitud→aceptación, solicitudes cruzadas que se auto-aceptan, rechazar y reintentar, que bloquear deshaga el vínculo, y el alcance `FRIENDS` en feed, búsqueda y comentarios |
 | **Notificaciones** | `REPLY_POST`/`REACTION` en el feed principal, que quitar una reacción no notifique, que nunca te notifiques a ti mismo, y que una ráfaga de mensajes de chat se colapse en una sola notificación sin leer |
 | **Cuadrícula** | Que `geogrid.js` (backend) y `geo.js` (frontend) den la misma celda. Lee el archivo real del frontend, no una copia |
 | **Cerca-Amigos** / **CercaIntencion** | La lista de Cerca con `isFriend`, y la intención del ciclo 10C: que caduque sola, que **no sobreviva a la celda** (borrar la zona la apaga aunque su fecha no haya llegado), que solo se acepten 2/4/8 horas y los tres valores del enum, y que a los demás les viaje el valor **sin** la fecha de caducidad. Incluye la aserción de forma de respuesta que atrapó una fuga de `nearbyUpdatedAt` al construir el ciclo |
+| **SaludoDeVuelta** | Flujo de toques recíprocos y cortesía comunitaria en la cuadrícula de Cerca |
 | **PerfilPorHandle** | Ciclo 10A: `/api/profile/handle/:handle` y `/api/posts/de/:handle`; que un handle inexistente y uno privado den **el mismo 401** sin sesión (antienumeración), y que el feed por persona herede alcance, moderación y bloqueo |
 | **VisibilidadPerfil** | Ciclo 10B: la matriz completa de `campoVisible` (4 visibilidades × 4 relaciones), que el interruptor público **no amplíe** lo que estaba en `AMIGOS` o `NADIE`, que las preferencias solo viajen por `/me`, y que un valor desconocido se calle en vez de exponer |
 | **HashtagsAgrupacion** | Ciclo 10D: `/api/posts/hashtag/:tag` agrupando por la llave en minúsculas, las cuatro reglas de `/admin/tendencias` (incluida la supresión bajo 5 autoras distintas) y el alta/baja del diccionario con su línea en la bitácora |
 | **Panóptico** | Los indicadores agregados: las 13 consultas del catálogo, el truncado del día en `America/Mexico_City` (con la regresión que siembra a las 23:00 hora de México), la supresión de segmentos bajo 5 elementos y el recorte por rol de la carga de moderación |
 | **Acceso** | Alta y login con llave de acceso (con un autenticador de software real, no un mock — ver `tests/webauthnAuthenticator.js`), agregar/quitar métodos, enlace mágico (alta, reingreso, respaldo, un solo uso) y la cuarentena de cuentas nuevas en toque y chat |
+| **Cuarentena** | Ventana graduada según costo de proveedor (0h Mastodon, 3h correo, 24h passkey) para primer contacto, heredando la ventana más corta en cuentas multi-identidad |
 | **Privacidad** | Exportar datos, anonimizar cuenta (handle, PII, identidades, bloqueos), que el contenido se quede pero muestre "Cuenta eliminada", y que un JWT emitido antes de eliminar deje de servir |
+| **RespaldoTablas** / **RespaldoBytes** | Integridad relacional y serialización cruda para exportación completa sin fugas de datos ajenos |
 | **PublicShare** | `/p/:id`: un posteo `PUBLIC` se ve sin sesión; uno `FRIENDS` da 404; un posteo oculto por moderación da 404 incluso a su propia autora (H1); los comentarios solo se listan con sesión (HU-PRV-001) |
 | **Invitaciones** | Ciclo 11A: que el contador suba solo con `ref=perfil` y dentro de la ventana, que nadie se pueda auto-invitar, las cinco cubetas con sus fronteras exactas, y **una aserción sobre el esquema** de que no existe ninguna columna ni tabla que ate a quien invitó con quien llegó |
 | **PreviewPerfil** | Ciclo 11B: que la ficha rica traiga solo lo que estaba en `TODOS` (y que "sobre mí", género, correo, teléfono y nombre real **no** salgan), y que los cuatro casos sin ficha rica —inexistente, privado, suspendido, eliminado— respondan **cuerpos idénticos entre sí**, sin mencionar el handle |
 | **Preview** / **PreviewSubforo** | Las dos fichas Open Graph que consume el Worker. En la de posteos: extracto del título, imagen de campaña determinista, y 404 para `FRIENDS`/oculto/autor suspendido. En la de subforos (ciclo 9A): que **nunca** salga `creator` —ni con sesión—, que un subforo archivado dé el 404 exacto de "no existe", y que el JSON llegue **sin escapar** (el escapado vive en el Worker, HU-SEC-001) |
-| **Subforos** | `slugify` para los 10 nombres del catálogo institucional (con aserción sobre los casos límite #9 y #10); el script `subforos.js` es idempotente y no crea usuarios |
-| **Atribucion** | HU-CTA-002/HU-ATR-001: `ref` fuera de la lista blanca se descarta en silencio, exige sesión, y el limitador propio (5/15min) corta antes que el general |
+| **Subforos** / **ConsolidacionForos** | `slugify` para los 10 nombres del catálogo institucional; consolidación y consistencia de ordenamiento y jerarquía de hilos |
+| **Atribucion** / **AtribucionConteo** | HU-CTA-002/HU-ATR-001: `ref` fuera de la lista blanca se descarta en silencio, exige sesión, limitador propio (5/15min); agregados agregados en `ConteoAtribucion` sin correlación |
 | **AntiSpam** | Rechazo de posts/comentarios (feed y foro) con demasiados enlaces o con contenido repetido en ráfaga |
 | **Hashtags** | Ciclo 9C: `#RolarEnLaTarde` guarda llave `rolarenlatarde` y grafía `RolarEnLaTarde`; `#Rolar` y `#rolar` son una sola fila y gana la primera grafía vista (también al editar); las palabras del diccionario de descarte no generan fila; y el texto del posteo vuelve **idéntico**, con sus `#de` adentro |
-| **DocumentacionApi** | Ciclo 12A: que la lista de rutas de `swagger.json` coincida con las que el servidor monta de verdad. No valida el contenido de cada entrada —eso es criterio humano—, sino que no falte ninguna ni sobre una inventada. Existe porque el 10E encontró **21 rutas desfasadas, 13 de ellas acumuladas de ciclos anteriores**: no fue el descuido de nadie, era que no había ningún paso que lo impidiera. En su primera corrida atrapó una ruta del ciclo 11B sin documentar |
+| **DocumentacionApi** | Ciclo 12A: que la lista de rutas de `swagger.json` coincida con las que el servidor monta de verdad. En su primera corrida atrapó una ruta del ciclo 11B sin documentar |
 | **Menciones** | Ciclo 14: detección y notificación de `@handle` en publicaciones y foros, exclusión del propio autor y de cuentas mutuamente bloqueadas, y endpoint `/api/profile/mention-suggestions` que prioriza amigos en los primeros resultados |
 | **Push** | Ciclo 14: registro de suscripciones Web Push (`/api/push/subscribe`, `/api/push/unsubscribe`), entrega de clave pública VAPID y despacho en segundo plano ante interacciones |
 | **Humo** | Chequeo rápido y aislado (`npm run test:smoke`) de que el entorno está sano: `/health`, una sesión y un ida-y-vuelta de escritura/lectura — sin correr las demás |
@@ -493,7 +499,7 @@ Con `.env` apuntando a un proyecto de desarrollo —que es como debe estar—, u
 
 | Script | Qué hace |
 |---|---|
-| `npm test` | Las 706 pruebas de integración |
+| `npm test` | Las 849 pruebas de integración |
 | `npm run test:ci` | Alias explícito de `npm test` — lo que corre `.github/workflows/ci.yml`, con nombre propio para que el CI no dependa de que nadie recuerde qué script es |
 | `npm run test:smoke` | Solo la suite Humo — chequeo rápido de que el entorno responde, sin esperar las demás |
 | `npm run test:reset` | Tira el schema de pruebas y lo vuelve a crear desde cero (`DROP SCHEMA` + migraciones). Para cuando quedó en un estado raro y limpiar suite por suite no alcanza — **irreversible sobre el schema de pruebas**, nunca toca `public` (mismos guardias que el runner) |
@@ -554,7 +560,7 @@ El driver de Supabase usa la API REST de Supabase Storage vía `fetch` — sin d
 |---|---|
 | **Backend** | Levanta un **Postgres 16 efímero** como servicio del runner, aplica las migraciones y corre `npm test` (integración) |
 | **E2E** | Su propio Postgres efímero, Chromium con `--with-deps`, frontend compilado y servido estático, y las specs de Playwright. Va aparte del backend para no retrasar la señal rápida |
-| **Frontend** | `npm test` (70 unitarias — `worker.test.js`, `rutaInterna.test.js`, `intencionCerca.test.js`, `recorte.test.js`, `invitador.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
+| **Frontend** | `npm test` (123 unitarias — 10 suites: `etiquetaspe420.test.js`, `worker.test.js`, `fechas.test.js`, `intencionCerca.test.js`, `recorte.test.js`, `invitador.test.js`, `rutaInterna.test.js`, `PushBanner.test.js`, `ContenidoTexto.test.js`, `MentionInput.test.js`) con `CI=true`, y después `npm run build`, que con `CI=true` convierte los warnings de ESLint en error |
 
 El CI **no usa Supabase**: las pruebas borran datos y dos tandas simultáneas se pisarían. El Postgres del runner nace y muere con el trabajo, así que tampoco hay secretos que guardar — el `JWT_SECRET` se genera con `openssl rand` al vuelo. No hace falta configurar nada en el repositorio para que funcione.
 
@@ -647,7 +653,8 @@ Documentación interactiva completa en **`http://localhost:4000/api-docs`** (Swa
 | POST | `/api/forum/comments/:id/reaction` | 🔒 | Reaccionar a comentario del foro (puntúa ±1); 404 si está oculto por moderación (HU-MOD-001) |
 | GET | `/api/notifications` (+`/unread-count`, `POST /read-all`) | 🔒 | Centro de notificaciones in-app (`REPLY_POST`, `REACTION`, `CHAT_MESSAGE`, `POKE`, `FRIEND_REQUEST`/`FRIEND_ACCEPTED`, foro, moderación) |
 | GET | `/api/profile/me` | 🔒 | Perfil propio, con sus métodos de acceso (`identities`) |
-| PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio (incluye `aboutMe`, hasta 1000 caracteres) |
+| PUT | `/api/profile/me` | 🔒 | Actualizar perfil propio (incluye `aboutMe`, hasta 1000 caracteres; cambio de handle sujeto a enfriamiento de 180 días) |
+| GET | `/api/profile/check-handle` | 🔒 | Validar disponibilidad y formato en tiempo real de un handle propuesto (`?handle=`), respetando palabras reservadas y detectando si es el actual |
 | GET | `/api/profile/me/export` | 🔒 | Descargar mis datos (perfil, contenido propio, bloqueos, reportes, mensajes enviados…) |
 | DELETE | `/api/profile/me` | 🔒 | Eliminar (anonimizar) mi cuenta — exige `{ confirm: "mi-handle" }` |
 | GET | `/api/profile/:id` | opcional* | Perfil ajeno por id + `friendStatus` (`none`\|`pending_sent`\|`pending_received`\|`friends`\|`self`). Los cuatro campos configurables se recortan con `camposVisibles()` según la relación de quien pregunta. 404 si hay bloqueo de por medio |
@@ -830,7 +837,7 @@ Cambiar de Feed a Chat —la acción más frecuente del producto— costaba esti
 
 **Fase 3 — Alcance**
 - Docker, y **descongelar la app móvil** si aparece una razón para tenerla: la web ya es responsiva, así que una app nativa tiene que justificarse por lo que la web no da (push, ubicación en segundo plano, compartir desde otras apps). El detalle está en [`mobile/README.md`](mobile/README.md).
-- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 706 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
+- Ya hecho en fases anteriores: las pruebas de integración (`npm test`, 849 en verde) corren en CI en cada push y pull request e incluyen la paridad de la cuadrícula entre `backend/src/lib/geogrid.js` y `frontend/src/lib/geo.js`; el almacenamiento de imágenes es intercambiable y solo falta crear el bucket y poner `STORAGE_DRIVER=supabase` el día del despliegue.
 
 ---
 
