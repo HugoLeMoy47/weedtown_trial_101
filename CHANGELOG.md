@@ -12,6 +12,21 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Entre los ciclos 14 y 15 — chat, handle, mes patrio y etiquetas PE420 (2026-09-11 → 2026-10-16)
+
+Entró a `main` en paralelo a la rama del ciclo 15, sin plan ni prompt, y se
+registra aquí a posteriori al cerrar el ciclo 15 (política P-03). Lo que sigue
+sale de los mensajes de commit, no de una auditoría: **no se ha auditado.**
+
+### Añadido
+- Chat: reciprocidad estricta y privacidad de presencia en tiempo real (migración `chat_reciprocidad_y_presencia`).
+- Cambio de handle con cooldown de 180 días (máximo 2 al año; el primer cambio de una cuenta nueva es libre), `GET /api/profile/check-handle` y validación en vivo en el perfil (migración `handle_cooldown_politica`).
+- Temática visual del mes patrio con toggle manual.
+- Estudio de etiquetado artesanal PE420 en `etkt420.weedtown.social` y `/etiquetas`, y ficha Open Graph de 1200×630 desde el Worker (`run_worker_first`).
+
+### Corregido
+- Gate de `npm audit` en rojo por avisos nuevos (axios, undici, sharp, `proxy-addr` crítica en backend, entre otros): `npm audit fix` en ambos lockfiles. El backend audita solo producción (`--omit=dev`) porque `braces`, vía `nodemon`, no tiene versión corregida.
+
 ## Ciclo 15 — Reparación del ciclo 14 y guardia de proceso (2026-09-03)
 
 ### Corregido
