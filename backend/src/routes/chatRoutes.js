@@ -8,11 +8,14 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireNotSuspended, estaEstablecida } = require('../middlewares/requireAuth');
 const { emitToUser } = require('../lib/chatSocket');
 const { blockedWith, isBlockedBetween } = require('../lib/blocks');
+const { redDe, enumerablePara } = require('../lib/red');
 const { crearNotificacion } = require('../lib/notifications');
 
 const MAX_MESSAGE_LENGTH = 1000;
 const MESSAGES_PAGE_SIZE = 50;
 
+// Solo identidad: lo que sale en una búsqueda de personas (ciclo 17, B-1).
+const identidadSelect = { id: true, name: true, displayName: true, avatar: true, handle: true };
 const participantSelect = {
   id: true, name: true, displayName: true, avatar: true, handle: true,
   confirmacionesLectura: true, mostrarEnLinea: true
@@ -76,29 +79,42 @@ async function findChatForUser(chatId, userId) {
 
 // GET /api/chat/users?q= — buscar con quién conversar (datos públicos, sin PII)
 //
-// HALLAZGO 16B · B-1 (P2, SIN CORREGIR en el 16 por regla del barrido): esta
-// ruta enumera a toda la plataforma. No acota a la red ni respeta
-// `perfilPublico` (la invariante de profileRoutes.js), no excluye cuentas
-// borradas ni suspendidas, y `participantSelect` entrega además
-// `confirmacionesLectura` y `mostrarEnLinea` de desconocidos. Es el mismo
-// defecto que el 15B cerró en `mention-suggestions`. Corrección propuesta:
-// reutilizar ese universo (círculo + `perfilPublico`) y un select de solo
-// identidad.
+// B-1 (hallazgo 16B, corregido en el 17): esta ruta enumeraba a toda la
+// plataforma. Ahora rige la invariante de profileRoutes.js:
+//   · ENUMERABLE por búsqueda parcial o por nombre: solo tu red (amigos y
+//     amigos de amigos) o quien activó `perfilPublico`.
+//   · DIRECCIONABLE por handle EXACTO: el handle es la credencial, así que
+//     «agregar a alguien por su handle» (Friends.jsx) sigue funcionando para
+//     una cuenta cerrada. El handle completo, no un prefijo.
+// Fuera: bloqueados, borradas y suspendidas. Y solo identidad: antes el select
+// compartido entregaba `confirmacionesLectura` y `mostrarEnLinea` ajenos.
 router.get('/users', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
   try {
     const hidden = await blockedWith(req.user.id);
+    const { circuloIds } = await redDe(req.user.id);
+    // Handle exacto: mismo criterio que `/@handle` (normalizado, sin la arroba).
+    // La arroba inicial no es parte del nombre ni del handle: se quita para ambos.
+    const qLimpia = q.replace(/^@/, '');
+    const handleExacto = qLimpia.toLowerCase();
     const users = await prisma.user.findMany({
       where: {
-        id: { notIn: [req.user.id, ...hidden] },
-        OR: [
-          { name: { contains: q, mode: 'insensitive' } },
-          { displayName: { contains: q, mode: 'insensitive' } },
-          { handle: { contains: q, mode: 'insensitive' } }
+        AND: [
+          { id: { notIn: [req.user.id, ...hidden] } },
+          { deletedAt: null },
+          { OR: [{ suspendedUntil: null }, { suspendedUntil: { lte: new Date() } }] },
+          { OR: [{ handle: handleExacto }, enumerablePara(circuloIds)] },
+          {
+            OR: [
+              { name: { contains: qLimpia, mode: 'insensitive' } },
+              { displayName: { contains: qLimpia, mode: 'insensitive' } },
+              { handle: { contains: qLimpia, mode: 'insensitive' } }
+            ]
+          }
         ]
       },
-      select: participantSelect,
+      select: identidadSelect,
       take: 10
     });
     res.json({ users });
@@ -153,15 +169,26 @@ router.get('/conversations', requireAuth, async (req, res) => {
 });
 
 // POST /api/chat/conversations { userId } — abrir (o recuperar) la conversación 1 a 1 con alguien
-// HALLAZGO 16B · B-2 (P3): el `findUnique` por id no excluye cuentas borradas
-// ni suspendidas, y 404-vs-200 deja sondear ids secuenciales. Mismo origen que
-// B-3 (profileRoutes.js, `/:id`). Sin corregir en el 16.
+// B-2 (hallazgo 16B, corregido en el 17 en lo que tenía arreglo limpio): una
+// cuenta borrada o suspendida no existe para efectos del chat, igual que una
+// bloqueada. RESIDUAL ACEPTADO: 404-vs-200 sigue sondeando ids secuenciales
+// (y abre un chat como efecto). Cerrarlo exige que el chat se abra por handle,
+// porque el botón de chat del perfil por handle (direccionable) llega aquí por
+// id; es ruidoso —cada sondeo crea una conversación visible al otro lado— y
+// queda gateado por la cuarentena de altas. Decisión del PO pendiente.
 router.post('/conversations', requireAuth, requireNotSuspended, async (req, res) => {
   const otherId = Number(req.body.userId);
   if (!otherId) return res.status(400).json({ error: 'userId requerido' });
   if (otherId === req.user.id) return res.status(400).json({ error: 'No puedes abrir un chat contigo' });
   try {
-    const other = await prisma.user.findUnique({ where: { id: otherId }, select: { id: true } });
+    const other = await prisma.user.findFirst({
+      where: {
+        id: otherId,
+        deletedAt: null,
+        OR: [{ suspendedUntil: null }, { suspendedUntil: { lte: new Date() } }]
+      },
+      select: { id: true }
+    });
     if (!other) return res.status(404).json({ error: 'Usuario no encontrado' });
     // Con un bloqueo de por medio la persona no existe para efectos del chat:
     // misma respuesta que un id inexistente, para no delatar el bloqueo.

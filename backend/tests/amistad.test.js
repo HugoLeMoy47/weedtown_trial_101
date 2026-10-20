@@ -148,12 +148,14 @@ module.exports = async function run() {
     r = await call('GET', `/api/profile/${fer.id}`);
     check('sin sesión el perfil no se resuelve → 401', r.status === 401, `(fue ${r.status})`);
     const extrano = await mkUser('extrano');
-    r = await call('GET', `/api/profile/${fer.id}`, { tok: token(extrano.id) });
+    // Por HANDLE (direccionable): por id, una desconocida con perfil cerrado ya
+    // no resuelve desde el ciclo 17 (B-3); eso lo prueba enumerabilidadId.test.js.
+    r = await call('GET', `/api/profile/handle/${fer.handle}`, { tok: token(extrano.id) });
     check('con sesión y sin amistad: friendStatus "none" y aboutMe null', r.data.friendStatus === 'none' && r.data.aboutMe === null, `(fue ${r.data.friendStatus}/${r.data.aboutMe})`);
 
     const gus = await mkUser('gus');
     const tGus = token(gus.id);
-    r = await call('GET', `/api/profile/${fer.id}`, { tok: tGus });
+    r = await call('GET', `/api/profile/handle/${fer.handle}`, { tok: tGus });
     check('un desconocido ve friendStatus "none" y aboutMe null', r.data.friendStatus === 'none' && r.data.aboutMe === null);
 
     r = await call('POST', `/api/friends/request/${fer.id}`, { tok: tGus });

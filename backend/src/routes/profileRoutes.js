@@ -10,7 +10,8 @@ const prisma = require('../lib/prisma');
 // públicos.
 const { requireAuth, optionalAuth } = require('../middlewares/requireAuth');
 const { isBlockedBetween, blockedWith } = require('../lib/blocks');
-const { friendStatusBetween, friendIds } = require('../lib/friends');
+const { friendStatusBetween } = require('../lib/friends');
+const { redDe, enumerablePara } = require('../lib/red');
 const { camposVisibles, CAMPOS, esVisibilidadValida } = require('../lib/visibilidadPerfil');
 const { cubetaInvitaciones } = require('../lib/invitaciones');
 const { armarFichaPerfil, armarFichaPerfilGenerica } = require('../lib/preview');
@@ -369,7 +370,7 @@ function noAutorizado(res) {
   return res.status(401).json({ error: 'No autenticado' });
 }
 
-async function responderPerfil(req, res, where) {
+async function responderPerfil(req, res, where, { porId = false } = {}) {
   try {
     const user = await prisma.user.findUnique({ where, select: perfilConVisibilidadSelect });
     const viewerId = req.user?.id;
@@ -382,6 +383,38 @@ async function responderPerfil(req, res, where) {
       if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
       if (await isBlockedBetween(viewerId, user.id)) {
         return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+      // Ciclo 17 (B-3): por ID rige la ENUMERABILIDAD, no la direccionabilidad.
+      // Los ids son secuenciales, así que recorrerlos entregaba handle, nombre
+      // y avatar de toda la plataforma. Un id no es una credencial; un handle
+      // sí. Se resuelve por id solo si la persona ya es visible por otra vía:
+      // tu red, `perfilPublico`, o un posteo PÚBLICO suyo (su identidad ya está
+      // en el feed y en `/p/:id` para cualquiera, y el CTA de invitación bajo
+      // ese posteo manda a `/perfil/:id`: tiene que seguir llegando). Fuera de
+      // eso responde igual que «no existe». Los enlaces compartibles son por
+      // handle (`/@handle`).
+      if (porId && user.id !== viewerId && !user.perfilPublico) {
+        const { circuloIds } = await redDe(viewerId);
+        // Una solicitud pendiente, en cualquier dirección, es una relación: la
+        // identidad ya está en la bandeja de quien la recibió o la mandó.
+        const visiblePorOtraVia = circuloIds.has(user.id)
+          || Boolean(await prisma.friendRequest.findFirst({
+            where: {
+              status: 'PENDING',
+              OR: [
+                { requesterId: viewerId, addresseeId: user.id },
+                { requesterId: user.id, addresseeId: viewerId }
+              ]
+            },
+            select: { id: true }
+          }))
+          || Boolean(await prisma.post.findFirst({
+            where: { authorId: user.id, visibility: 'PUBLIC', hiddenAt: null },
+            select: { id: true }
+          }));
+        if (!visiblePorOtraVia) {
+          return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
       }
     }
 
@@ -548,31 +581,9 @@ router.get('/mention-suggestions', requireAuth, async (req, res) => {
   }
 
   try {
-    const amigosIds = await friendIds(req.user.id);
+    // El círculo (con su nota «DELIBERADO» sobre el segundo grado) se calcula en red.js.
+    const { amigosIds, circuloIds } = await redDe(req.user.id);
     const amigosSet = new Set(amigosIds);
-
-    // Red de segundo grado en dos pasos (no una consulta recursiva): amigos
-    // de mis amigos. Se entrega como IDs sueltos porque aquí solo hace falta
-    // saber "pertenece al círculo", no de quién es amigo cada quién.
-    const segundoGrado = amigosIds.length
-      ? await prisma.friendRequest.findMany({
-          where: {
-            status: 'ACCEPTED',
-            OR: [{ requesterId: { in: amigosIds } }, { addresseeId: { in: amigosIds } }]
-          },
-          select: { requesterId: true, addresseeId: true }
-        })
-      : [];
-    // DELIBERADO (decisión del PO, 2026-09-03; ciclo 16A): un amigo-de-amigo
-    // con `perfilPublico: false` SÍ aparece aquí. El círculo es la red de quien
-    // busca, no el interruptor de quien es buscado. No es un olvido: no le
-    // agregues el filtro de `perfilPublico` al círculo.
-    const circuloIds = new Set(amigosIds);
-    for (const fila of segundoGrado) {
-      circuloIds.add(fila.requesterId);
-      circuloIds.add(fila.addresseeId);
-    }
-    circuloIds.delete(req.user.id);
 
     const bloqueados = await blockedWith(req.user.id);
     const ignorarIds = new Set([req.user.id, ...bloqueados]);
@@ -591,12 +602,7 @@ router.get('/mention-suggestions', requireAuth, async (req, res) => {
           // El filtro de autorización va en el WHERE, no después del
           // findMany: filtrar en JS tras el `take` mutila la página en vez
           // de acotarla, y el conteo real dependería de a quién bloqueaste.
-          {
-            OR: [
-              { id: { in: Array.from(circuloIds) } },
-              { perfilPublico: true }
-            ]
-          },
+          enumerablePara(circuloIds),
           {
             OR: [
               { handle: { startsWith: q, mode: 'insensitive' } },
@@ -640,15 +646,13 @@ router.get('/mention-suggestions', requireAuth, async (req, res) => {
   }
 });
 
-// HALLAZGO 16B · B-3 (P2, SIN CORREGIR en el 16): por id, esta ruta responde a
-// cualquier sesión y los ids son secuenciales, así que recorrerlos entrega
-// handle, nombre y avatar de TODA la plataforma — salta por completo la
-// distinción de arriba (el id no es una credencial; el handle sí). Antes de
-// endurecerla hay que ver quién la usa: el frontend enlaza perfiles por id.
+// B-3 (hallazgo 16B, corregido en el 17): por id rige la ENUMERABILIDAD —red
+// o `perfilPublico`— y no la direccionabilidad de arriba: el id no es una
+// credencial (es secuencial), el handle sí. Ver `responderPerfil`.
 router.get('/:id', optionalAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID requerido' });
-  return responderPerfil(req, res, { id });
+  return responderPerfil(req, res, { id }, { porId: true });
 });
 
 module.exports = router;

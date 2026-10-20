@@ -12,6 +12,17 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 17 — Cierre de la enumerabilidad: búsqueda de personas y perfil por id (2026-10-20)
+
+### Corregido
+- **P2 (B-1):** `GET /api/chat/users` enumeraba toda la plataforma (handle, nombre y avatar), incluía borradas y suspendidas, y entregaba `confirmacionesLectura` y `mostrarEnLinea` de desconocidos. Ahora la búsqueda parcial o por nombre se acota a tu red y a quien activó `perfilPublico`; el **handle exacto** sigue encontrando a cualquiera (es la credencial, y así sigue funcionando agregar a alguien por su handle); solo devuelve identidad.
+- **P2 (B-3):** `GET /api/profile/:id` entregaba la identidad de cualquiera recorriendo ids secuenciales. Por id ahora solo resuelve si la persona ya es visible por otra vía: tu red, `perfilPublico`, o un posteo público suyo (para que el CTA de invitación bajo un posteo siga llegando). Fuera de eso responde igual que «no existe». Por handle no cambia nada.
+- **P3 (B-2):** `POST /api/chat/conversations` ya no abre chat con cuentas borradas ni suspendidas.
+
+### Cambiado
+- El cálculo de la red (amigos y amigos de amigos) sale de `mention-suggestions` a `backend/src/lib/red.js`, compartido por las tres superficies.
+- Placeholder de la búsqueda en Amigos: «Busca en tu red, o escribe un handle exacto…».
+
 ## Ciclo 16 — Enumerabilidad y auditoría del bloque entre ciclos (2026-10-20)
 
 ### Corregido

@@ -125,7 +125,7 @@ const Friends = () => {
         <TextField
           fullWidth
           size="small"
-          placeholder="Buscar personas por nombre o handle…"
+          placeholder="Busca en tu red, o escribe un handle exacto…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           inputProps={{ 'aria-label': 'Buscar personas' }}
