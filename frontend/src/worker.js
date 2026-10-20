@@ -59,11 +59,11 @@ const RUTA_POST = /^\/p\/(\d+)\/?$/;
 // bajo /forum/ viven DOS rutas del SPA, no una (ver App.jsx):
 //
 //   /forum/:slug            → el subforo        ← esta ficha
-//   /forum/:slug/post/:id   → un hilo suelto    ← NO, es otro ciclo
+//   /forum/:slug/post/:id   → un hilo suelto    ← su propia ficha desde el ciclo 18
 //
 // `[^/]+` (no `.+`) es lo único que separa una de la otra: prohíbe la barra
 // dentro del slug, así que `/forum/cultivo/post/42` no puede colarse por aquí
-// y sigue de largo al SPA como siempre. Con `.+` capturaría "cultivo/post/42"
+// y llega a RUTA_HILO, que es donde debe. Con `.+` capturaría "cultivo/post/42"
 // como si fuera un slug, le pediría al backend una ficha que no existe y
 // serviría la genérica — o sea, ROMPERÍA las tarjetas de los hilos en vez de
 // dejarlas intactas, y sin ningún error visible. Hay una prueba por cada uno
@@ -72,6 +72,12 @@ const RUTA_POST = /^\/p\/(\d+)\/?$/;
 // `/forum` a secas (el directorio) tampoco entra: el patrón exige un segmento
 // no vacío después de la barra.
 const RUTA_SUBFORO = /^\/forum\/([^/]+)\/?$/;
+
+// Ciclo 18. El id es numérico y acotado a 9 dígitos (un Int de Postgres cabe
+// en 10): sin tope, `/forum/x/post/<lo-que-sea>` sería una forma de llenar la
+// caché del borde con claves inventadas, una por cada número que alguien
+// quiera probar. El `$` impide que una ruta más profunda se cuele.
+const RUTA_HILO = /^\/forum\/([^/]+)\/post\/(\d{1,9})\/?$/;
 
 // Ciclo 11B. Misma disciplina que arriba: el formato del handle es cerrado
 // (letra o número, luego letras, números o guion bajo, 3–20) y el `$` impide
@@ -162,6 +168,59 @@ function recursoPost(id) {
 // `%2520`). Express lo decodifica del otro lado al leer `req.params.slug`.
 function recursoSubforo(slug) {
   return { ruta: `/forum/${slug}`, api: `/api/forum/subforums/${slug}/preview`, tipoOg: 'website' };
+}
+
+// Ciclo 18 — LA FICHA DE UN HILO NO LLEVA NADA DEL HILO.
+//
+// El foro es solo para quien tiene sesión: `GET /api/forum/posts/:id` exige
+// `requireAuth`. Una ficha de Open Graph la lee cualquiera, sin cuenta, y la
+// guardan WhatsApp y X por días. Si llevara el título o un extracto del hilo,
+// esta función sería la puerta pública del foro cerrado. Por eso la ficha de un
+// hilo es la de SU SUBFORO —texto institucional que el directorio abierto ya
+// muestra— con un titular que dice «conversación en …», y nada más: ni título,
+// ni extracto, ni autoría, ni conteos, ni imagen del hilo.
+//
+// Consecuencia que es un diseño y no un descuido: el Worker NO le pide nada al
+// hilo. `api` es el endpoint del SUBFORO, el mismo de la ficha de arriba. Así
+// el id del hilo ni siquiera viaja al backend, y la tarjeta es idéntica exista
+// o no ese hilo, esté oculto por moderación o no — esta ruta no puede ser un
+// verificador de ids. Un subforo archivado o inexistente devuelve 404 y cae a
+// la ficha genérica, igual que su propia ficha.
+//
+// La clave de caché sigue siendo por hilo: `og:url` va dentro del HTML
+// cacheado, y compartir una entrada entre hilos le pondría a uno la URL de
+// otro. El tope de 9 dígitos de RUTA_HILO acota esa cardinalidad.
+//
+// `indexableSinFicha: false`: es contenido tras login, que no tiene por qué
+// aparecer en un buscador.
+//
+// DECISIÓN DEL PO PENDIENTE: poner el TÍTULO del hilo en la tarjeta la haría
+// mucho más compartible, a costa de publicar títulos del foro cerrado. Ver
+// la bitácora del ciclo 18.
+function recursoHilo(slug, id) {
+  return {
+    ruta: `/forum/${slug}/post/${id}`,
+    api: `/api/forum/subforums/${slug}/preview`,
+    tipoOg: 'article',
+    indexableSinFicha: false,
+    adaptarFicha: fichaDeHilo
+  };
+}
+
+/**
+ * De la ficha del subforo a la del hilo. Solo toma el nombre del subforo; la
+ * descripción es fija a propósito (no arrastra el texto del directorio como si
+ * fuera del hilo).
+ */
+function fichaDeHilo(fichaSubforo) {
+  const subforo = fichaSubforo?.titulo;
+  if (!subforo) return fichaSubforo;
+  return {
+    ...fichaSubforo,
+    titulo: `Conversación en ${subforo}`,
+    descripcion: `Una conversación de la comunidad en ${subforo}. Entra a WeedTown para leerla y participar.`,
+    indexable: false
+  };
 }
 
 // Ciclo 11B — LA CACHÉ DE UN PERFIL NO PUEDE DURAR LO MISMO.
@@ -394,6 +453,13 @@ async function armarHtmlConMeta(env, url, datos) {
 // `recurso` desde el 11B: cada tipo puede traer su propio TTL de borde. Sin
 // parámetro se usa el de siempre (24h), que es lo que siguen queriendo posteos
 // y subforos.
+// Solo para fichas REALES del backend: la genérica (backend caído, recurso
+// inexistente) no se adapta, o un hilo sin subforo diría «Conversación en
+// WeedTown».
+function fichaDelRecurso(ficha, recurso) {
+  return recurso.adaptarFicha ? recurso.adaptarFicha(ficha) : ficha;
+}
+
 function prepararParaEdge(respuesta, recurso) {
   const headers = new Headers(respuesta.headers);
   headers.set('Cache-Control', recurso?.edgeCacheControl || EDGE_CACHE_CONTROL);
@@ -487,7 +553,7 @@ async function servirFicha(recurso, env, ctx, url) {
     return armarHtmlConMeta(env, url, datosMeta(fichaGenerica(url), url, recurso));
   }
 
-  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, recurso));
+  const base = await armarHtmlConMeta(env, url, datosMeta(fichaDelRecurso(resultado.ficha, recurso), url, recurso));
   ctx.waitUntil(cache.put(cacheKey, prepararParaEdge(base, recurso)));
   return prepararParaCliente(base);
 }
@@ -500,12 +566,12 @@ async function refrescarEnSegundoPlano(recurso, env, cache, cacheKey, url) {
   }
   if (resultado.estado === 'fallo') return; // sigue fallando: se deja la rancia como está
 
-  const base = await armarHtmlConMeta(env, url, datosMeta(resultado.ficha, url, recurso));
+  const base = await armarHtmlConMeta(env, url, datosMeta(fichaDelRecurso(resultado.ficha, recurso), url, recurso));
   await cache.put(cacheKey, prepararParaEdge(base, recurso));
 }
 
 // Decide qué recurso —si alguno— corresponde a esta petición. Devolver `null`
-// es el caso NORMAL y mayoritario: /feed, /login, /forum, /forum/x/post/42,
+// es el caso NORMAL y mayoritario: /feed, /login, /forum, /forum/x/post/abc,
 // cualquier archivo estático.
 function recursoDeLaPeticion(request, url) {
   if (request.method !== 'GET') return null;
@@ -520,6 +586,9 @@ function recursoDeLaPeticion(request, url) {
 
   const post = RUTA_POST.exec(url.pathname);
   if (post) return recursoPost(post[1]);
+
+  const hilo = RUTA_HILO.exec(url.pathname);
+  if (hilo) return recursoHilo(hilo[1], hilo[2]);
 
   const subforo = RUTA_SUBFORO.exec(url.pathname);
   if (subforo) return recursoSubforo(subforo[1]);
@@ -575,6 +644,8 @@ export {
   recursoDeLaPeticion,
   recursoPost,
   recursoSubforo,
+  recursoHilo,
+  fichaDeHilo,
   recursoPerfil,
   recursoEtiquetas
 };

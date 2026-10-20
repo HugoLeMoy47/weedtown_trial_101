@@ -12,6 +12,16 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 18 — Ficha Open Graph de hilos del foro (2026-10-20)
+
+### Añadido
+- Los hilos (`/forum/:slug/post/:id`) tienen ficha al pegarse en WhatsApp, Telegram, X o Facebook. **No lleva nada del hilo:** el foro exige sesión, así que la tarjeta dice «Conversación en <subforo>» con el texto institucional del subforo. El Worker le pide la ficha al **subforo**, de modo que el id del hilo nunca viaja al backend y la tarjeta es idéntica exista o no ese hilo (no sirve para verificar ids). Lleva `noindex`. Sin cambios de backend, API ni migraciones.
+- El id del hilo se acota a 9 dígitos en la regex del Worker, para que no se pueda llenar la caché del borde con claves inventadas.
+- Subforo y posteo no cambian.
+
+### Cambiado
+- La documentación decía que los hilos «no tienen ficha, y es una decisión». Se conserva la decisión de fondo (su título y contenido no salen) y se corrige lo que dice: ahora hay ficha, vacía de hilo.
+
 ## Ciclo 17 — Cierre de la enumerabilidad: búsqueda de personas y perfil por id (2026-10-20)
 
 ### Corregido

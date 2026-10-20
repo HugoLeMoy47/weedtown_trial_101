@@ -19,6 +19,8 @@ import {
   recursoDeLaPeticion,
   recursoPost,
   recursoSubforo,
+  recursoHilo,
+  fichaDeHilo,
   recursoPerfil,
   fichaEtiquetas,
   recursoEtiquetas
@@ -136,8 +138,9 @@ describe('datosMeta', () => {
 
 // ---------------------------------------------------------------------------
 // Ciclo 9A: la trampa de este ciclo. `/forum/:slug` y `/forum/:slug/post/:id`
-// son DOS rutas del SPA (App.jsx) y solo la primera lleva ficha. Estas pruebas
-// son las que fallan si alguien afloja RUTA_SUBFORO a `.+`.
+// son DOS rutas del SPA (App.jsx). Hasta el 17 solo la primera llevaba ficha;
+// desde el 18 cada una tiene la suya. Estas pruebas son las que fallan si
+// alguien afloja RUTA_SUBFORO a `.+` (el subforo se tragaría al hilo).
 describe('recursoDeLaPeticion — qué rutas se interceptan y cuáles NO', () => {
   test('/forum/:slug sí se intercepta', () => {
     expect(get('/forum/cultivo-casero')).toEqual({
@@ -151,9 +154,23 @@ describe('recursoDeLaPeticion — qué rutas se interceptan y cuáles NO', () =>
     expect(get('/forum/cultivo-casero/').ruta).toBe('/forum/cultivo-casero');
   });
 
-  test('LA TRAMPA: /forum/:slug/post/:id NO se intercepta — es otro ciclo', () => {
-    expect(get('/forum/cultivo-casero/post/42')).toBeNull();
-    expect(get('/forum/cultivo-casero/post/42/')).toBeNull();
+  test('LA TRAMPA: /forum/:slug/post/:id es un HILO, no un subforo de slug "cultivo-casero/post/42"', () => {
+    const r = get('/forum/cultivo-casero/post/42');
+    expect(r.ruta).toBe('/forum/cultivo-casero/post/42');
+    expect(r.api).toBe('/api/forum/subforums/cultivo-casero/preview');
+    expect(get('/forum/cultivo-casero/post/42/').ruta).toBe('/forum/cultivo-casero/post/42');
+  });
+
+  test('lo que NO es exactamente un hilo pasa de largo', () => {
+    for (const ruta of [
+      '/forum/cultivo-casero/post/abc',
+      '/forum/cultivo-casero/post/',
+      '/forum/cultivo-casero/post/42/comentarios',
+      '/forum/cultivo-casero/post/1234567890', // 10 dígitos: tope contra claves de caché inventadas
+      '/forum/cultivo-casero/otra/42'
+    ]) {
+      expect(get(ruta)).toBeNull();
+    }
   });
 
   test('el directorio /forum tampoco (no hay slug que pedirle al backend)', () => {
@@ -336,3 +353,72 @@ describe('Estudio de Etiquetado PE420 (/etiquetas y etkt420.weedtown.social)', (
 });
 
 
+
+// ---------------------------------------------------------------------------
+// Ciclo 18: la ficha de un hilo. El foro es solo para quien tiene sesión, así
+// que la tarjeta pública NO puede llevar nada del hilo.
+describe('Ficha de un hilo del foro (ciclo 18)', () => {
+  const subforo = {
+    titulo: 'Cultivo casero',
+    descripcion: 'Texto institucional del subforo',
+    imagen: 'https://weedtown.social/campaign/concepto-01-v1.jpg',
+    imagenAlt: 'alt',
+    tieneImagen: false
+  };
+
+  test('el Worker le pide la ficha al SUBFORO: el id del hilo nunca viaja al backend', () => {
+    const r = recursoHilo('cultivo-casero', '42');
+    expect(r.api).toBe('/api/forum/subforums/cultivo-casero/preview');
+    expect(r.api).not.toContain('42');
+  });
+
+  test('el titular es «Conversación en <subforo>» y la descripción es fija', () => {
+    const f = fichaDeHilo(subforo);
+    expect(f.titulo).toBe('Conversación en Cultivo casero');
+    expect(f.descripcion).toContain('Cultivo casero');
+    expect(f.descripcion).not.toContain('Texto institucional');
+    expect(f.imagen).toBe(subforo.imagen);
+  });
+
+  test('es idéntica para cualquier id: no es un verificador de hilos', () => {
+    const a = fichaDeHilo(subforo);
+    const b = fichaDeHilo(subforo);
+    expect(a).toEqual(b);
+    expect(JSON.stringify(recursoHilo('x', '1').api)).toBe(JSON.stringify(recursoHilo('x', '99999').api));
+  });
+
+  test('og:url es la del hilo, limpia de querystring', () => {
+    const u = new URL('https://weedtown.social/forum/cultivo-casero/post/42?utm_source=whatsapp');
+    const datos = datosMeta(fichaDeHilo(subforo), u, recursoHilo('cultivo-casero', '42'));
+    expect(datos.url).toBe('https://weedtown.social/forum/cultivo-casero/post/42');
+    expect(datos.titulo).toBe('Conversación en Cultivo casero');
+  });
+
+  test('es contenido tras login: lleva noindex, con ficha y sin ella', () => {
+    const u = new URL('https://weedtown.social/forum/cultivo-casero/post/42');
+    const hilo = recursoHilo('cultivo-casero', '42');
+    expect(construirMetaTags(datosMeta(fichaDeHilo(subforo), u, hilo))).toContain('noindex');
+    expect(construirMetaTags(datosMeta(fichaGenerica(u), u, hilo))).toContain('noindex');
+  });
+
+  test('sin ficha del subforo (404 o backend caído) no inventa un titular', () => {
+    expect(fichaDeHilo(null)).toBeNull();
+    expect(fichaDeHilo({})).toEqual({});
+  });
+
+  test('un nombre de subforo con HTML sale inerte en la etiqueta', () => {
+    const u = new URL('https://weedtown.social/forum/x/post/1');
+    const f = fichaDeHilo({ ...subforo, titulo: '"><script>alert(1)</script>' });
+    const html = construirMetaTags(datosMeta(f, u, recursoHilo('x', '1')));
+    expect(html).not.toContain('<script>');
+  });
+
+  test('la ficha del subforo y la del posteo no cambian', () => {
+    expect(get('/forum/cultivo-casero')).toEqual({
+      ruta: '/forum/cultivo-casero',
+      api: '/api/forum/subforums/cultivo-casero/preview',
+      tipoOg: 'website'
+    });
+    expect(get('/p/42').tipoOg).toBe('article');
+  });
+});
