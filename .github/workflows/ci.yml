@@ -60,7 +60,7 @@ jobs:
       # contra el merge-base con la rama base o contra el "before" del push, y
       # ninguno de los dos existe en un checkout superficial. Sin esto la
       # prueba se omitiría siempre en CI en vez de proteger algo.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -145,7 +145,7 @@ jobs:
       # integración, y todas desde la misma IP.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -191,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
