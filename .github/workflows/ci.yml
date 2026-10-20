@@ -180,7 +180,7 @@ jobs:
       # Sin esto, un fallo en CI es un mensaje sin nada que mirar.
       - name: Guardar evidencia si algo falló
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-evidencia
           path: e2e/test-results/
