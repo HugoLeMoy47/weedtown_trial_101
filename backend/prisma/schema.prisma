@@ -42,6 +42,9 @@ model User {
   // Fecha del último cambio de handle (política: máx 2 veces al año / cooldown de 6 meses).
   // null = nunca cambiado manualmente (primer cambio libre).
   handleUpdatedAt  DateTime?
+  // Último DÍA (sin hora) con actividad autenticada. Se SOBRESCRIBE: no hay historia.
+  // Ver src/lib/actividad.js y la cláusula del ciclo 19 en los Términos.
+  ultimaActividadDia DateTime? @db.Date
   handlesReservados HandleReservado[]
   displayName      String?
   email            String?      @unique
@@ -796,4 +799,12 @@ model HandleReservado {
 
   @@index([userId])
   @@index([hastaAt])
+}
+
+// Personas activas por día (ciclo 19A). Un número por día y nada más: sin
+// identidades, igual que ConteoAtribucion. Lo sube `src/lib/actividad.js`
+// exactamente una vez por persona y día. Lo lee el Panóptico.
+model ConteoActividad {
+  dia    DateTime @id @db.Date
+  conteo Int      @default(0)
 }

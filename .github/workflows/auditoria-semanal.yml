@@ -1,0 +1,56 @@
+name: Auditoría semanal de dependencias
+
+# Ciclo 19C. El gate de `npm audit` de ci.yml solo corre cuando alguien empuja
+# código, así que un aviso NUEVO sobre una dependencia que ya teníamos se
+# descubre en el peor momento: con un push en la mano. Pasó el 2026-10-19 (axios,
+# undici, proxy-addr, engine.io…): el push de un cambio del Worker salió en rojo
+# por avisos que nada tenían que ver con él. Este trabajo corre solo, cada
+# lunes, y avisa antes.
+#
+# Si falla, GitHub manda correo al dueño del repositorio (notificaciones por
+# defecto de «Actions»). No hace falta ningún secreto ni integración.
+on:
+  schedule:
+    # Lunes 14:00 UTC (08:00 en México).
+    - cron: '0 14 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auditar:
+    name: Auditoría · ${{ matrix.proyecto }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Un proyecto en rojo no oculta al otro.
+      fail-fast: false
+      matrix:
+        proyecto: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.proyecto }}/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: ${{ matrix.proyecto }}
+        run: npm ci
+
+      # La misma regla que ci.yml: altas y críticas. El backend audita solo
+      # lo que se despliega (--omit=dev): `braces`, vía nodemon, no tiene
+      # versión corregida y dejaría esto en rojo para siempre.
+      - name: Auditar (altas y críticas)
+        working-directory: ${{ matrix.proyecto }}
+        run: npm audit --audit-level=high ${{ matrix.proyecto == 'backend' && '--omit=dev' || '' }}
+
+      # Informativo: todo lo que npm conoce, incluido desarrollo. No falla el
+      # trabajo; queda en el registro para saber qué se está acumulando.
+      - name: Resumen completo (informativo)
+        if: always()
+        continue-on-error: true
+        working-directory: ${{ matrix.proyecto }}
+        run: npm audit || true

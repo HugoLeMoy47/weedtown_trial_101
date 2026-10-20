@@ -1,5 +1,39 @@
+/* global process, URL */
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+// Versión visible (ciclo 19B). Tres datos que se fijan al COMPILAR y viajan en
+// el bundle: el ciclo, el commit y la fecha de build. Nada de esto puede romper
+// el build: cada dato tiene una salida «desconocido» en vez de lanzar.
+//
+// El commit llega de donde haya: Cloudflare Workers Builds lo da como
+// WORKERS_CI_COMMIT_SHA; GitHub Actions como GITHUB_SHA; en local, git. Se
+// muestran 7 caracteres.
+//
+// La versión es el número de ciclo de la última entrada de CHANGELOG.md, NO
+// `package.json`, que dice 1.0.0 desde el inicio y nunca significó nada: aquí
+// el CHANGELOG es lo único que se mantiene al día por exigencia de CI.
+function commitCorto() {
+  const deEntorno = process.env.WORKERS_CI_COMMIT_SHA || process.env.GITHUB_SHA || process.env.CF_PAGES_COMMIT_SHA;
+  if (deEntorno) return deEntorno.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short=7 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'desconocido';
+  } catch {
+    return 'desconocido';
+  }
+}
+
+function cicloDelChangelog() {
+  try {
+    const texto = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    const m = /^## Ciclo (\d+)/m.exec(texto);
+    return m ? m[1] : 'desconocido';
+  } catch {
+    return 'desconocido';
+  }
+}
 
 // Migración de Create React App a Vite (ciclo 12B).
 //
@@ -10,6 +44,14 @@ import react from '@vitejs/plugin-react';
 // soporta.
 export default defineConfig({
   plugins: [react()],
+
+  // Constantes de compilación (ver arriba). `src/lib/version.js` las lee con
+  // `typeof`, así que un entorno que no pase por Vite no falla.
+  define: {
+    __WT_CICLO__: JSON.stringify(cicloDelChangelog()),
+    __WT_COMMIT__: JSON.stringify(commitCorto()),
+    __WT_CONSTRUIDO_EN__: JSON.stringify(new Date().toISOString())
+  },
 
   // `build` y no el `dist` por defecto de Vite. NO es preferencia estética:
   // `wrangler.jsonc` declara `assets.directory: "build"` y `e2e/run.js` sirve

@@ -2,6 +2,7 @@
 // y de autorización por rol (USER / MOD / ADMIN).
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
+const { registrarActividad } = require('../lib/actividad');
 
 function getTokenPayload(req) {
   const header = req.headers.authorization || '';
@@ -29,6 +30,9 @@ async function requireAuth(req, res, next) {
     // este chequeo, esa sesión vieja podría seguir usando la API de por vida.
     if (!user || user.deletedAt) return res.status(401).json({ error: 'Sesión no válida o usuario inexistente' });
     req.user = { id: user.id };
+    // Medición agregada (ciclo 19A): sin await a propósito. Nunca lanza y no
+    // retrasa la petición; ver src/lib/actividad.js.
+    registrarActividad(user.id);
     next();
   } catch (e) {
     console.error('Error al verificar la sesión:', e);

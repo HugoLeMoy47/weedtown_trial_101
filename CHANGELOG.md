@@ -12,6 +12,19 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 19 — Medición agregada de actividad, versión visible y CI/CD barato (2026-10-20)
+
+### Añadido
+- **Personas activas por día** (19A): `User.ultimaActividadDia` (solo una fecha, **se sobrescribe**: no hay historial) y `ConteoActividad` (un número por día, sin identidades), migración `20261020180000_actividad_agregada`. Cualquier petición autenticada cuenta, no solo escribir; una persona suma 1 por día aunque haga mil peticiones o se reinicie el servidor (la garantía vive en el `UPDATE`, no en el mapa en memoria). El día es el de México. Nunca lanza ni retrasa la petición. Aparece en el Panóptico como `actividad.personasActivasPorDia`, solo `ADMIN`. La fecha se exporta con «mis datos» y se borra al eliminar la cuenta. La tabla entra al respaldo (grupo `metricas`).
+- **Versión visible** (19B): el pie muestra `ciclo N · commit · fecha de compilación`; al tocarlo, pide `GET /health` y suma el commit y el arranque del backend. `/health` ahora devuelve `commit` e `iniciadoEn`.
+- **CI/CD** (19C): auditoría semanal de dependencias (`auditoria-semanal.yml`) y Dependabot agrupado por semana, con la serie 6.x de `react-router-dom` fija.
+
+### Cambiado
+- `README.md`: sección «Qué está automatizado y qué vive en los paneles», con lo que el repositorio **no** puede arreglar solo (Cloudflare y Render publican sin esperar al CI).
+
+### Pendiente de decisión del PO
+- Cláusula de los Términos para la fecha de actividad: borrador en `.planeacion/borrador_terminos_ciclo19.md`. **No se ha publicado ningún cambio a los Términos.**
+
 ## Ciclo 18 — Ficha Open Graph de hilos del foro (2026-10-20)
 
 ### Añadido

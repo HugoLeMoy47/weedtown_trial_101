@@ -572,6 +572,22 @@ El job levanta el mismo Postgres 16 efímero, compila el frontend y lo sirve **e
 
 Al fallar, el job sube las trazas y capturas de Playwright como artefacto (7 días). Sin eso, un fallo en CI es un mensaje sin nada que mirar.
 
+#### Qué está automatizado y qué vive en los paneles (ciclo 19)
+
+Publicar es **tres canales distintos**, y solo uno vive en este repositorio:
+
+| Qué | Dónde se configura | Cuándo se dispara |
+|---|---|---|
+| Pruebas (backend, E2E, frontend) | `.github/workflows/ci.yml` — **en el repo** | push a `main`, pull request, a mano |
+| **Auditoría semanal de dependencias** | `.github/workflows/auditoria-semanal.yml` — **en el repo** | lunes 14:00 UTC y a mano. Si falla, GitHub avisa al dueño por correo |
+| **Dependabot** | `.github/dependabot.yml` — **en el repo** | lunes: un PR por proyecto con las actualizaciones menores y parches agrupadas. `react-router-dom` no salta de la serie 6 (postura del ciclo 12D) |
+| Frontend y Worker | **Cloudflare Workers Builds**, panel de Cloudflare | cada push a `main` (y vistas previas de las demás ramas). **No espera al CI** |
+| Backend y migraciones | **Render**, panel de Render (Build Command con `prisma migrate deploy`) | cada push a `main`. **No espera al CI** |
+
+**Lo que el repositorio no puede arreglar solo:** como Cloudflare y Render publican en cuanto llega el push, **un `main` con el CI en rojo ya está en producción**. Dos ajustes de panel lo cierran y son del dueño del proyecto: en Render, *Auto-Deploy → After CI Checks Pass*; y proteger `main` en GitHub exigiendo el CI (con la contrapartida de que obliga a empujar por rama y fusionar tras el verde). Mientras no se hagan, la regla de trabajo es: rama → suite local en verde → *fast-forward* a `main` → mirar el CI.
+
+**Qué versión está publicada.** El pie de página muestra `ciclo N · commit · fecha de compilación` del **frontend**: el ciclo sale de la última entrada de `CHANGELOG.md` y el commit de `WORKERS_CI_COMMIT_SHA` (Cloudflare) o de `git`. Al tocar esa línea se pide `GET /health` y se muestra también el commit del **backend** (`RENDER_GIT_COMMIT`) y cuándo arrancó. El backend no se consulta al cargar la página para no despertar a Render solo por pintar un pie. Dos commits distintos no son un error —un cambio puede tocar un solo lado—; lo que delata un despliegue atorado es que uno de los dos no se mueva tras un push.
+
 El runner de pruebas detecta dónde está corriendo: en local lee `.env.test`, y en CI toma las variables ya inyectadas en el entorno. Los tres guardias se aplican igual en ambos casos.
 
 **Guardia de `CHANGELOG.md` (ciclo 15E).** `backend/tests/changelogAlDia.test.js` truena si hay commits que tocan `backend/src/` o `frontend/src/` desde el último cambio de [`CHANGELOG.md`](CHANGELOG.md) — comparado contra el merge-base con la rama base en un PR, o contra el `before` del push en un push directo. Por eso el job de backend corre con `fetch-depth: 0`: el default (1) no trae ninguno de los dos puntos de comparación. Se salta a propósito con `[skip changelog]` en el mensaje del commit, y eso queda escrito en el historial. Nace del ciclo 14, que entró a `main` sin plan, sin prompt y sin bitácora — `CLAUDE.md` (local, no versionado: ver `.gitignore`) trae la regla completa de las cuatro piezas que todo ciclo cierra.

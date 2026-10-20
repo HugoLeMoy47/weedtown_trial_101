@@ -1,0 +1,48 @@
+# Ciclo 19C. Dependabot abre un pull request por semana con las actualizaciones
+# de cada proyecto, agrupadas para no inundar. Cada PR pasa por el CI como
+# cualquier otro cambio, así que una actualización que rompa algo se ve ANTES de
+# llegar a `main`.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      menores-y-parches:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      menores-y-parches:
+        update-types: [minor, patch]
+    ignore:
+      # Postura, no deuda (ciclo 12D): se queda en la serie 6.x. Un salto a 7
+      # es una decisión de producto, no una actualización automática.
+      - dependency-name: react-router-dom
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    groups:
+      menores-y-parches:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3

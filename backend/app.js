@@ -222,12 +222,19 @@ app.use('/api/auth/email', emailLimiter);
 const prisma = require('./src/lib/prisma');
 const storage = require('./src/lib/storage');
 const mailer = require('./src/lib/mailer');
+// El commit que corre (ciclo 19B): Render lo pone en RENDER_GIT_COMMIT. Junto al
+// del pie del frontend dice, de un vistazo, qué versión de cada lado está
+// publicada. `null` fuera de Render (local, CI): no se inventa uno.
+const COMMIT_BACKEND = (process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || '').slice(0, 7) || null;
+const INICIADO_EN = new Date().toISOString();
 app.get('/health', async (req, res) => {
   const estado = {
     status: 'ok',
     db: 'ok',
     storage: storage.driver,
     mailer: mailer.driver,
+    commit: COMMIT_BACKEND,
+    iniciadoEn: INICIADO_EN,
     uptimeSegundos: Math.round(process.uptime())
   };
   try {

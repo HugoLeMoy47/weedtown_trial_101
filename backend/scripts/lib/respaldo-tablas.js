@@ -47,7 +47,9 @@ const DEPENDE_DE = {
   // Sin dependencias: no apunta a nadie, y ésa es exactamente la propiedad que
   // la hace admisible (ciclo 13A). Un conteo diario de intentos de atribución,
   // sin identidades.
-  ConteoAtribucion: []
+  ConteoAtribucion: [],
+  // Igual que ConteoAtribucion: un número por día, sin identidades (ciclo 19A).
+  ConteoActividad: []
 };
 
 // Orden de exportación = orden de restauración. Las tablas sin llaves foráneas
@@ -81,7 +83,7 @@ const MODELOS = [
   'Chat', 'Message',
   'Report', 'ModerationAction', 'Notification', 'PushSubscription',
   'MarketItem', 'PrivacyAction', 'Media',
-  'ConteoAtribucion'
+  'ConteoAtribucion', 'ConteoActividad'
 ];
 
 // Grupos con nombre, para no tener que acordarse de qué tablas componen una
@@ -96,7 +98,7 @@ const GRUPOS = {
   // Métricas de la red que no cuelgan de ninguna cuenta. Grupo propio para que
   // un recorte de "cuentas" o "feed" no las arrastre sin querer, y para poder
   // pedirlas solas.
-  metricas: ['ConteoAtribucion']
+  metricas: ['ConteoAtribucion', 'ConteoActividad']
 };
 
 /** Resuelve una lista de nombres (tablas y/o grupos) a un Set de tablas reales. */

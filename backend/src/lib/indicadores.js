@@ -14,6 +14,12 @@
 // un dato sobre nadie**: no tiene identidades y su grano más fino es el día,
 // justamente para que no se pueda emparejar un alta con su invitación.
 //
+// LA SEGUNDA EXCEPCIÓN, desde el ciclo 19A: `ConteoActividad`, que suma «personas
+// activas ese día» (cualquier petición autenticada, no solo escrituras). Mismo
+// criterio: un número por día, sin identidades. Lo único que se guarda sobre una
+// persona es `User.ultimaActividadDia`, una fecha que se sobrescribe (ver
+// src/lib/actividad.js).
+//
 // Tres reglas que gobiernan cada función de este archivo:
 //   1. Una consulta agregada por métrica (agrupando en la base), nunca un
 //      ciclo con un conteo por día — ver `diaMx()` y las consultas UNION ALL.
@@ -332,6 +338,17 @@ async function consultaAtribucionPorDia(desdeConsulta) {
   `;
 }
 
+// G-quater. Personas activas por día (ciclo 19A). Misma forma que la de
+// atribución: preagregada, y `dia` ya viene en calendario de México desde la
+// escritura, así que NO se vuelve a truncar.
+async function consultaActividadPorDia(desdeConsulta) {
+  return prisma.$queryRaw`
+    SELECT 'activas' AS sub, "dia" AS dia, "conteo"::int AS valor
+    FROM "ConteoActividad"
+    WHERE "dia" >= ${desdeConsulta}::date
+  `;
+}
+
 // G-ter. ¿Las altas del periodo llenaron su perfil? (ciclo 13B)
 //
 // Sin esto el ciclo no se puede evaluar, y quedarse sin saber si funcionó es
@@ -566,7 +583,7 @@ async function calcularCatalogo(dias) {
   const [
     simples, altasProveedor, feed, reacciones, foro, amistad, reportes,
     instantaneas, subforosVivos, seguidores, concentracion, tiempoRespuesta, reincidencia,
-    atribucion, altasConBio, saludosMutuos
+    atribucion, altasConBio, saludosMutuos, actividadAgregada
   ] = await Promise.all([
     consultaSeriesSimples(v.desdeConsulta),
     consultaAltasPorProveedor(v.desdeConsulta),
@@ -583,7 +600,8 @@ async function calcularCatalogo(dias) {
     consultaReincidencia(v.desdeActual, v.hasta),
     consultaAtribucionPorDia(v.desdeConsulta),
     consultaAltasConBio(v.desdeActual, v.hasta),
-    consultaSaludosMutuos(v.desdeActual, v.hasta)
+    consultaSaludosMutuos(v.desdeActual, v.hasta),
+    consultaActividadPorDia(v.desdeConsulta)
   ]);
 
   const porFuente = (fuente) => simples.filter(f => f.fuente === fuente);
@@ -648,6 +666,9 @@ async function calcularCatalogo(dias) {
       altasConBio
     },
     actividad: {
+      // 19A. Cualquier petición autenticada, no solo escribir. Antes del 19 esta
+      // cifra no existía; los días previos al despliegue salen en 0, no en «sin dato».
+      personasActivasPorDia: conTendencia(actividadAgregada, v),
       postsPorDia: conTendencia(feed.filter(f => f.sub === 'post'), v),
       comentariosPorDia: conTendencia(feed.filter(f => f.sub === 'comment'), v),
       reaccionesPorDiaYTipo: conTendenciaPorSubclave(reacciones, v),
