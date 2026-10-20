@@ -14,6 +14,12 @@ updates:
     groups:
       menores-y-parches:
         update-types: [minor, patch]
+    ignore:
+      # Un salto de versión mayor (Express 5, Prisma 7, React 19, Vitest 5…) es
+      # una decisión y un ciclo propio, no un PR automático. La primera semana
+      # de Dependabot abrió seis de golpe; aquí se dejan fuera a propósito.
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /frontend
@@ -24,10 +30,10 @@ updates:
     groups:
       menores-y-parches:
         update-types: [minor, patch]
+    # `react-router-dom` queda fijo en la serie 6.x (postura, no deuda: ciclo
+    # 12D); lo cubre esta regla de saltos mayores.
     ignore:
-      # Postura, no deuda (ciclo 12D): se queda en la serie 6.x. Un salto a 7
-      # es una decisión de producto, no una actualización automática.
-      - dependency-name: react-router-dom
+      - dependency-name: '*'
         update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
@@ -39,6 +45,9 @@ updates:
     groups:
       menores-y-parches:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
