@@ -1,3 +1,5 @@
+// Auditoría 16B (enumerabilidad): `GET /` solo lista bloqueos PROPIOS — la
+// identidad sale de una relación que la propia persona creó. Sin hallazgo.
 // Bloquear personas (HU-SEG-001).
 // Solo se listan y se deshacen los bloqueos PROPIOS: quien fue bloqueado no tiene
 // forma de consultar ni de revertir nada — ni de enterarse.

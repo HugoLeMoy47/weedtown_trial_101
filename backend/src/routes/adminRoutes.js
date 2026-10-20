@@ -25,6 +25,9 @@ const diccionario = require('../lib/diccionarioDescarte');
 
 // Sesión válida + rol de moderación para TODA la superficie de admin
 router.use(requireAuth, requireRole('MOD', 'ADMIN'));
+// Auditoría 16B (enumerabilidad): la regla existente CUBRE la invariante — todo
+// el router está tras el rol MOD/ADMIN, así que la identidad de terceros es
+// parte del oficio. No requiere otra regla.
 
 const PAGE_SIZE = 20;
 const MAX_NOTA = 500;

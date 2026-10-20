@@ -23,6 +23,7 @@
 const DEPENDE_DE = {
   User: [], MagicLink: [], MastodonApp: [], Hashtag: [], Chat: [],
   Identity: ['User'],
+  HandleReservado: ['User'],
   Passkey: ['Identity'],
   Block: ['User'],
   FriendRequest: ['User'],
@@ -68,7 +69,7 @@ const DEPENDE_DE = {
 // esta segunda propiedad contra el esquema, que es la única fuente que conoce
 // también las relaciones opcionales.
 const MODELOS = [
-  'User', 'Identity', 'Passkey', 'MagicLink', 'MastodonApp',
+  'User', 'Identity', 'HandleReservado', 'Passkey', 'MagicLink', 'MastodonApp',
   'Block', 'FriendRequest',
   'SubForum', 'SubForumFollow',
   'Post', 'Hashtag', 'HashtagOnPost', 'PalabraDescartada',
@@ -86,7 +87,7 @@ const MODELOS = [
 // Grupos con nombre, para no tener que acordarse de qué tablas componen una
 // idea. Son los recortes que de verdad se piden, no una taxonomía completa.
 const GRUPOS = {
-  cuentas: ['User', 'Identity', 'Passkey', 'MagicLink'],
+  cuentas: ['User', 'Identity', 'HandleReservado', 'Passkey', 'MagicLink'],
   feed: ['Post', 'Hashtag', 'HashtagOnPost', 'Comment', 'Reaction', 'Media'],
   foros: ['SubForum', 'SubForumFollow', 'ForumPost', 'ForumComment'],
   social: ['Block', 'FriendRequest', 'Notification', 'PushSubscription'],

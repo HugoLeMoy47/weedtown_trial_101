@@ -88,6 +88,17 @@ module.exports = async function run() {
     r = await call('GET', `/api/profile/handle/${dani.handle}`, { tok: tAna });
     check('y el bloqueo corre para los dos lados', r.status === 404, `(fue ${r.status})`);
 
+    console.log('\n  — Ciclo 16A: DIRECCIONABILIDAD — el handle exacto es la credencial —');
+    // Zoe: cuenta recién creada, perfilPublico en su default (false), sin
+    // relación con nadie. Es el caso de quien comparte su enlace de invitación.
+    const zoe = await mkUser('zoe');
+    r = await call('GET', `/api/profile/handle/${zoe.handle}`, { tok: tCaro });
+    check('con sesión, una desconocida con perfilPublico:false SÍ responde en /@handle', r.status === 200 && r.data?.id === zoe.id, `(fue ${r.status})`);
+    r = await call('GET', `/api/profile/handle/${zoe.handle}`);
+    const rInventado16 = await call('GET', '/api/profile/handle/nadie_con_este_handle_16');
+    check('sin sesión, esa misma cuenta responde igual que un handle inventado (401)',
+      r.status === 401 && r.status === rInventado16.status && JSON.stringify(r.data) === JSON.stringify(rInventado16.data));
+
     console.log('\n  — La paginación devuelve la forma de siempre —');
     r = await call('GET', `/api/posts/de/${ana.handle}`, { tok: tCaro });
     check('trae page, totalPages y total',

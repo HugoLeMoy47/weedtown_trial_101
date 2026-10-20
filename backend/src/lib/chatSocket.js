@@ -7,8 +7,8 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { allowedOrigins } = require('./allowedOrigins');
 const { log } = require('./logger');
-const prisma = require('./prisma');
-const { addSocket, removeSocket, evaluatePresence } = require('./presence');
+const { addSocket, removeSocket } = require('./presence');
+const { presenciaVisiblePara, crearLimitador } = require('./presenciaAutorizada');
 
 let io = null;
 
@@ -41,20 +41,21 @@ function initChatSocket(server) {
     addSocket(socket.userId, socket.id);
     log('chat_socket_conectado', { userId: socket.userId, socketId: socket.id });
 
-    // Consulta de presencia en vivo para el interlocutor del chat abierto
-    // (reciprocidad estricta evaluada en evaluatePresence)
-    socket.on('chat:query_presence', async ({ targetUserId }, callback) => {
+    // Consulta de presencia en vivo para el interlocutor del chat abierto.
+    // El `targetUserId` lo manda el cliente y no es de fiar: la autorización
+    // (chat compartido, sin bloqueo, cuenta viva, reciprocidad) vive en
+    // `presenciaVisiblePara`, y toda negativa responde igual que "desconectado"
+    // (ciclo 16C, A-1). Con tope por conexión.
+    const permitirConsulta = crearLimitador();
+    socket.on('chat:query_presence', async (payload, callback) => {
+      if (typeof callback !== 'function') return;
       try {
-        const targetId = Number(targetUserId);
-        if (!targetId || typeof callback !== 'function') return;
-        const [requester, target] = await Promise.all([
-          prisma.user.findUnique({ where: { id: socket.userId }, select: { id: true, mostrarEnLinea: true } }),
-          prisma.user.findUnique({ where: { id: targetId }, select: { id: true, mostrarEnLinea: true } })
-        ]);
-        const online = evaluatePresence(requester, target);
+        if (!permitirConsulta()) return callback({ isOnline: false });
+        const targetId = Number(payload?.targetUserId);
+        const online = await presenciaVisiblePara(socket.userId, targetId);
         callback({ userId: targetId, isOnline: online });
       } catch {
-        if (typeof callback === 'function') callback({ isOnline: false });
+        callback({ isOnline: false });
       }
     });
 

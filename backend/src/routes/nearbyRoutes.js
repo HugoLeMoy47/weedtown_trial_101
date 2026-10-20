@@ -1,3 +1,6 @@
+// Auditoría 16B (enumerabilidad): la regla existente CUBRE la invariante — la
+// identidad solo sale de la presencia que la otra persona publicó a propósito
+// (celdas de ~2 km, `requireEstablished`, caducidad). No hace falta otra regla.
 // Función "Cerca": descubrir comunidad en tu zona con ubicación ofuscada.
 // Principios: (1) el servidor solo recibe la CELDA de ~2 km calculada
 // en el navegador — nunca coordenadas; (2) recíproco: solo ves si compartes;

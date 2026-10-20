@@ -12,6 +12,18 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 16 — Enumerabilidad y auditoría del bloque entre ciclos (2026-10-20)
+
+### Corregido
+- **P2 (A-1):** `chat:query_presence` era un oráculo de presencia: cualquier sesión consultaba a cualquier id, incluidos bloqueados, suspendidos y borrados. Ahora exige chat compartido, sin bloqueo, cuenta viva y reciprocidad, y toda negativa responde igual que «desconectado». Tope de 30 consultas por minuto por conexión.
+- **P2 (A-2):** dos cambios de handle simultáneos saltaban el cooldown de 180 días. El `UPDATE` ahora se condiciona al estado leído; el perdedor recibe 409. Un choque de unicidad también da 409 en vez de 500.
+- **P2 (A-3), decisión del PO:** el handle abandonado se reserva 90 días (`HandleReservado`, migración `20261020120000_handle_reservado`), para que enlaces de invitación y menciones viejas no pasen a una persona distinta. No hay redirección. La tabla entra al respaldo (grupo `cuentas`).
+
+### Añadido
+- La invariante **enumerabilidad ≠ direccionabilidad** escrita donde se decide (`profileRoutes.js`) y fijada por pruebas en pares: `perfilPorHandle.test.js` (direccionable) y `menciones.test.js` (no enumerable). El segundo grado de sugerencias queda anotado como deliberado.
+- Auditoría de lectura 16B de las rutas que devuelven identidad ajena. Hallazgos **sin corregir** (por regla del barrido): `GET /api/chat/users` enumera la plataforma (B-1), `POST /api/chat/conversations` no excluye borradas/suspendidas y sondea ids (B-2), `GET /api/profile/:id` por id secuencial salta la invariante (B-3).
+- `presenciaConsulta.test.js`.
+
 ## Entre los ciclos 14 y 15 — chat, handle, mes patrio y etiquetas PE420 (2026-09-11 → 2026-10-16)
 
 Entró a `main` en paralelo a la rama del ciclo 15, sin plan ni prompt, y se

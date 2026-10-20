@@ -75,6 +75,15 @@ async function findChatForUser(chatId, userId) {
 }
 
 // GET /api/chat/users?q= — buscar con quién conversar (datos públicos, sin PII)
+//
+// HALLAZGO 16B · B-1 (P2, SIN CORREGIR en el 16 por regla del barrido): esta
+// ruta enumera a toda la plataforma. No acota a la red ni respeta
+// `perfilPublico` (la invariante de profileRoutes.js), no excluye cuentas
+// borradas ni suspendidas, y `participantSelect` entrega además
+// `confirmacionesLectura` y `mostrarEnLinea` de desconocidos. Es el mismo
+// defecto que el 15B cerró en `mention-suggestions`. Corrección propuesta:
+// reutilizar ese universo (círculo + `perfilPublico`) y un select de solo
+// identidad.
 router.get('/users', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
@@ -144,6 +153,9 @@ router.get('/conversations', requireAuth, async (req, res) => {
 });
 
 // POST /api/chat/conversations { userId } — abrir (o recuperar) la conversación 1 a 1 con alguien
+// HALLAZGO 16B · B-2 (P3): el `findUnique` por id no excluye cuentas borradas
+// ni suspendidas, y 404-vs-200 deja sondear ids secuenciales. Mismo origen que
+// B-3 (profileRoutes.js, `/:id`). Sin corregir en el 16.
 router.post('/conversations', requireAuth, requireNotSuspended, async (req, res) => {
   const otherId = Number(req.body.userId);
   if (!otherId) return res.status(400).json({ error: 'userId requerido' });

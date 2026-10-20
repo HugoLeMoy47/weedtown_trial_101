@@ -1,5 +1,6 @@
 // Pruebas de cambio de handle y política de congelamiento (cooldown de 6 meses / máx 2 veces al año).
 const { suite } = require('./lib');
+const handleLib = require('../src/lib/handle');
 
 module.exports = async function run() {
   const { results, check, call, token, mkUser, cleanup, prisma } = suite('CambioHandle', 'wtchgh');
@@ -91,6 +92,50 @@ module.exports = async function run() {
 
     c = await call('GET', '/api/profile/check-handle?handle=wtchgh_totalmente_libre', { tok: tBeto });
     check('handle libre da disponible = true', c.status === 200 && c.data.disponible === true && !c.data.esActual);
+
+    console.log('\n  — Ciclo 16C · A-3: el handle viejo queda reservado 90 días —');
+    const dora = await mkUser('dora');
+    const efra = await mkUser('efra');
+    const tDora = token(dora.id), tEfra = token(efra.id);
+    const viejo = dora.handle;
+    r = await call('PUT', '/api/profile/me', { tok: tDora, body: { handle: 'wtchgh_dora2' } });
+    check('dora cambia su handle → 200', r.status === 200, `(fue ${r.status})`);
+
+    const reserva = await prisma.handleReservado.findUnique({ where: { handle: viejo } });
+    const diasReserva = reserva ? (reserva.hastaAt.getTime() - Date.now()) / 86400000 : 0;
+    check('el handle viejo quedó reservado a nombre de dora', reserva?.userId === dora.id);
+    check('...por ~90 días', diasReserva > 89 && diasReserva <= 90, `(${diasReserva.toFixed(2)} días)`);
+
+    c = await call('GET', `/api/profile/check-handle?handle=${viejo}`, { tok: tEfra });
+    check('otra persona lo ve NO disponible', c.status === 200 && c.data.disponible === false);
+    const cTomado = await call('GET', '/api/profile/check-handle?handle=wtchgh_dora2', { tok: tEfra });
+    check('el mensaje de "reservado" es IDÉNTICO al de "en uso" (no delata quién cambió de handle)',
+      c.data.motivo === cTomado.data.motivo);
+    r = await call('PUT', '/api/profile/me', { tok: tEfra, body: { handle: viejo } });
+    check('reclamarlo a mano da 409', r.status === 409, `(fue ${r.status})`);
+    check('el alta automática tampoco lo entrega (generarUnico lo salta)', (await handleLib.generarUnico(viejo)) !== viejo);
+    r = await call('GET', `/api/profile/handle/${viejo}`, { tok: tEfra });
+    check('/@viejo NO se resuelve a su antigua dueña (sin redirección)', r.status === 404, `(fue ${r.status})`);
+
+    await prisma.handleReservado.update({ where: { handle: viejo }, data: { hastaAt: new Date(Date.now() - 1000) } });
+    c = await call('GET', `/api/profile/check-handle?handle=${viejo}`, { tok: tEfra });
+    check('vencida la reserva, el handle vuelve a estar disponible', c.data.disponible === true);
+    r = await call('PUT', '/api/profile/me', { tok: tEfra, body: { handle: viejo } });
+    check('...y se puede reclamar → 200', r.status === 200 && r.data.user.handle === viejo, `(fue ${r.status})`);
+
+    console.log('\n  — Ciclo 16C · A-2: cambios simultáneos no saltan el cooldown —');
+    const erin = await mkUser('erin');
+    const tErin = token(erin.id);
+    const intentos = Array.from({ length: 8 }, (_, i) => `wtchgh_e${i}`);
+    const respuestas = await Promise.all(intentos.map(h => call('PUT', '/api/profile/me', { tok: tErin, body: { handle: h } })));
+    const exitos = respuestas.filter(x => x.status === 200);
+    const codigos = respuestas.map(x => x.status).join(',');
+    check('de 8 cambios simultáneos exactamente UNO prospera', exitos.length === 1, `(prosperaron ${exitos.length}: ${codigos})`);
+    check('el resto se rechaza con conflicto/cooldown (400/409), nunca 500', respuestas.every(x => [200, 400, 409].includes(x.status)), `(${codigos})`);
+    const erinFinal = await prisma.user.findUnique({ where: { id: erin.id }, select: { handle: true } });
+    check('el handle final es el del único que prosperó', exitos[0]?.data?.user?.handle === erinFinal.handle);
+    const reservasErin = await prisma.handleReservado.count({ where: { userId: erin.id } });
+    check('y se reservó UN solo handle viejo, no varios', reservasErin === 1, `(${reservasErin})`);
 
   } finally {
     await cleanup();

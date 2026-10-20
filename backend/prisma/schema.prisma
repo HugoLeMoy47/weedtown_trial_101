@@ -42,6 +42,7 @@ model User {
   // Fecha del último cambio de handle (política: máx 2 veces al año / cooldown de 6 meses).
   // null = nunca cambiado manualmente (primer cambio libre).
   handleUpdatedAt  DateTime?
+  handlesReservados HandleReservado[]
   displayName      String?
   email            String?      @unique
   name             String
@@ -777,4 +778,22 @@ model PushSubscription {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+// Handles recién abandonados (ciclo 16, A-3). Al cambiar de handle, el viejo
+// quedaba libre al instante: los enlaces de invitación (`/@viejo`), las
+// menciones ya escritas (se resuelven por handle al renderizar) y la
+// atribución pasaban a apuntar a quien lo tomara después — una suplantación
+// barata. Durante `hastaAt` (90 días) nadie más puede reclamarlo; el viejo
+// handle NO se resuelve a su antigua dueña (no hay redirección: vincular dos
+// handles de una misma persona es información que ella no pidió publicar).
+// La clave es el handle: reservar de nuevo uno vencido reemplaza la fila.
+model HandleReservado {
+  handle   String   @id
+  userId   Int
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hastaAt  DateTime
+  creadoAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([hastaAt])
 }

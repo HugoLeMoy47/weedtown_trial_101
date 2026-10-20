@@ -1,3 +1,7 @@
+// Auditoría 16B (enumerabilidad): toda identidad que sale de aquí viene de una
+// RELACIÓN existente — amistad aceptada o solicitud propia, enviada o recibida.
+// `POST /request/:userId` actúa sobre un id dado (existe/no existe es observable,
+// mismo hallazgo B-2 que el chat) pero no devuelve identidad ajena.
 // Amistad entre personas (HU-AMI-001). Solicitud + aceptación mutua y
 // simétrica — no hay una tabla de "conocidos": esa etiqueta se deriva
 // (cualquier persona visible que no es amigo ni bloqueado).

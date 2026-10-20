@@ -133,12 +133,9 @@ router.get('/check-handle', requireAuth, async (req, res) => {
       return res.json({ disponible: true, esActual: true, propuesto });
     }
 
-    const tomado = await prisma.user.findUnique({
-      where: { handle: propuesto },
-      select: { id: true }
-    });
-
-    if (tomado) {
+    // Una cuenta con ese handle y una reserva vigente (A-3) responden IGUAL:
+    // distinguirlas diría quién cambió de handle hace poco.
+    if (await handleLib.estaTomado(propuesto, req.user.id)) {
       return res.json({ disponible: false, motivo: 'Ese handle ya está en uso', propuesto });
     }
 
@@ -162,6 +159,10 @@ router.put('/me', requireAuth, async (req, res) => {
     // (cooldown de 180 días / máx 2 veces al año).
     let nuevoHandle;
     let actualizarHandleTimestamp = false;
+    // Estado del handle tal como se LEYÓ al validar. El UPDATE de más abajo se
+    // condiciona a que siga igual (ciclo 16C, A-2): sin eso, dos PUT
+    // simultáneos pasaban los dos la guarda del cooldown y la saltaban.
+    let handleLeido;
     if (data.handle !== undefined) {
       const propuesto = handleLib.normalizar(data.handle);
       const motivo = handleLib.motivoInvalido(propuesto);
@@ -173,11 +174,7 @@ router.put('/me', requireAuth, async (req, res) => {
       });
 
       if (usuarioActual && propuesto !== usuarioActual.handle) {
-        const tomado = await prisma.user.findUnique({
-          where: { handle: propuesto },
-          select: { id: true }
-        });
-        if (tomado && tomado.id !== req.user.id) {
+        if (await handleLib.estaTomado(propuesto, req.user.id)) {
           return res.status(409).json({ errors: ['Ese handle ya está en uso'] });
         }
 
@@ -198,6 +195,7 @@ router.put('/me', requireAuth, async (req, res) => {
 
         nuevoHandle = propuesto;
         actualizarHandleTimestamp = true;
+        handleLeido = usuarioActual;
       }
     }
 
@@ -244,8 +242,14 @@ router.put('/me', requireAuth, async (req, res) => {
       nuevoAvatar = check.valor;
     }
 
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
+    const actualizacion = {
+      where: {
+        id: req.user.id,
+        // Solo cuando cambia el handle: si otra petición ya lo cambió, no hay
+        // fila que cumpla y Prisma lanza P2025 (→ 409 abajo) en vez de aplicar
+        // un segundo cambio que el cooldown debía impedir.
+        ...(handleLeido && { handle: handleLeido.handle, handleUpdatedAt: handleLeido.handleUpdatedAt })
+      },
       data: {
         name: data.name || undefined,
         ...(nuevoHandle !== undefined && { handle: nuevoHandle }),
@@ -273,9 +277,28 @@ router.put('/me', requireAuth, async (req, res) => {
         ...preferencias
       },
       select: profileSelect
-    });
+    };
+
+    // Cambio de handle: el UPDATE y la reserva del handle viejo (A-3) van en
+    // UNA transacción — si el cambio se pierde por la carrera, la reserva
+    // tampoco queda escrita.
+    const user = handleLeido
+      ? (await prisma.$transaction([
+          prisma.user.update(actualizacion),
+          handleLib.reservarHandle(handleLeido.handle, req.user.id)
+        ]))[0]
+      : await prisma.user.update(actualizacion);
     res.json({ message: 'Perfil actualizado', user });
   } catch (e) {
+    // P2025: la condición del UPDATE ya no se cumple (otra petición cambió el
+    // handle entre la lectura y la escritura). P2002: alguien tomó el handle
+    // elegido en ese mismo hueco. Los dos son conflicto, no falla del servidor.
+    if (e?.code === 'P2025') {
+      return res.status(409).json({ errors: ['Tu handle cambió mientras se procesaba esta solicitud. Recarga e inténtalo de nuevo.'] });
+    }
+    if (e?.code === 'P2002') {
+      return res.status(409).json({ errors: ['Ese handle ya está en uso'] });
+    }
     console.error('Error al actualizar perfil:', e);
     res.status(500).json({ error: 'Error al actualizar perfil' });
   }
@@ -407,6 +430,31 @@ async function responderPerfil(req, res, where) {
   }
 }
 
+// ─── INVARIANTE (ciclo 16A): ENUMERABILIDAD ≠ DIRECCIONABILIDAD ────────────
+//
+// Dos preguntas distintas que parecen una, y que dos revisiones distintas
+// leyeron como un fallo porque no estaba escrito:
+//
+//   | Pregunta                                        | Superficie                         | Regla                                                                 |
+//   |-------------------------------------------------|------------------------------------|-----------------------------------------------------------------------|
+//   | ENUMERABILIDAD: ¿puedes listarme sin conocerme? | mention-suggestions, búsquedas     | Respeta `perfilPublico`. Fuera de tu red solo aparece quien pidió ser encontrable |
+//   | DIRECCIONABILIDAD: ¿me ves si ya sabes mi handle exacto? | `responderPerfil` (`/@handle`) | El handle ES la credencial. Con sesión se responde; sin sesión exige `perfilPublico` |
+//   | (misma, por handle) ¿existe este handle?        | `GET /check-handle`                | Igual que `/@handle`: quien lo escribe ya lo conoce. No endurecer     |
+//
+// POR QUÉ LA RUTA POR HANDLE **NO** DEBE ENDURECERSE. El enlace de invitación
+// (11A) es `/@luna` a secas: quien invita comparte su perfil, y
+// `PublicProfile.jsx` manda al login con `next` para que la atribución
+// funcione al volver. `perfilPublico` es `false` por defecto en toda cuenta
+// nueva, así que exigírselo a las sesiones con login dejaría en 404 el perfil
+// de casi todo el que invita, justo al llegar la persona invitada. Parece una
+// inconsistencia con `mention-suggestions`; no lo es. Unificarlas rompe el
+// embudo de crecimiento. Lo fijan `perfilPorHandle.test.js` (direccionable) y
+// `menciones.test.js` (no enumerable): quien endurezca la primera o afloje la
+// segunda rompe una.
+//
+// La ruta por id (`/:id`, más abajo) NO es credencial: los ids son
+// secuenciales. Ver el hallazgo B-3 de la auditoría 16B en la bitácora.
+//
 // Por handle: es la forma compartible (`/@handle` en la web) y la que hace que
 // picarle al handle de alguien lleve a algún lado suyo. Va ANTES de `/:id`
 // porque si no, Express toma "handle" como si fuera un id.
@@ -515,6 +563,10 @@ router.get('/mention-suggestions', requireAuth, async (req, res) => {
           select: { requesterId: true, addresseeId: true }
         })
       : [];
+    // DELIBERADO (decisión del PO, 2026-09-03; ciclo 16A): un amigo-de-amigo
+    // con `perfilPublico: false` SÍ aparece aquí. El círculo es la red de quien
+    // busca, no el interruptor de quien es buscado. No es un olvido: no le
+    // agregues el filtro de `perfilPublico` al círculo.
     const circuloIds = new Set(amigosIds);
     for (const fila of segundoGrado) {
       circuloIds.add(fila.requesterId);
@@ -588,6 +640,11 @@ router.get('/mention-suggestions', requireAuth, async (req, res) => {
   }
 });
 
+// HALLAZGO 16B · B-3 (P2, SIN CORREGIR en el 16): por id, esta ruta responde a
+// cualquier sesión y los ids son secuenciales, así que recorrerlos entrega
+// handle, nombre y avatar de TODA la plataforma — salta por completo la
+// distinción de arriba (el id no es una credencial; el handle sí). Antes de
+// endurecerla hay que ver quién la usa: el frontend enlaza perfiles por id.
 router.get('/:id', optionalAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID requerido' });

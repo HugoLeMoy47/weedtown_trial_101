@@ -47,6 +47,34 @@ function motivoInvalido(handle) {
 
 const esValido = (handle) => motivoInvalido(handle) === null;
 
+/** Días que un handle abandonado queda reservado para nadie más (ciclo 16, A-3). */
+const DIAS_RESERVA = 90;
+
+/**
+ * ¿No se puede reclamar este handle? Cuenta como tomado si lo tiene una
+ * cuenta O si está en reserva vigente a nombre de otra persona. La reserva
+ * vencida ya no estorba (la fila se reemplaza al reservar de nuevo).
+ * @param {string} handle ya normalizado
+ * @param {number} [exceptoUserId] quien pregunta: su propia cuenta y sus propias reservas no cuentan
+ * @returns {Promise<boolean>}
+ */
+async function estaTomado(handle, exceptoUserId) {
+  const cuenta = await prisma.user.findUnique({ where: { handle }, select: { id: true } });
+  if (cuenta && cuenta.id !== exceptoUserId) return true;
+  const reserva = await prisma.handleReservado.findUnique({ where: { handle } });
+  return Boolean(reserva && reserva.hastaAt > new Date() && reserva.userId !== exceptoUserId);
+}
+
+/** Operación de Prisma que reserva `handle` para `userId` DIAS_RESERVA días (para usar dentro de $transaction). */
+function reservarHandle(handle, userId, ahora = new Date()) {
+  const hastaAt = new Date(ahora.getTime() + DIAS_RESERVA * 24 * 60 * 60 * 1000);
+  return prisma.handleReservado.upsert({
+    where: { handle },
+    create: { handle, userId, hastaAt },
+    update: { userId, hastaAt, creadoAt: ahora }
+  });
+}
+
 /**
  * Handle libre a partir de una sugerencia. Si ya está tomado, va probando con
  * un sufijo numérico. Se usa al dar de alta: nadie debería quedarse fuera
@@ -64,11 +92,10 @@ async function generarUnico(sugerencia) {
   for (let i = 0; i < 50; i++) {
     const intento = i === 0 ? base : `${base.slice(0, MAX - String(i).length)}${i}`;
     if (RESERVADOS.has(intento)) continue;
-    const tomado = await prisma.user.findUnique({ where: { handle: intento }, select: { id: true } });
-    if (!tomado) return intento;
+    if (!(await estaTomado(intento))) return intento;
   }
   // Salida de emergencia: prácticamente irrepetible
   return `wt${Date.now().toString(36)}`.slice(0, MAX);
 }
 
-module.exports = { MIN, MAX, normalizar, motivoInvalido, esValido, generarUnico, RESERVADOS };
+module.exports = { MIN, MAX, DIAS_RESERVA, normalizar, motivoInvalido, esValido, generarUnico, estaTomado, reservarHandle, RESERVADOS };

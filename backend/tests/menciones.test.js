@@ -193,6 +193,29 @@ module.exports = async function run() {
     r = await call('GET', '/api/profile/mention-suggestions?q=', { tok: tAna });
     check('con q vacío devuelve lista vacía', (r.data?.suggestions || []).length === 0);
 
+    console.log('\n  — Ciclo 16A: ENUMERABILIDAD (el par de perfilPorHandle.test.js: DIRECCIONABILIDAD) —');
+    // Hugo: desconocido, perfilPublico false. Elena (con sesión, sin red con él)
+    // puede ABRIR /@hugo si ya sabe el handle (perfilPorHandle.test.js), pero
+    // NO debe encontrarlo buscando. Juntas, las dos pruebas fijan la distinción.
+    const hugo = await mkUser('hugo');
+    r = await call('GET', `/api/profile/mention-suggestions?q=${hugo.handle.slice(0, 8)}`, { tok: tElena });
+    check('16A: un desconocido con perfilPublico:false NO aparece en sugerencias (no enumerable)',
+      !(r.data?.suggestions || []).some(s => s.id === hugo.id));
+    r = await call('GET', `/api/profile/handle/${hugo.handle}`, { tok: tElena });
+    check('16A: ...pero esa misma cuenta SÍ responde por handle exacto (direccionable)', r.status === 200 && r.data?.id === hugo.id, `(fue ${r.status})`);
+
+    console.log('\n  — Ciclo 16A: el segundo grado es DELIBERADO —');
+    // Ana es amiga de Iris; Iris es amiga de Jaime (perfilPublico false). Ana
+    // encuentra a Jaime: el círculo es la red de quien busca, no el interruptor
+    // de quien es buscado (decisión del PO, 2026-09-03).
+    const iris = await mkUser('iris');
+    const jaime = await mkUser('jaime');
+    await prisma.friendRequest.create({ data: { requesterId: ana.id, addresseeId: iris.id, status: 'ACCEPTED', respondedAt: new Date() } });
+    await prisma.friendRequest.create({ data: { requesterId: iris.id, addresseeId: jaime.id, status: 'ACCEPTED', respondedAt: new Date() } });
+    r = await call('GET', `/api/profile/mention-suggestions?q=${jaime.handle.slice(0, 8)}`, { tok: tAna });
+    check('16A: un amigo-de-amigo con perfilPublico:false SÍ aparece (deliberado)',
+      (r.data?.suggestions || []).some(s => s.id === jaime.id));
+
     console.log('\n  — Ciclo 15D: tope de menciones notificadas por texto —');
     const cincuenta = [];
     for (let i = 0; i < 50; i++) cincuenta.push(await mkUser(`m${i}`));
