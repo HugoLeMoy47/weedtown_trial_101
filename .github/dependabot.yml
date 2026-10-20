@@ -20,6 +20,13 @@ updates:
       # de Dependabot abrió seis de golpe; aquí se dejan fuera a propósito.
       - dependency-name: '*'
         update-types: [version-update:semver-major]
+      # Prisma se actualiza a propósito y en su propio ciclo, no por Dependabot:
+      # el CLI y el cliente tienen que moverse juntos y tocan las migraciones. Y
+      # el salto del CLI 6.12 -> 6.19 (PR #26) arrastra `@prisma/config` ->
+      # `deepmerge-ts`, que hoy trae un aviso ALTO y rompe el gate de `npm audit`.
+      # Las demás actualizaciones de ese grupo sí entran.
+      - dependency-name: prisma
+      - dependency-name: '@prisma/client'
 
   - package-ecosystem: npm
     directory: /frontend
