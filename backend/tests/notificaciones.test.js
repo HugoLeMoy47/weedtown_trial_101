@@ -96,8 +96,18 @@ module.exports = async function run() {
     check('crear post de foro responde 200', r.status === 200, `(fue ${r.status})`);
     const forumPostId = r.data.id;
 
-    r = await call('GET', '/api/notifications', { tok: tBeto });
-    const notifNuevoPost = (r.data.notifications || []).find(n => n.type === 'NEW_SUBFORUM_POST' && n.forumPost?.id === forumPostId);
+    // forumRoutes.js notifica a los seguidores SIN bloquear la respuesta (un
+    // `.then` suelto, a propósito): leer justo después del POST es una carrera
+    // contra esa escritura. Pasaba con una base lenta y fallaba en CI con un
+    // Postgres local rápido (ciclo 17, primera vez que se vio). Se espera a que
+    // aparezca, con tope: si la notificación NUNCA llega, la prueba sigue
+    // fallando — solo deja de depender del orden.
+    let notifNuevoPost;
+    for (let intento = 0; intento < 40 && !notifNuevoPost; intento++) {
+      r = await call('GET', '/api/notifications', { tok: tBeto });
+      notifNuevoPost = (r.data.notifications || []).find(n => n.type === 'NEW_SUBFORUM_POST' && n.forumPost?.id === forumPostId);
+      if (!notifNuevoPost) await new Promise(res => setTimeout(res, 100));
+    }
     check('Beto (seguidor) recibe la notificación NEW_SUBFORUM_POST', Boolean(notifNuevoPost));
     check(
       'el forumPost del payload NO trae title -- tipo fuera de la allowlist',
