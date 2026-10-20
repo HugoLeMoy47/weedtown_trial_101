@@ -45,6 +45,11 @@ model User {
   // Último DÍA (sin hora) con actividad autenticada. Se SOBRESCRIBE: no hay historia.
   // Ver src/lib/actividad.js y la cláusula del ciclo 19 en los Términos.
   ultimaActividadDia DateTime? @db.Date
+  // Qué versión de los Términos aceptó (la fecha de publicación 'AAAA-MM-DD') y
+  // cuándo. null = nunca registrada: las cuentas anteriores al ciclo 19.5 no
+  // pueden haber aceptado una versión que no existía. Ver src/lib/terminos.js.
+  terminosVersion      String?
+  terminosAceptadosEn  DateTime?
   handlesReservados HandleReservado[]
   displayName      String?
   email            String?      @unique

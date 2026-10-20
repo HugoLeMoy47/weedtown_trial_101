@@ -21,6 +21,7 @@ import RequireAuth from './components/RequireAuth';
 import RequireRole from './components/RequireRole';
 
 import PrimeraPregunta from './components/PrimeraPregunta';
+import AvisoTerminos from './components/AvisoTerminos';
 import { AuthProvider } from './hooks/useAuth';
 import { ColorModeProvider } from './theme';
 import { SocketProvider } from './context/SocketContext';
@@ -40,6 +41,10 @@ function App() {
                 dónde caiga. Se dispara una sola vez, con la marca que dejó el
                 alta, y no pinta nada el resto del tiempo. */}
             <PrimeraPregunta />
+            {/* Ciclo 19.5. Registra la aceptación de los Términos hecha en el login y
+                avisa una vez por sesión a las cuentas que no han aceptado la
+                versión vigente. Fuera de <Routes> por la misma razón que arriba. */}
+            <AvisoTerminos />
           <Routes>
             <Route path="/" element={enSubdominioEtiquetas ? <Etiquetas /> : <Navigate to="/feed" replace />} />
             <Route path="/home" element={<Navigate to="/feed" replace />} />

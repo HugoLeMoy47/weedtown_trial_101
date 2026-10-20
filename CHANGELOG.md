@@ -12,6 +12,20 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 19.5 — Términos: cláusula de medición y registro de aceptación (2026-10-20)
+
+### Añadido
+- **Cláusula «Medición de uso, sin historial»** publicada en `Terms.jsx` (sección 2), con el texto aprobado por el PO. Declara lo que el 19A ya guardaba: solo la fecha del último día de uso, que se sobrescribe; se borra al eliminar la cuenta y sale en la exportación. Los Términos muestran su versión vigente.
+- **Registro de la aceptación:** `User.terminosVersion` y `User.terminosAceptadosEn` (migración `20261020220000_terminos_aceptacion`). La versión es la fecha de publicación del texto (`2026-10-20`) y vive en `backend/src/lib/terminos.js` y `frontend/src/lib/terminos.js`; una prueba falla si divergen. `POST /api/profile/me/terminos` solo acepta la versión **vigente**, es idempotente (cuenta la primera aceptación) y está documentado en Swagger. `GET /api/auth/me` devuelve `terminosVersion`, `terminosAceptadosEn` y `terminosVigentes`. El dato se exporta con «mis datos» y se borra al eliminar la cuenta.
+- **Desde el login:** marcar la casilla de 18+ y Términos deja la marca de la versión leída; al haber sesión, se registra en silencio. Las **113 cuentas existentes** quedan sin versión (no podían aceptar un texto que no existía) y ven **un aviso una vez por sesión**, con «Más tarde» y «Acepto» de igual peso. No bloquea nada.
+
+- **Frase «Registro de aceptación»** en `Terms.jsx`, aprobada por el PO: declara que se guarda qué versión se aceptó y cuándo, que se borra con la cuenta y que sale en la exportación. Va en la **misma versión** `2026-10-20`, porque se publica junto con el registro y nadie había aceptado aún.
+- **Pruebas rápidas en local:** `npm run test:local` corre la misma suite contra un Postgres 16 en Docker (~2 min contra ~25 min del Supabase remoto), sin tocar `.env.test`. `TEST_ENV_FILE` le dice a `tests/run.js` y `tests/reset.js` qué archivo de entorno usar. Ver el README.
+
+### Decisiones del PO que guían los ciclos siguientes (no se construyen aquí)
+- **Consentimiento por finalidad:** capa base anónima obligatoria y cinco capas opcionales, apagadas por defecto y revocables (medición personal, reconocimientos, avisos por correo, mensajes comunitarios, resumen «cerca»), más `comunicaciones_comerciales` como finalidad propia. A las cuentas presentes les llega todo desactivado.
+- **Compuerta de la capa base:** quien no la acepte pierde el acceso tras **30 días de gracia**; la cuenta nunca se borra. Ver `BACKLOG.md` (B19, B21, B24).
+
 ## Ciclo 19 — Medición agregada de actividad, versión visible y CI/CD barato (2026-10-20)
 
 ### Añadido

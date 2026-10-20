@@ -572,6 +572,15 @@ El job levanta el mismo Postgres 16 efímero, compila el frontend y lo sirve **e
 
 Al fallar, el job sube las trazas y capturas de Playwright como artefacto (7 días). Sin eso, un fallo en CI es un mensaje sin nada que mirar.
 
+#### Pruebas rápidas en local (ciclo 19.5)
+
+`npm test` corre contra el Supabase remoto: ~25 minutos por pasada, y una caída de red a mitad de corrida la mata sin que el código tenga la culpa. **`npm run test:local`** (desde `backend/`) corre la **misma suite** contra un Postgres 16 en Docker —el mismo que usa el CI—: **~2 minutos**.
+
+- Levanta (o reutiliza) el contenedor `weedtown-pg-test` en el puerto **55432**, solo en `127.0.0.1` y con la base en memoria; no toca ningún otro contenedor.
+- Usa `backend/.env.test.local` (se crea solo desde `.env.test.local.example`; está ignorado por git) y se lo indica al runner con `TEST_ENV_FILE`. **No toca `.env.test`.** Los guardias de `tests/run.js` se aplican igual.
+- `npm run test:local -- chat.test.js` corre una sola suite; `npm run test:local:parar` apaga y borra el contenedor.
+- Encaja con la política P-01: las pruebas nunca tocan la base viva, y ahora tampoco el proyecto de Supabase. Necesita Docker Desktop encendido.
+
 #### Qué está automatizado y qué vive en los paneles (ciclo 19)
 
 Publicar es **tres canales distintos**, y solo uno vive en este repositorio:

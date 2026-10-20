@@ -10,6 +10,8 @@
     "test:ci": "node tests/run.js",
     "test:smoke": "node tests/run.js smoke.test.js",
     "test:reset": "node tests/reset.js",
+    "test:local": "node scripts/test-local.js",
+    "test:local:parar": "node scripts/test-local.js --parar",
     "rol": "node scripts/rol.js",
     "subforos": "node scripts/subforos.js",
     "respaldo": "node scripts/respaldo.js",

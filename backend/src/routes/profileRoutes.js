@@ -17,6 +17,7 @@ const { cubetaInvitaciones } = require('../lib/invitaciones');
 const { armarFichaPerfil, armarFichaPerfilGenerica } = require('../lib/preview');
 const avatar = require('../lib/avatar');
 const handleLib = require('../lib/handle');
+const { TERMINOS_VIGENTES, FORMATO: FORMATO_VERSION } = require('../lib/terminos');
 const privacy = require('../lib/privacy');
 const { log } = require('../lib/logger');
 
@@ -302,6 +303,42 @@ router.put('/me', requireAuth, async (req, res) => {
     }
     console.error('Error al actualizar perfil:', e);
     res.status(500).json({ error: 'Error al actualizar perfil' });
+  }
+});
+
+// POST /api/profile/me/terminos { version } — registrar que la persona aceptó
+// la versión vigente de los Términos (ciclo 19.5).
+//
+// Solo se acepta la versión VIGENTE: una versión vieja o inventada responde 400
+// y no escribe nada. Así nadie puede «aceptar» un texto que ya no existe, y el
+// registro dice la verdad. Es idempotente: aceptar de nuevo la misma versión no
+// mueve la fecha — la que cuenta es la PRIMERA vez que la aceptó.
+router.post('/me/terminos', requireAuth, async (req, res) => {
+  const version = typeof req.body?.version === 'string' ? req.body.version.trim() : '';
+  if (!FORMATO_VERSION.test(version)) {
+    return res.status(400).json({ error: 'version requerida con formato AAAA-MM-DD' });
+  }
+  if (version !== TERMINOS_VIGENTES) {
+    return res.status(400).json({ error: 'Esa no es la versión vigente de los Términos', terminosVigentes: TERMINOS_VIGENTES });
+  }
+  try {
+    const actual = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { terminosVersion: true, terminosAceptadosEn: true }
+    });
+    if (actual?.terminosVersion === version) {
+      return res.json({ terminosVersion: actual.terminosVersion, terminosAceptadosEn: actual.terminosAceptadosEn, terminosVigentes: TERMINOS_VIGENTES });
+    }
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { terminosVersion: version, terminosAceptadosEn: new Date() },
+      select: { terminosVersion: true, terminosAceptadosEn: true }
+    });
+    log('terminos_aceptados', { userId: req.user.id, version, requestId: req.id });
+    res.json({ ...user, terminosVigentes: TERMINOS_VIGENTES });
+  } catch (e) {
+    console.error('Error al registrar la aceptación de los Términos:', e);
+    res.status(500).json({ error: 'Error al registrar la aceptación' });
   }
 });
 

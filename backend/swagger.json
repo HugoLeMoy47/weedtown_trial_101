@@ -1250,6 +1250,57 @@
         }
       }
     },
+    "/api/profile/me/terminos": {
+      "post": {
+        "tags": [
+          "Perfil"
+        ],
+        "summary": "Registrar la aceptación de la versión vigente de los Términos (ciclo 19.5)",
+        "description": "Solo se acepta la versión vigente (la devuelve /api/auth/me como terminosVigentes). Idempotente: aceptar de nuevo la misma versión no mueve la fecha.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["version"],
+                "properties": {
+                  "version": { "type": "string", "example": "2026-10-20", "description": "Versión (fecha de publicación AAAA-MM-DD)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Aceptación registrada (o ya registrada)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "terminosVersion": { "type": "string" },
+                    "terminosAceptadosEn": { "type": "string", "format": "date-time" },
+                    "terminosVigentes": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Versión ausente, con formato inválido o que no es la vigente"
+          },
+          "401": {
+            "description": "Sin sesión"
+          }
+        }
+      }
+    },
     "/api/profile/check-handle": {
       "get": {
         "tags": [

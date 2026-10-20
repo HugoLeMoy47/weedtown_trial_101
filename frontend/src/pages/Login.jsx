@@ -19,6 +19,7 @@ import { useColorMode } from '../theme';
 import api, { API_ORIGIN } from '../services/api';
 import { capturarAtribucion, tomarNextPendiente, registrarAltaSiCorresponde } from '../lib/attribution';
 import { marcarAltaNueva } from '../lib/altaNueva';
+import { marcarTerminosEnLogin } from '../lib/terminos';
 
 const API_URL = `${API_ORIGIN}/api`;
 
@@ -228,6 +229,9 @@ const Login = () => {
                       checked={termsAccepted}
                       onChange={(e) => {
                         setTermsAccepted(e.target.checked);
+                        // Ciclo 19.5: queda la marca de QUÉ versión se leyó al marcar; el
+                        // registro en el servidor lo hace AvisoTerminos al tener sesión.
+                        marcarTerminosEnLogin(e.target.checked);
                         if (e.target.checked) setTermsErr('');
                       }}
                       color="primary"

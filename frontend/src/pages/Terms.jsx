@@ -12,6 +12,7 @@ import SpaIcon from '@mui/icons-material/Spa';
 import BalanceIcon from '@mui/icons-material/Balance';
 import { BrandMark, BrandWordmark } from '../components/BrandLogo';
 import Footer from '../components/Footer';
+import { TERMINOS_VIGENTES } from '../lib/terminos';
 
 const TabPanel = ({ children, value, index }) => (
   <div role="tabpanel" hidden={value !== index} id={`terms-tabpanel-${index}`}>
@@ -53,6 +54,9 @@ const Terms = () => {
                 </Box>
                 <Typography variant="body2" color="text.secondary">
                   Este documento rige la protección jurídica, la privacidad de datos personales y las normas de gobernanza comunitarias en WeedTown.
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Versión vigente: <strong>{TERMINOS_VIGENTES}</strong>
                 </Typography>
               </Stack>
 
@@ -192,6 +196,12 @@ const Terms = () => {
                     </Typography>
                     <Typography variant="body2" color="text.secondary" paragraph>
                       * <strong>Geolocalización:</strong> El mapa "Cerca" utiliza celdas ofuscadas de ~2 km² que caducan a los 7 días. Nunca se procesan coordenadas GPS exactas.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      * <strong>Medición de uso, sin historial.</strong> Para saber si la comunidad está viva, WeedTown cuenta cuántas personas usan la plataforma cada día. Para eso guardamos, por cuenta, <strong>únicamente la fecha del último día en que usaste WeedTown</strong> —sin hora, sin páginas, sin lo que leíste ni lo que hiciste—, y esa fecha se <strong>sobrescribe</strong> cada día: no conservamos una lista de tus visitas. El resultado es un número por día, sin nombres. Si eliminas tu cuenta, esa fecha se borra. Puedes verla en la exportación de tus datos.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      * <strong>Registro de aceptación.</strong> Guardamos qué versión de estos Términos aceptaste y cuándo, para poder avisarte cuando cambien. Se borra si eliminas tu cuenta y sale en la exportación de tus datos.
                     </Typography>
                   </Box>
 

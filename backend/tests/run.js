@@ -10,7 +10,9 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const ENV_TEST = path.join(ROOT, '.env.test');
+// TEST_ENV_FILE (ciclo 19.5, scripts/test-local.js): otro archivo de entorno de
+// pruebas, p. ej. el del Postgres local de Docker. Sin ella, `.env.test` de siempre.
+const ENV_TEST = process.env.TEST_ENV_FILE ? path.resolve(process.env.TEST_ENV_FILE) : path.join(ROOT, '.env.test');
 const ENV_DEV = path.join(ROOT, '.env');
 
 function abortar(mensaje) {

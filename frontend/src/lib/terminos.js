@@ -1,0 +1,63 @@
+// Versión vigente de los Términos y registro de aceptación (ciclo 19.5).
+//
+// Esta constante tiene una gemela en backend/src/lib/terminos.js, y las dos
+// tienen que decir lo mismo: `backend/tests/terminosAceptacion.test.js` lee ESTE
+// archivo y falla si divergen. Es la fecha de publicación del texto de
+// Terms.jsx; **cámbiala solo cuando cambie ese texto, y en el mismo commit.**
+// Subirla vuelve a pedirle aceptación a todas las cuentas.
+export const TERMINOS_VIGENTES = '2026-10-20';
+
+// La marca «acepté los Términos en la pantalla de acceso». Vive en
+// localStorage por la misma razón que `altaNueva.js` y `attribution.js`: entre
+// que se marca la casilla y que hay sesión puede haber una navegación completa,
+// y con Mastodon, una vuelta por otro sitio.
+//
+// Guarda la VERSIÓN que se leyó al marcar, no un «sí»: así una marca vieja,
+// de antes de un cambio de Términos, no cuenta como aceptación del texto nuevo.
+const CLAVE_MARCA = 'weedtown_terminos_marcados';
+const CLAVE_POSPUESTO = 'weedtown_terminos_pospuesto';
+
+export function marcarTerminosEnLogin(marcada) {
+  try {
+    if (marcada) localStorage.setItem(CLAVE_MARCA, TERMINOS_VIGENTES);
+    else localStorage.removeItem(CLAVE_MARCA);
+  } catch { /* modo privado sin storage */ }
+}
+
+/** Consume la marca: se lee UNA vez, para que no se arrastre a sesiones futuras. */
+export function tomarMarcaDeTerminos() {
+  try {
+    const v = localStorage.getItem(CLAVE_MARCA);
+    localStorage.removeItem(CLAVE_MARCA);
+    return v;
+  } catch { return null; }
+}
+
+// «Más tarde» dura lo que dura la pestaña: el aviso vuelve en la siguiente
+// sesión, no en cada navegación. Es un aviso, no un muro.
+export function posponerAvisoDeTerminos() {
+  try { sessionStorage.setItem(CLAVE_POSPUESTO, '1'); } catch { /* sin storage */ }
+}
+export function avisoDeTerminosPospuesto() {
+  try { return sessionStorage.getItem(CLAVE_POSPUESTO) === '1'; } catch { return false; }
+}
+
+/**
+ * Qué hacer con una sesión recién cargada. Función pura, para poder probarla.
+ *
+ *   'nada'      ya aceptó la versión vigente, o el servidor no dijo cuál es
+ *               (sin ese dato no se adivina ni se molesta a nadie)
+ *   'registrar' marcó la casilla de ESTA versión al entrar: se registra en
+ *               silencio, sin pedirle nada
+ *   'avisar'    tiene una versión vieja o ninguna (todas las cuentas
+ *               anteriores al 19.5): se le avisa una vez y decide
+ *
+ * @param {{terminosVersion?: string|null, terminosVigentes?: string}|null} user lo que devuelve /auth/me
+ * @param {string|null} marca lo que dejó la casilla del login (tomarMarcaDeTerminos)
+ */
+export function decidirAvisoDeTerminos(user, marca) {
+  if (!user || !user.terminosVigentes) return 'nada';
+  if (user.terminosVersion === user.terminosVigentes) return 'nada';
+  if (marca && marca === user.terminosVigentes) return 'registrar';
+  return 'avisar';
+}

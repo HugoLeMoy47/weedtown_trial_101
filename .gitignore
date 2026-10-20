@@ -11,6 +11,7 @@ node_modules/
 .env.*
 !.env.example
 !.env.test.example
+!.env.test.local.example
 
 # Imágenes subidas por usuarios (dev local)
 /backend/uploads/

@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
+const { TERMINOS_VIGENTES } = require('../lib/terminos');
 const avatar = require('../lib/avatar');
 const { generarUnico: generarHandleUnico, esValido: esHandleValido, normalizar: normalizarHandle } = require('../lib/handle');
 const { requireAuth } = require('../middlewares/requireAuth');
@@ -236,7 +237,9 @@ router.get('/me', requireAuth, async (req, res) => {
         // No es la autorización: esa se verifica en el servidor en cada petición.
         role: true, suspendedUntil: true, suspendedReason: true,
         // Para que el perfil pueda ofrecer "usar mi foto de Mastodon"
-        mastodonAvatar: true
+        mastodonAvatar: true,
+        // Ciclo 19.5: qué versión de los Términos aceptó (null = ninguna registrada)
+        terminosVersion: true, terminosAceptadosEn: true
       }
     });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -244,6 +247,9 @@ router.get('/me', requireAuth, async (req, res) => {
     const vigente = user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
     res.json({
       ...user,
+      // La versión que el SERVIDOR considera vigente: el navegador compara contra
+      // esto y no contra su propia copia, que puede ir un despliegue atrasada.
+      terminosVigentes: TERMINOS_VIGENTES,
       suspendedUntil: vigente ? user.suspendedUntil : null,
       suspendedReason: vigente ? user.suspendedReason : null
     });

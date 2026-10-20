@@ -29,6 +29,8 @@ const CAMPOS_ANONIMIZADOS = {
   nearbyCell: null,
   nearbyUpdatedAt: null,
   ultimaActividadDia: null,
+  terminosVersion: null,
+  terminosAceptadosEn: null,
   role: 'USER'
 };
 
@@ -51,7 +53,9 @@ async function exportarDatos(userId) {
         phone: true, fullName: true, bio: true, aboutMe: true, age: true, birthdate: true, gender: true,
         createdAt: true,
         // Ciclo 19A: la única fecha de actividad que se guarda sobre la persona.
-        ultimaActividadDia: true
+        ultimaActividadDia: true,
+        // Ciclo 19.5: qué versión de los Términos aceptó y cuándo.
+        terminosVersion: true, terminosAceptadosEn: true
       }
     }),
     prisma.identity.findMany({
