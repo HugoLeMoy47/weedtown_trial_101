@@ -3,6 +3,7 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
 const { registrarActividad } = require('../lib/actividad');
+const { TERMINOS_VIGENTES, limiteDeTerminos, terminosExigidos } = require('../lib/terminos');
 
 function getTokenPayload(req) {
   const header = req.headers.authorization || '';
@@ -15,30 +16,74 @@ function getTokenPayload(req) {
   }
 }
 
-// Exige sesión válida y que la cuenta exista activamente en la base de datos (SEC-02)
-async function requireAuth(req, res, next) {
-  const payload = getTokenPayload(req);
-  if (!payload || !payload.userId) return res.status(401).json({ error: 'No autenticado' });
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true, deletedAt: true }
-    });
-    // Una cuenta eliminada (HU-PRIV-001) borra todas sus identidades, así que
-    // en la práctica ya no se puede volver a entrar — pero un JWT emitido
-    // ANTES de eliminarla sigue siendo válido hasta sus 7 días de vigencia. Sin
-    // este chequeo, esa sesión vieja podría seguir usando la API de por vida.
-    if (!user || user.deletedAt) return res.status(401).json({ error: 'Sesión no válida o usuario inexistente' });
-    req.user = { id: user.id };
-    // Medición agregada (ciclo 19A): sin await a propósito. Nunca lanza y no
-    // retrasa la petición; ver src/lib/actividad.js.
-    registrarActividad(user.id);
-    next();
-  } catch (e) {
-    console.error('Error al verificar la sesión:', e);
-    res.status(500).json({ error: 'Error al verificar la sesión' });
-  }
+// Rutas que SIGUEN respondiendo aunque a la cuenta ya se le exija aceptar la
+// versión vigente de los Términos (ciclo 20): son justo las que necesita la
+// pantalla de la compuerta —ver quién eres y qué se exige, aceptar, decidir tus
+// finalidades opcionales, descargar tus datos y eliminar la cuenta—. Todo lo
+// demás responde 403. La lista es CERRADA a propósito: una ruta nueva queda
+// bloqueada hasta que alguien decida, con la compuerta a la vista, que no debe.
+const PERMITIDAS_CON_TERMINOS_PENDIENTES = [
+  ['GET', /^\/api\/auth\/me\/?$/],
+  ['POST', /^\/api\/profile\/me\/terminos\/?$/],
+  ['GET', /^\/api\/profile\/me\/export\/?$/],
+  ['DELETE', /^\/api\/profile\/me\/?$/],
+  ['GET', /^\/api\/consentimientos\/?$/],
+  ['PUT', /^\/api\/consentimientos\/[a-z_]+\/?$/]
+];
+
+function rutaPermitidaConTerminosPendientes(req) {
+  const ruta = `${req.baseUrl || ''}${req.path || ''}`;
+  return PERMITIDAS_CON_TERMINOS_PENDIENTES.some(([metodo, patron]) => metodo === req.method && patron.test(ruta));
 }
+
+// Exige sesión válida y que la cuenta exista activamente en la base de datos (SEC-02)
+//
+// Es una FÁBRICA (ciclo 20) solo para poder probar la compuerta con un reloj y un
+// límite inyectados: sin eso, la prueba dependería de la fecha real. `requireAuth`
+// de abajo es la instancia que usa toda la API, con el reloj y el límite reales.
+function crearRequireAuth({ ahora = () => new Date(), limite = () => limiteDeTerminos() } = {}) {
+  return async function requireAuth(req, res, next) {
+    const payload = getTokenPayload(req);
+    if (!payload || !payload.userId) return res.status(401).json({ error: 'No autenticado' });
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: payload.userId },
+        select: { id: true, deletedAt: true, terminosVersion: true }
+      });
+      // Una cuenta eliminada (HU-PRIV-001) borra todas sus identidades, así que
+      // en la práctica ya no se puede volver a entrar — pero un JWT emitido
+      // ANTES de eliminarla sigue siendo válido hasta sus 7 días de vigencia. Sin
+      // este chequeo, esa sesión vieja podría seguir usando la API de por vida.
+      if (!user || user.deletedAt) return res.status(401).json({ error: 'Sesión no válida o usuario inexistente' });
+
+      // LA COMPUERTA DE LA CAPA BASE (ciclo 20). Se aplica en el servidor y no solo
+      // en la pantalla: si solo estuviera en el navegador, bastaría llamar a la API
+      // directamente. Solo exige la versión de los TÉRMINOS; ninguna finalidad
+      // opcional puede condicionar el acceso.
+      const exigidos = terminosExigidos(user.terminosVersion, ahora(), limite());
+      if (exigidos && !rutaPermitidaConTerminosPendientes(req)) {
+        return res.status(403).json({
+          error: 'Para seguir usando WeedTown necesitas aceptar la versión vigente de los Términos',
+          code: 'TERMINOS_PENDIENTES',
+          terminosVigentes: TERMINOS_VIGENTES,
+          terminosLimite: limite()
+        });
+      }
+
+      req.user = { id: user.id };
+      // Medición agregada (ciclo 19A): sin await a propósito. Nunca lanza y no
+      // retrasa la petición; ver src/lib/actividad.js. No se cuenta a quien aún
+      // no aceptó la base: el medidor es parte de lo que se acepta.
+      if (!exigidos) registrarActividad(user.id);
+      next();
+    } catch (e) {
+      console.error('Error al verificar la sesión:', e);
+      res.status(500).json({ error: 'Error al verificar la sesión' });
+    }
+  };
+}
+
+const requireAuth = crearRequireAuth();
 
 // Adjunta req.user si hay token válido, pero no bloquea (rutas públicas personalizables)
 function optionalAuth(req, res, next) {
@@ -171,5 +216,6 @@ async function requireEstablished(req, res, next) {
 }
 
 module.exports = {
+  crearRequireAuth, rutaPermitidaConTerminosPendientes,
   requireAuth, optionalAuth, requireRole, requireNotSuspended, requireEstablished, estaEstablecida
 };

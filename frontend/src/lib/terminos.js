@@ -61,3 +61,27 @@ export function decidirAvisoDeTerminos(user, marca) {
   if (marca && marca === user.terminosVigentes) return 'registrar';
   return 'avisar';
 }
+
+/**
+ * Qué muestra la app a una sesión recién cargada (ciclo 20). Función pura.
+ *
+ *   'libre'      nada: ya aceptó la vigente, o el servidor no dijo cuál es
+ *   'registrar'  marcó la casilla de ESTA versión al entrar: se registra en silencio
+ *   'dialogo'    le falta aceptarla, pero aún hay plazo: aviso con «Más tarde»
+ *   'compuerta'  le falta aceptarla y el plazo ya venció: pantalla que lo exige
+ *
+ * El servidor decide si «ya venció» (`terminosExigidos`); el navegador no
+ * recalcula fechas, así que no hay dos copias de la regla que desfasar.
+ */
+export function modoDePuerta(user, marca) {
+  if (!user || !user.terminosVigentes) return 'libre';
+  if (user.terminosVersion === user.terminosVigentes) return 'libre';
+  if (marca && marca === user.terminosVigentes) return 'registrar';
+  return user.terminosExigidos ? 'compuerta' : 'dialogo';
+}
+
+/** 'AAAA-MM-DD' → «19 de noviembre de 2026». Sin desfase de zona: el día se toma a mediodía UTC. */
+export function fechaLarga(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-MX', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' });
+}

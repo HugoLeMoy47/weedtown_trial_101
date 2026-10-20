@@ -247,6 +247,7 @@ app.get('/health', async (req, res) => {
 });
 
 // Rutas principales
+app.use('/api/consentimientos', require('./src/routes/consentimientoRoutes'));
 app.use('/api/auth', require('./src/routes/authRoutes'));
 app.use('/api/auth/passkey', require('./src/routes/passkeyAuthRoutes'));
 app.use('/api/auth/email', require('./src/routes/emailAuthRoutes'));

@@ -1250,6 +1250,108 @@
         }
       }
     },
+    "/api/consentimientos": {
+      "get": {
+        "tags": [
+          "Privacidad"
+        ],
+        "summary": "Mis decisiones de privacidad por finalidad (ciclo 20)",
+        "description": "Todas las finalidades opcionales con su texto (para qué, cómo se trata, qué no hacemos) y el estado de quien pregunta: activa, desactivada o desactualizada (el texto cambió y hay que confirmar de nuevo). Sin fila = desactivada. Responde aunque la cuenta aún no haya aceptado la versión vigente de los Términos.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de finalidades",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "finalidades": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "finalidad": { "type": "string" },
+                          "titulo": { "type": "string" },
+                          "paraQue": { "type": "string" },
+                          "comoSeTrata": { "type": "string" },
+                          "queNoHacemos": { "type": "string" },
+                          "disponible": { "type": "boolean" },
+                          "requiereCorreo": { "type": "boolean" },
+                          "version": { "type": "string" },
+                          "estado": { "type": "string", "enum": ["activa", "desactivada", "desactualizada"] },
+                          "versionConsentida": { "type": "string", "nullable": true },
+                          "decididoEn": { "type": "string", "format": "date-time", "nullable": true }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          }
+        }
+      }
+    },
+    "/api/consentimientos/{finalidad}": {
+      "put": {
+        "tags": [
+          "Privacidad"
+        ],
+        "summary": "Activar o apagar una finalidad (ciclo 20)",
+        "description": "Idempotente. Solo se puede activar una finalidad disponible, y las que usan el correo exigen que la cuenta tenga uno. Apagar siempre se puede y deja la fila con otorgado en falso y su fecha.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "finalidad",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["otorgado"],
+                "properties": {
+                  "otorgado": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "La finalidad con su estado nuevo"
+          },
+          "400": {
+            "description": "otorgado inválido, o la finalidad requiere un correo en el perfil (codigo requiere_correo)"
+          },
+          "404": {
+            "description": "Esa finalidad no existe"
+          },
+          "409": {
+            "description": "La finalidad aún no está disponible (codigo no_disponible)"
+          }
+        }
+      }
+    },
     "/api/profile/me/terminos": {
       "post": {
         "tags": [

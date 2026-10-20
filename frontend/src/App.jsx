@@ -21,7 +21,8 @@ import RequireAuth from './components/RequireAuth';
 import RequireRole from './components/RequireRole';
 
 import PrimeraPregunta from './components/PrimeraPregunta';
-import AvisoTerminos from './components/AvisoTerminos';
+import PuertaTerminos from './components/PuertaTerminos';
+import Privacidad from './pages/Privacidad';
 import { AuthProvider } from './hooks/useAuth';
 import { ColorModeProvider } from './theme';
 import { SocketProvider } from './context/SocketContext';
@@ -41,10 +42,12 @@ function App() {
                 dónde caiga. Se dispara una sola vez, con la marca que dejó el
                 alta, y no pinta nada el resto del tiempo. */}
             <PrimeraPregunta />
-            {/* Ciclo 19.5. Registra la aceptación de los Términos hecha en el login y
-                avisa una vez por sesión a las cuentas que no han aceptado la
-                versión vigente. Fuera de <Routes> por la misma razón que arriba. */}
-            <AvisoTerminos />
+            {/* Ciclos 19.5 y 20. Registra la aceptación de los Términos hecha en el
+                login, avisa a quien aún no la tiene y, vencido el plazo de 30 días,
+                muestra la compuerta. Envuelve las rutas (y no va suelto como arriba)
+                porque la compuerta REEMPLAZA las pantallas: así ninguna petición
+                sale antes de que se resuelva. Ver el comentario del componente. */}
+            <PuertaTerminos>
           <Routes>
             <Route path="/" element={enSubdominioEtiquetas ? <Etiquetas /> : <Navigate to="/feed" replace />} />
             <Route path="/home" element={<Navigate to="/feed" replace />} />
@@ -60,6 +63,7 @@ function App() {
             <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
             <Route path="/cerca" element={<RequireAuth><Nearby /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+            <Route path="/privacidad" element={<RequireAuth><Privacidad /></RequireAuth>} />
             <Route path="/amigos" element={<RequireAuth><Friends /></RequireAuth>} />
             {/* Perfil ajeno (ciclo 10A). `/@handle` es la forma compartible;
                 `/perfil/:id` se conserva porque hay enlaces viejos, y los dos
@@ -92,6 +96,7 @@ function App() {
             <Route path="/:arrobaHandle" element={<PublicProfile />} />
             <Route path="*" element={<Navigate to="/feed" replace />} />
           </Routes>
+            </PuertaTerminos>
           </SocketProvider>
         </Router>
       </AuthProvider>

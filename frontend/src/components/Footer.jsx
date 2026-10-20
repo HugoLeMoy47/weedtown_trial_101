@@ -80,6 +80,10 @@ const Footer = () => {
             <Link component={RouterLink} to="/terms" color="primary" variant="body2" underline="hover">
               Normas de Convivencia
             </Link>
+            <Typography variant="body2" color="text.secondary">•</Typography>
+            <Link component={RouterLink} to="/privacidad" color="primary" variant="body2" underline="hover">
+              Mis decisiones de privacidad
+            </Link>
           </Stack>
 
           <Typography variant="caption" color="text.secondary">

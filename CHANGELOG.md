@@ -12,6 +12,23 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 20 — Consentimientos por finalidad, Centro de privacidad y compuerta de la capa base (2026-10-20)
+
+### Añadido
+- **Consentimientos por finalidad:** tabla `Consentimiento` (usuaria, finalidad, versión del texto, estado, fecha; migración `20261021120000_consentimientos`) y catálogo en `src/lib/consentimientos.js`, que es la **única fuente de los textos** (el navegador los pide a la API). Seis finalidades, todas **apagadas por defecto**: `medicion_personal`, `reconocimientos`, `avisos_correo`, `mensajes_comunitarios`, `resumen_cerca` y `comunicaciones_comerciales`. Cada una lleva su propia versión: un cambio de texto solo vuelve a preguntar por esa. Solo se puede activar lo que **existe** (`disponible`; hoy solo la comercial) y lo que usa el correo exige tener correo en el perfil. Revocar no borra la fila: queda con su fecha. `tieneConsentimiento()` es la pregunta que tendrá que hacer cualquier función antes de usar un dato. `GET /api/consentimientos` y `PUT /api/consentimientos/:finalidad`, en Swagger. Se exporta con «mis datos», se borra con la cuenta y entra al respaldo.
+- **Centro de privacidad** (`/privacidad`, «Mis decisiones de privacidad», enlazado desde el pie): la capa base —qué se exige y cuándo la aceptaste—, las decisiones opcionales con su *para qué / cómo se trata / qué no hacemos*, y descargar o eliminar los datos.
+- **Compuerta de la capa base:** quien no acepte la versión vigente de los Términos pierde el acceso **a partir del 2026-11-19** (30 días de gracia desde este aviso). **La cuenta nunca se borra**: la pantalla ofrece aceptar, decidir las opciones, descargar los datos o eliminar la cuenta. Se aplica **en el servidor** (`requireAuth` responde 403 `TERMINOS_PENDIENTES` salvo a las seis rutas que la pantalla necesita; la lista es cerrada) y el navegador solo la pinta. `/auth/me` trae `terminosLimite` y `terminosExigidos`, así que el navegador no recalcula fechas. Antes del límite, quien no aceptó ve un aviso con «Más tarde» y «Acepto» del mismo peso. Solo se exige la base: ninguna finalidad condiciona el acceso.
+- **Sin bomba de tiempo:** `TERMINOS_LIMITE` (formato `AAAA-MM-DD`; un valor inválido se ignora) sobreescribe el límite, y los runners de pruebas (`tests/run.js`, `e2e/run.js`) lo alejan a 2099. Sin esto, el 19 de noviembre cada cuenta de prueba (que nace sin versión) habría quedado bloqueada.
+
+### Cambiado
+- `AvisoTerminos` (19.5) pasa a `PuertaTerminos`, que envuelve las rutas: la compuerta **reemplaza** las pantallas, así que ninguna petición sale antes de resolverse. `/terms` siempre es accesible.
+- El medidor de actividad (19A) **no cuenta** a quien ya está bloqueado por la compuerta: el medidor es parte de lo que se acepta.
+- `requireAuth` es ahora una fábrica (`crearRequireAuth`) para poder probar la compuerta con un reloj y un límite inyectados; `requireAuth` sigue siendo la instancia de siempre.
+
+### No se hizo, a propósito
+- **No se envía ningún correo** y no se mide nada nuevo: este ciclo solo guarda y pregunta. Las finalidades «próximamente» no se pueden activar.
+- **No se cambió el texto de los Términos** (la versión sigue siendo `2026-10-20`): la regla de la compuerta se dice en el aviso y en la pantalla. Conviene declararla en `Terms.jsx` en el próximo cambio de texto.
+
 ## Ciclo 19.5 — Términos: cláusula de medición y registro de aceptación (2026-10-20)
 
 ### Añadido

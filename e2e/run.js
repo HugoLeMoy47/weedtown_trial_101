@@ -47,6 +47,8 @@ if (EN_CI) {
 
 const entornoBackend = {
   ...process.env,
+  // Sin bomba de tiempo: ver backend/tests/run.js y backend/src/lib/terminos.js.
+  TERMINOS_LIMITE: process.env.TERMINOS_LIMITE || '2099-12-31',
   PORT: String(BACKEND_PORT),
   BACKEND_URL,
   FRONTEND_URL,

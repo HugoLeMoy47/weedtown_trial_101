@@ -65,4 +65,18 @@ api.interceptors.request.use(config => {
   return config;
 });
 
+// El servidor puede decir 403 TERMINOS_PENDIENTES con la sesión ya abierta (llegó el
+// límite de la compuerta mientras se usaba la app). Se avisa con un evento del
+// navegador y no importando el contexto de sesión, para no atar este módulo a
+// React: `PuertaTerminos` lo escucha y muestra la pantalla sin recargar.
+api.interceptors.response.use(
+  respuesta => respuesta,
+  error => {
+    if (error.response?.status === 403 && error.response?.data?.code === 'TERMINOS_PENDIENTES' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wt:terminos-pendientes', { detail: error.response.data }));
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

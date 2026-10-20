@@ -5,7 +5,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { TERMINOS_VIGENTES } = require('../lib/terminos');
+const { TERMINOS_VIGENTES, limiteDeTerminos, terminosExigidos } = require('../lib/terminos');
 const avatar = require('../lib/avatar');
 const { generarUnico: generarHandleUnico, esValido: esHandleValido, normalizar: normalizarHandle } = require('../lib/handle');
 const { requireAuth } = require('../middlewares/requireAuth');
@@ -250,6 +250,10 @@ router.get('/me', requireAuth, async (req, res) => {
       // La versión que el SERVIDOR considera vigente: el navegador compara contra
       // esto y no contra su propia copia, que puede ir un despliegue atrasada.
       terminosVigentes: TERMINOS_VIGENTES,
+      // Ciclo 20: desde cuándo se exige y si YA se le exige a esta cuenta. El servidor
+      // decide; el navegador solo pinta (no hay dos copias de la regla que desfasar).
+      terminosLimite: limiteDeTerminos(),
+      terminosExigidos: terminosExigidos(user.terminosVersion),
       suspendedUntil: vigente ? user.suspendedUntil : null,
       suspendedReason: vigente ? user.suspendedReason : null
     });

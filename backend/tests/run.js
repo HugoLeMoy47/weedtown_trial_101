@@ -63,6 +63,12 @@ if (fs.existsSync(ENV_DEV)) {
 
 if (!process.env.JWT_SECRET) abortar(`Falta JWT_SECRET en ${fuenteEntorno}.`);
 
+// La compuerta de los Términos (ciclo 20) tiene una fecha límite real. Cada cuenta de
+// prueba nace sin versión aceptada, así que el día que llegue esa fecha toda la
+// suite se bloquearía sin que nada hubiera cambiado: una bomba de tiempo. Se
+// aleja salvo que quien corra las pruebas ponga otra a propósito.
+process.env.TERMINOS_LIMITE = process.env.TERMINOS_LIMITE || '2099-12-31';
+
 const PORT = process.env.PORT || 4010;
 const entornoHijo = { ...process.env };
 

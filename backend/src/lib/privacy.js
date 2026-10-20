@@ -44,7 +44,7 @@ async function exportarDatos(userId) {
   const [
     user, identities, posts, comments, forumPosts, forumComments,
     blocksMade, blocksReceived, reportsMade, subforumsCreadas, siguiendo,
-    mensajesEnviados, notificaciones
+    mensajesEnviados, notificaciones, consentimientos
   ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
@@ -80,7 +80,9 @@ async function exportarDatos(userId) {
     prisma.notification.findMany({
       where: { recipientId: userId },
       select: { type: true, createdAt: true, readAt: true }
-    })
+    }),
+    // Ciclo 20: tus decisiones de privacidad, con la versión del texto y la fecha.
+    prisma.consentimiento.findMany({ where: { userId }, select: { finalidad: true, version: true, otorgado: true, decididoEn: true } })
   ]);
 
   return {
@@ -93,7 +95,8 @@ async function exportarDatos(userId) {
     reportesHechos: reportsMade,
     subforosCreados: subforumsCreadas, subforosSeguidos: siguiendo,
     mensajesEnviados,
-    notificaciones
+    notificaciones,
+    consentimientos
   };
 }
 
@@ -113,6 +116,8 @@ async function anonimizarCuenta(userId) {
     prisma.block.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } }),
     prisma.friendRequest.deleteMany({ where: { OR: [{ requesterId: userId }, { addresseeId: userId }] } }),
     prisma.subForumFollow.deleteMany({ where: { userId } }),
+    // Ciclo 20: el registro de consentimientos es un dato de la persona; se va con su cuenta.
+    prisma.consentimiento.deleteMany({ where: { userId } }),
     prisma.pushSubscription.deleteMany({ where: { userId } }),
     // Solo su bandeja de entrada: una notificación donde ES el actor le
     // pertenece en parte a quien la recibió, no se borra.
