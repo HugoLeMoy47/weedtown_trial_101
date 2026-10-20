@@ -7,6 +7,8 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { allowedOrigins } = require('./allowedOrigins');
 const { log } = require('./logger');
+const prisma = require('./prisma');
+const { addSocket, removeSocket, evaluatePresence } = require('./presence');
 
 let io = null;
 
@@ -36,12 +38,31 @@ function initChatSocket(server) {
 
   io.on('connection', (socket) => {
     socket.join(`user:${socket.userId}`);
+    addSocket(socket.userId, socket.id);
     log('chat_socket_conectado', { userId: socket.userId, socketId: socket.id });
+
+    // Consulta de presencia en vivo para el interlocutor del chat abierto
+    // (reciprocidad estricta evaluada en evaluatePresence)
+    socket.on('chat:query_presence', async ({ targetUserId }, callback) => {
+      try {
+        const targetId = Number(targetUserId);
+        if (!targetId || typeof callback !== 'function') return;
+        const [requester, target] = await Promise.all([
+          prisma.user.findUnique({ where: { id: socket.userId }, select: { id: true, mostrarEnLinea: true } }),
+          prisma.user.findUnique({ where: { id: targetId }, select: { id: true, mostrarEnLinea: true } })
+        ]);
+        const online = evaluatePresence(requester, target);
+        callback({ userId: targetId, isOnline: online });
+      } catch {
+        if (typeof callback === 'function') callback({ isOnline: false });
+      }
+    });
 
     // Socket.IO ya reintenta la reconexión del lado del cliente con backoff
     // propio; del lado del servidor no hay estado que reconstruir más allá de
     // unirse a la sala, que vuelve a pasar solo en cada nueva conexión.
     socket.on('disconnect', (razon) => {
+      removeSocket(socket.id);
       log('chat_socket_desconectado', { userId: socket.userId, socketId: socket.id, razon });
     });
   });

@@ -79,9 +79,13 @@ jobs:
       # 32 altos y 2 críticos del toolchain de Create React App y habría
       # fallado siempre sin decir nada nuevo. Desde el 12B ya no: tiene su
       # propio gate abajo.)
+      # --omit=dev: se audita lo que se despliega. `braces` (via nodemon >
+      # chokidar, solo desarrollo) no tiene version corregida en ninguna rama,
+      # y auditarlo todo dejaria el gate en rojo sin nada que hacer. Revisar
+      # si sale un parche.
       - name: Auditar dependencias (solo altas/críticas)
         working-directory: backend
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Generar el cliente de Prisma
         working-directory: backend

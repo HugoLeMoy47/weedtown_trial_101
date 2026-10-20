@@ -33,7 +33,12 @@
     // Se conserva íntegro: src/worker.js solo intercepta /p/:id y
     // /forum/:slug, todo lo demás sigue resolviéndose aquí (incluido
     // /forum/:slug/post/:id), sin que el Worker le cambie nada.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // run_worker_first garantiza que peticiones a la raíz de subdominios
+    // dedicados (como etkt420.weedtown.social/) pasen primero por el Worker
+    // para inyectar las meta tags Open Graph/Twitter Card en lugar de servir
+    // el index.html crudo directamente desde el edge de Static Assets.
+    "run_worker_first": true
   },
   // URL del backend que consulta src/worker.js para las fichas de /p/:id
   // (GET /api/posts/:id/preview) y /forum/:slug (GET

@@ -15,6 +15,7 @@ import PublicPost from './pages/PublicPost';
 import Friends from './pages/Friends';
 import Admin from './pages/Admin';
 import Terms from './pages/Terms';
+import Etiquetas from './pages/Etiquetas';
 import AuthCallback from './pages/AuthCallback';
 import RequireAuth from './components/RequireAuth';
 import RequireRole from './components/RequireRole';
@@ -23,8 +24,11 @@ import PrimeraPregunta from './components/PrimeraPregunta';
 import { AuthProvider } from './hooks/useAuth';
 import { ColorModeProvider } from './theme';
 import { SocketProvider } from './context/SocketContext';
+import { esSubdominioEtiquetas } from './lib/etiquetaspe420';
 
 function App() {
+  const enSubdominioEtiquetas = typeof window !== 'undefined' && esSubdominioEtiquetas(window.location.hostname);
+
   return (
     <ColorModeProvider>
       <AuthProvider>
@@ -37,8 +41,10 @@ function App() {
                 alta, y no pinta nada el resto del tiempo. */}
             <PrimeraPregunta />
           <Routes>
-            <Route path="/" element={<Navigate to="/feed" replace />} />
+            <Route path="/" element={enSubdominioEtiquetas ? <Etiquetas /> : <Navigate to="/feed" replace />} />
             <Route path="/home" element={<Navigate to="/feed" replace />} />
+            <Route path="/etiquetas" element={<Etiquetas />} />
+            <Route path="/pe420/etiquetas" element={<Navigate to="/etiquetas" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/auth/callback" element={<AuthCallback />} />

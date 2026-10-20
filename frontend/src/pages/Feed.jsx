@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Container, Typography, TextField, Button, Box, Stack, Alert, CircularProgress,
-  Pagination, InputAdornment, IconButton, Fab, Tooltip
+  Pagination, InputAdornment, IconButton, Fab, Tooltip, Paper
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -15,6 +15,7 @@ import PushBanner from '../components/PushBanner';
 import AparicionSuave from '../components/AparicionSuave';
 import { FEED_REFRESH_EVENT } from '../lib/refresh';
 import { DOCK_BOTTOM_OFFSET, DOCK_SIDE_MARGIN_PX } from '../lib/mobileNav';
+import { useMesPatrio } from '../lib/mesPatrio';
 
 // Cada cuánto se revisa si hay posts más nuevos que el que está arriba (solo
 // una consulta ligera a la página 1, no recarga nada todavía) — mismo orden
@@ -34,6 +35,16 @@ function Feed() {
   const [reload, setReload] = useState(0);
   const [newPostsAvailable, setNewPostsAvailable] = useState(false);
   const topPostIdRef = useRef(null);
+
+  const { esMesPatrio } = useMesPatrio();
+  const [bannerPatrioDescartado, setBannerPatrioDescartado] = useState(
+    () => sessionStorage.getItem('weedtown_patrio_banner_descartado') === 'true'
+  );
+
+  const descartarBannerPatrio = () => {
+    setBannerPatrioDescartado(true);
+    sessionStorage.setItem('weedtown_patrio_banner_descartado', 'true');
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -160,6 +171,44 @@ function Feed() {
       <Navbar />
       <Container maxWidth="md" component="main" sx={{ py: 3, pb: 12 }}>
         <Typography variant="h5" component="h1" gutterBottom>Feed</Typography>
+
+        {esMesPatrio && !bannerPatrioDescartado && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 1.5,
+              mb: 2.5,
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1.5,
+              border: 1,
+              borderColor: 'divider',
+              background: (t) => t.palette.mode === 'light'
+                ? 'linear-gradient(90deg, rgba(0,104,71,0.08) 0%, rgba(255,255,255,0.95) 50%, rgba(206,17,38,0.08) 100%)'
+                : 'linear-gradient(90deg, rgba(0,104,71,0.22) 0%, rgba(23,29,23,0.95) 50%, rgba(206,17,38,0.22) 100%)',
+              borderLeft: '4px solid #006847',
+              borderRight: '4px solid #ce1126',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ fontSize: '1.75rem', lineHeight: 1 }}>🇲🇽</Box>
+              <Box>
+                <Typography variant="subtitle2" fontWeight={800} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  ¡Viva México! Mes Patrio en WeedTown 🌿
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Septiembre se viste de fiesta tricolor. ¡Disfruta la buena vibra de la comunidad!
+                </Typography>
+              </Box>
+            </Box>
+            <IconButton size="small" onClick={descartarBannerPatrio} aria-label="Cerrar banner del mes patrio">
+              <ClearIcon fontSize="small" />
+            </IconButton>
+          </Paper>
+        )}
 
         <PushBanner />
 

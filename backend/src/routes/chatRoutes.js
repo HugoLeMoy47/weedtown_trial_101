@@ -13,18 +13,44 @@ const { crearNotificacion } = require('../lib/notifications');
 const MAX_MESSAGE_LENGTH = 1000;
 const MESSAGES_PAGE_SIZE = 50;
 
-const participantSelect = { id: true, name: true, displayName: true, avatar: true, handle: true };
+const participantSelect = {
+  id: true, name: true, displayName: true, avatar: true, handle: true,
+  confirmacionesLectura: true, mostrarEnLinea: true
+};
 
 // Forma pública de una conversación para el usuario actual: el "otro" participante + último mensaje
-function serializeChat(chat, currentUserId) {
+function serializeChat(chat, currentUserId, unreadCount = 0) {
   const other = chat.users.find(u => u.id !== currentUserId) || chat.users[0] || null;
+  const currentUser = chat.users.find(u => u.id === currentUserId);
   const lastMessage = chat.messages?.[0] || null;
+
+  let serializedLastMessage = null;
+  if (lastMessage) {
+    // Reciprocidad en visto para el último mensaje:
+    const showRead = Boolean(
+      currentUser?.confirmacionesLectura !== false &&
+      other?.confirmacionesLectura !== false
+    );
+    serializedLastMessage = {
+      id: lastMessage.id,
+      content: lastMessage.content,
+      senderId: lastMessage.senderId,
+      createdAt: lastMessage.createdAt,
+      readAt: showRead ? lastMessage.readAt : null
+    };
+  }
+
   return {
     id: chat.id,
-    with: other,
-    lastMessage: lastMessage
-      ? { id: lastMessage.id, content: lastMessage.content, senderId: lastMessage.senderId, createdAt: lastMessage.createdAt }
-      : null,
+    with: other ? {
+      id: other.id,
+      name: other.name,
+      displayName: other.displayName,
+      avatar: other.avatar,
+      handle: other.handle
+    } : null,
+    unreadCount,
+    lastMessage: serializedLastMessage,
     createdAt: chat.createdAt
   };
 }
@@ -89,8 +115,22 @@ router.get('/conversations', requireAuth, async (req, res) => {
         messages: { orderBy: { createdAt: 'desc' }, take: 1 }
       }
     });
+
+    const chatIds = chats.map(c => c.id);
+    // Conteo eficiente de mensajes no leídos por chat
+    const unreadCounts = await prisma.message.groupBy({
+      by: ['chatId'],
+      where: {
+        chatId: { in: chatIds },
+        senderId: { not: req.user.id },
+        readAt: null
+      },
+      _count: true
+    });
+    const unreadMap = new Map(unreadCounts.map(u => [u.chatId, u._count]));
+
     const serialized = chats
-      .map(c => serializeChat(c, req.user.id))
+      .map(c => serializeChat(c, req.user.id, unreadMap.get(c.id) || 0))
       .sort((a, b) => {
         const ta = new Date(a.lastMessage?.createdAt || a.createdAt).getTime();
         const tb = new Date(b.lastMessage?.createdAt || b.createdAt).getTime();
@@ -170,10 +210,66 @@ router.get('/conversations/:id/messages', requireAuth, async (req, res) => {
       include: { sender: { select: { id: true, name: true, avatar: true } } }
     });
     messages.reverse(); // cronológico ascendente para pintar el hilo
-    res.json({ messages, hasMore: messages.length === MESSAGES_PAGE_SIZE });
+
+    const other = chat.users.find(u => u.id !== req.user.id);
+    const currentUser = chat.users.find(u => u.id === req.user.id);
+    const showRead = Boolean(
+      currentUser?.confirmacionesLectura !== false &&
+      other?.confirmacionesLectura !== false
+    );
+
+    const serializedMessages = messages.map(m => ({
+      ...m,
+      readAt: showRead ? m.readAt : null
+    }));
+
+    res.json({ messages: serializedMessages, hasMore: messages.length === MESSAGES_PAGE_SIZE });
   } catch (e) {
     console.error('Error al listar mensajes:', e);
     res.status(500).json({ error: 'Error al obtener los mensajes' });
+  }
+});
+
+// POST /api/chat/conversations/:id/read — marcar mensajes y notificaciones como leídos
+router.post('/conversations/:id/read', requireAuth, async (req, res) => {
+  const chatId = Number(req.params.id);
+  try {
+    const chat = await findChatForUser(chatId, req.user.id);
+    if (!chat) return res.status(404).json({ error: 'Conversación no encontrada' });
+
+    const now = new Date();
+    // 1. Marcar mensajes de la otra persona como leídos
+    await prisma.message.updateMany({
+      where: { chatId, senderId: { not: req.user.id }, readAt: null },
+      data: { readAt: now }
+    });
+
+    // 2. Marcar notificaciones in-app de este chat como leídas
+    await prisma.notification.updateMany({
+      where: { recipientId: req.user.id, chatId, readAt: null },
+      data: { readAt: now }
+    });
+
+    // 3. Avisar en tiempo real a todas las sesiones de ambos participantes
+    const other = chat.users.find(u => u.id !== req.user.id);
+    const currentUser = chat.users.find(u => u.id === req.user.id);
+    const showRead = Boolean(
+      currentUser?.confirmacionesLectura !== false &&
+      other?.confirmacionesLectura !== false
+    );
+
+    for (const user of chat.users) {
+      emitToUser(user.id, 'chat:read', {
+        chatId,
+        readerId: req.user.id,
+        readAt: showRead ? now : null
+      });
+    }
+
+    res.json({ ok: true, readAt: now });
+  } catch (e) {
+    console.error('Error al marcar conversación como leída:', e);
+    res.status(500).json({ error: 'Error al marcar como leída' });
   }
 });
 

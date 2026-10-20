@@ -19,7 +19,9 @@ import {
   recursoDeLaPeticion,
   recursoPost,
   recursoSubforo,
-  recursoPerfil
+  recursoPerfil,
+  fichaEtiquetas,
+  recursoEtiquetas
 } from './worker';
 
 const URL_BASE = new URL('https://weedtown.social/p/1');
@@ -293,3 +295,44 @@ describe('noindex por perfil (ciclo 11B)', () => {
     expect(datos.url).toBe('https://weedtown.social/@luna');
   });
 });
+
+describe('Estudio de Etiquetado PE420 (/etiquetas y etkt420.weedtown.social)', () => {
+  test('intercepta /etiquetas en weedtown.social como ficha estática website', () => {
+    expect(get('/etiquetas')).toEqual({
+      ruta: '/etiquetas',
+      api: null,
+      tipoOg: 'website',
+      estatica: true
+    });
+  });
+
+  test('intercepta la raíz de etkt420.weedtown.social pero deja pasar los bundles estáticos', () => {
+    const raizSub = recursoDeLaPeticion({ method: 'GET' }, new URL('https://etkt420.weedtown.social/'));
+    expect(raizSub).toEqual({
+      ruta: '/',
+      api: null,
+      tipoOg: 'website',
+      estatica: true
+    });
+
+    const bundleSub = recursoDeLaPeticion({ method: 'GET' }, new URL('https://etkt420.weedtown.social/assets/index-123.js'));
+    expect(bundleSub).toBeNull();
+  });
+
+  test('fichaEtiquetas usa la imagen de campaña 1200x630 (concepto-07-v1.jpg) y metadatos completos', () => {
+    const url = new URL('https://etkt420.weedtown.social/');
+    const ficha = fichaEtiquetas(url);
+    expect(ficha.titulo).toContain('Estudio de Etiquetado Artesanal');
+    expect(ficha.imagen).toBe('https://etkt420.weedtown.social/campaign/concepto-07-v1.jpg');
+    expect(ficha.tieneImagen).toBe(false);
+
+    const html = construirMetaTags(datosMeta(ficha, url, recursoEtiquetas('/')));
+    expect(html).toContain('content="https://etkt420.weedtown.social/campaign/concepto-07-v1.jpg"');
+    expect(html).toContain('property="og:image:width" content="1200"');
+    expect(html).toContain('property="og:image:height" content="630"');
+    expect(html).toContain('name="twitter:card" content="summary_large_image"');
+    expect(html).toContain('name="twitter:image:alt"');
+  });
+});
+
+

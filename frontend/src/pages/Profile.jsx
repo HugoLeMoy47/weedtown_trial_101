@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container, Card, CardContent, Typography, TextField, Button, Alert, Stack,
   MenuItem, CircularProgress, Avatar, Box
@@ -9,6 +9,7 @@ import BlockedAccounts from '../components/BlockedAccounts';
 import AvatarStudio from '../components/AvatarStudio';
 import MiEnlaceDeInvitacion from '../components/MiEnlaceDeInvitacion';
 import PrivacidadPerfil, { CAMPOS as CAMPOS_PRIVACIDAD } from '../components/PrivacidadPerfil';
+import PrivacidadChat from '../components/PrivacidadChat';
 import AccessMethods from '../components/AccessMethods';
 import AccountPrivacy from '../components/AccountPrivacy';
 import PushNotificationSettings from '../components/PushNotificationSettings';
@@ -36,9 +37,66 @@ const Profile = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState([]);
   const [privacidad, setPrivacidad] = useState(null);
+  const [privacidadChat, setPrivacidadChat] = useState({ confirmacionesLectura: true, mostrarEnLinea: true });
   // El conteo EXACTO de invitaciones. Solo llega por /profile/me — hacia
   // terceros el servidor manda una cubeta.
   const [invitaciones, setInvitaciones] = useState(0);
+  const [handleUpdatedAt, setHandleUpdatedAt] = useState(null);
+  const [ahoraMs, setAhoraMs] = useState(() => Date.now());
+  const [handleStatus, setHandleStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'current'
+  const [handleMessage, setHandleMessage] = useState('');
+  const handleDebounceRef = useRef(null);
+
+  const DIAS_COOLDOWN = 180;
+  const MS_COOLDOWN = DIAS_COOLDOWN * 24 * 60 * 60 * 1000;
+  const transcurrido = handleUpdatedAt ? ahoraMs - new Date(handleUpdatedAt).getTime() : Infinity;
+  const enCooldown = handleUpdatedAt ? transcurrido < MS_COOLDOWN : false;
+  const diasRestantes = enCooldown ? Math.ceil((MS_COOLDOWN - transcurrido) / (24 * 60 * 60 * 1000)) : 0;
+  const fechaDisponible = enCooldown ? new Date(new Date(handleUpdatedAt).getTime() + MS_COOLDOWN).toLocaleDateString('es-MX') : null;
+
+  const verificarDisponibilidadHandle = async (handleAComprobar) => {
+    const handleLimpio = (handleAComprobar || '').trim().toLowerCase();
+    if (user?.handle && handleLimpio === user.handle.toLowerCase()) {
+      setHandleStatus('current');
+      setHandleMessage('');
+      return;
+    }
+    if (!handleLimpio) {
+      setHandleStatus('invalid');
+      setHandleMessage('El handle no puede estar vacío');
+      return;
+    }
+    if (handleLimpio.length < 3) {
+      setHandleStatus('invalid');
+      setHandleMessage('Mínimo 3 caracteres');
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9_]{2,19}$/.test(handleLimpio)) {
+      setHandleStatus('invalid');
+      setHandleMessage('Solo minúsculas, números y guion bajo (iniciando con letra o número)');
+      return;
+    }
+
+    setHandleStatus('checking');
+    setHandleMessage('Comprobando disponibilidad…');
+
+    try {
+      const res = await api.get(`/profile/check-handle?handle=${encodeURIComponent(handleLimpio)}`);
+      if (res.data.esActual) {
+        setHandleStatus('current');
+        setHandleMessage('');
+      } else if (res.data.disponible) {
+        setHandleStatus('available');
+        setHandleMessage(`@${res.data.propuesto} está disponible`);
+      } else {
+        setHandleStatus('taken');
+        setHandleMessage(res.data.motivo || 'Ese handle no está disponible');
+      }
+    } catch {
+      setHandleStatus('idle');
+      setHandleMessage('');
+    }
+  };
 
   const cargarPerfil = () => api.get('/profile/me')
     .then(res => {
@@ -53,20 +111,35 @@ const Profile = () => {
         birthdate: u.birthdate ? u.birthdate.slice(0, 10) : '',
         gender: u.gender || ''
       });
+      setHandleUpdatedAt(u.handleUpdatedAt || null);
+      if (u.handle) {
+        setHandleStatus('current');
+        setHandleMessage('');
+      }
       setIdentities(u.identities || []);
       setInvitaciones(u.invitaciones ?? 0);
       setPrivacidad(preferenciasDe(u));
+      setPrivacidadChat({
+        confirmacionesLectura: u.confirmacionesLectura !== false,
+        mostrarEnLinea: u.mostrarEnLinea !== false
+      });
     })
     .catch(() => setError('No se pudo cargar el perfil.'));
 
   useEffect(() => {
     cargarPerfil().finally(() => setLoading(false));
+    return () => {
+      if (handleDebounceRef.current) clearTimeout(handleDebounceRef.current);
+    };
   }, []);
 
   const validate = () => {
     const errors = [];
     if (!/^[a-z0-9][a-z0-9_]{2,19}$/.test(form.handle)) {
       errors.push('El handle debe tener entre 3 y 20 caracteres: minúsculas, números y guion bajo, empezando con letra o número');
+    }
+    if (user?.handle && form.handle !== user.handle && (handleStatus === 'taken' || handleStatus === 'invalid')) {
+      errors.push(handleMessage || 'El handle no está disponible o es inválido');
     }
     if (form.phone && !/^\+?\d{7,15}$/.test(form.phone)) errors.push('Teléfono inválido');
     if (form.age && (isNaN(form.age) || form.age < 0 || form.age > 120)) errors.push('Edad inválida');
@@ -76,7 +149,63 @@ const Profile = () => {
   };
 
   const handleChange = e => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    if (e.target.name === 'handle') {
+      const limpio = e.target.value
+        .replace(/^@+/, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '')
+        .slice(0, 20);
+      setForm(prev => ({ ...prev, handle: limpio }));
+
+      if (enCooldown) return;
+
+      if (handleDebounceRef.current) {
+        clearTimeout(handleDebounceRef.current);
+      }
+
+      if (user?.handle && limpio === user.handle.toLowerCase()) {
+        setHandleStatus('current');
+        setHandleMessage('');
+        return;
+      }
+
+      if (!limpio) {
+        setHandleStatus('invalid');
+        setHandleMessage('El handle no puede estar vacío');
+        return;
+      }
+
+      if (limpio.length < 3) {
+        setHandleStatus('invalid');
+        setHandleMessage('Mínimo 3 caracteres');
+        return;
+      }
+
+      if (!/^[a-z0-9][a-z0-9_]{2,19}$/.test(limpio)) {
+        setHandleStatus('invalid');
+        setHandleMessage('Solo minúsculas, números y guion bajo (iniciando con letra o número)');
+        return;
+      }
+
+      setHandleStatus('checking');
+      setHandleMessage('Comprobando disponibilidad…');
+      handleDebounceRef.current = setTimeout(() => {
+        verificarDisponibilidadHandle(limpio);
+      }, 400);
+      return;
+    }
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleHandleBlur = () => {
+    if (enCooldown) return;
+    if (handleDebounceRef.current) {
+      clearTimeout(handleDebounceRef.current);
+      handleDebounceRef.current = null;
+    }
+    if (form.handle && (!user?.handle || form.handle !== user.handle.toLowerCase())) {
+      verificarDisponibilidadHandle(form.handle);
+    }
   };
 
   const handleSubmit = async e => {
@@ -93,10 +222,18 @@ const Profile = () => {
     try {
       const res = await api.put('/profile/me', form);
       setUser(res.data.user);
+      if (res.data.user?.handleUpdatedAt) {
+        setHandleUpdatedAt(res.data.user.handleUpdatedAt);
+        setAhoraMs(Date.now());
+      }
+      setHandleStatus('current');
+      setHandleMessage('');
       setSuccess('Perfil actualizado correctamente');
     } catch (err) {
       if (err.response?.data?.errors) {
         setFieldErrors(err.response.data.errors);
+      } else if (err.response?.data?.error) {
+        setError(err.response.data.error);
       } else {
         setError('No se pudo actualizar el perfil');
       }
@@ -141,11 +278,49 @@ const Profile = () => {
                     label="Handle"
                     value={form.handle}
                     onChange={handleChange}
+                    onBlur={handleHandleBlur}
                     fullWidth
                     required
-                    InputProps={{ startAdornment: <Box sx={{ color: 'text.secondary', mr: 0.5 }}>@</Box> }}
+                    disabled={enCooldown}
+                    error={!enCooldown && (handleStatus === 'taken' || handleStatus === 'invalid')}
+                    InputProps={{
+                      startAdornment: <Box sx={{ color: 'text.secondary', mr: 0.5 }}>@</Box>,
+                      endAdornment: enCooldown ? (
+                        <Box sx={{ color: 'warning.main', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
+                          🔒 Congelado
+                        </Box>
+                      ) : handleStatus === 'checking' ? (
+                        <CircularProgress size={18} sx={{ color: 'primary.main', mr: 0.5 }} />
+                      ) : handleStatus === 'available' ? (
+                        <Box sx={{ color: 'success.main', fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
+                          ✓ Disponible
+                        </Box>
+                      ) : (handleStatus === 'taken' || handleStatus === 'invalid') ? (
+                        <Box sx={{ color: 'error.main', fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
+                          ✗ No disponible
+                        </Box>
+                      ) : null
+                    }}
                     inputProps={{ maxLength: 20, autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }}
-                    helperText="Tu nombre público en WeedTown: aparece en el feed, foros, chat y Cerca. Minúsculas, números y guion bajo."
+                    helperText={
+                      enCooldown
+                        ? `🔒 Handle congelado: Cambiado recientemente. Podrás cambiarlo nuevamente el ${fechaDisponible} (en ${diasRestantes} días).`
+                        : handleMessage
+                          ? handleMessage
+                          : "Tu nombre público en WeedTown: aparece en feed, foros, chat y Cerca. Política: máx. 2 cambios al año (cada 6 meses)."
+                    }
+                    FormHelperTextProps={{
+                      sx: {
+                        color: enCooldown
+                          ? 'warning.main'
+                          : handleStatus === 'available'
+                            ? 'success.main'
+                            : (handleStatus === 'taken' || handleStatus === 'invalid')
+                              ? 'error.main'
+                              : 'text.secondary',
+                        fontWeight: (handleStatus === 'available' || handleStatus === 'taken' || handleStatus === 'invalid') ? 500 : 400
+                      }
+                    }}
                   />
                   <TextField name="fullName" label="Nombre completo" value={form.fullName} onChange={handleChange} fullWidth />
                   <TextField name="phone" label="Teléfono" value={form.phone} onChange={handleChange} fullWidth
@@ -181,7 +356,12 @@ const Profile = () => {
                   {error && <Alert severity="error" role="alert">{error}</Alert>}
                   {success && <Alert severity="success" role="status">{success}</Alert>}
 
-                  <Button type="submit" variant="contained" size="large" disabled={saving}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    disabled={saving || (Boolean(user?.handle) && form.handle !== user.handle && (handleStatus === 'checking' || handleStatus === 'taken' || handleStatus === 'invalid'))}
+                  >
                     {saving ? 'Guardando…' : 'Guardar cambios'}
                   </Button>
                 </Stack>
@@ -191,7 +371,7 @@ const Profile = () => {
         </Card>
 
         {privacidad && (
-          <Card sx={{ mt: 3 }}>
+          <Card sx={{ mt: 3, mb: 3 }}>
             <CardContent sx={{ p: 4, pt: 2 }}>
               <PrivacidadPerfil
                 valores={privacidad}
@@ -200,6 +380,17 @@ const Profile = () => {
             </CardContent>
           </Card>
         )}
+
+        <PrivacidadChat
+          valores={privacidadChat}
+          onCambio={(u) => {
+            setUser(u);
+            setPrivacidadChat({
+              confirmacionesLectura: u.confirmacionesLectura !== false,
+              mostrarEnLinea: u.mostrarEnLinea !== false
+            });
+          }}
+        />
 
         {/* Va ANTES del estudio del avatar y de los métodos de acceso: es lo
             que alguien viene a buscar cuando quiere invitar a alguien, y
