@@ -137,6 +137,7 @@ const AccessMethods = ({ identities, onChange }) => {
             <TextField
               label="Correo de respaldo" type="email" value={email} size="small" fullWidth
               onChange={e => setEmail(e.target.value)}
+              helperText="Opcional. Sirve para entrar y para que podamos escribirte si tú lo decides. No se publica. Te enviaremos un enlace para confirmarlo."
             />
             <Button type="submit" variant="outlined" disabled={emailBusy} sx={{ whiteSpace: 'nowrap' }}>
               {emailBusy ? 'Enviando…' : 'Agregar correo'}
