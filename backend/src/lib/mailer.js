@@ -16,6 +16,9 @@ const log = {
   nombre: 'log',
   async enviarEnlaceMagico(email, url) {
     console.log(`[mailer:log] Enlace de acceso para ${email} → ${url}`);
+  },
+  async enviarAviso({ email, asunto }) {
+    console.log(`[mailer:log] Aviso «${asunto}» para ${email} (no se envió: MAIL_DRIVER=log)`);
   }
 };
 
@@ -56,6 +59,26 @@ const resend = {
       const detalle = await res.text().catch(() => '');
       throw new Error(`Resend respondió ${res.status} al enviar el correo: ${detalle}`);
     }
+  },
+
+  // Aviso de servicio (ciclo 21): asunto y cuerpo los arma quien llama. Lanza si
+  // Resend no confirma el envío, para que el script no marque como enviado lo que
+  // no salió. `RESEND_REPLY_TO` es opcional: a dónde llegan las respuestas.
+  async enviarAviso({ email, asunto, texto, html }) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) throw new Error('MAIL_DRIVER=resend requiere RESEND_API_KEY en el entorno');
+    const from = process.env.RESEND_FROM || 'WeedTown <onboarding@resend.dev>';
+    const cuerpo = { from, to: [email], subject: asunto, text: texto, html };
+    if (process.env.RESEND_REPLY_TO) cuerpo.reply_to = process.env.RESEND_REPLY_TO;
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo)
+    });
+    if (!res.ok) {
+      const detalle = await res.text().catch(() => '');
+      throw new Error(`Resend respondió ${res.status} al enviar el aviso: ${detalle}`);
+    }
   }
 };
 
@@ -74,4 +97,10 @@ if (!driver) {
  */
 const enviarEnlaceMagico = (email, url) => driver.enviarEnlaceMagico(email, url);
 
-module.exports = { enviarEnlaceMagico, driver: driver.nombre };
+/**
+ * Manda un aviso de servicio. Lanza si no se pudo confirmar el envío.
+ * @param {{email: string, asunto: string, texto: string, html: string}} aviso
+ */
+const enviarAviso = (aviso) => driver.enviarAviso(aviso);
+
+module.exports = { enviarEnlaceMagico, enviarAviso, driver: driver.nombre };

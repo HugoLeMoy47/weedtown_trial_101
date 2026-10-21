@@ -1,6 +1,6 @@
-import { decidirAvisoDeTerminos, modoDePuerta, fechaLarga, TERMINOS_VIGENTES } from './terminos';
+import { decidirAvisoDeTerminos, modoDePuerta, fechaLarga, franjaDeTerminos, DIAS_SIN_CERRAR, TERMINOS_VIGENTES } from './terminos';
 
-const V = '2026-10-20';
+const V = '2026-10-21';
 
 describe('decidirAvisoDeTerminos', () => {
   test('ya aceptó la versión vigente: no se hace nada', () => {
@@ -79,5 +79,41 @@ describe('fechaLarga', () => {
     expect(fechaLarga('mañana')).toBeNull();
     expect(fechaLarga(null)).toBeNull();
     expect(fechaLarga('2026-11-19T00:00:00Z')).toBeNull();
+  });
+});
+
+describe('franjaDeTerminos (ciclo 21)', () => {
+  const sinAceptar = (dias, extra = {}) => ({ terminosVigentes: V, terminosVersion: null, terminosExigidos: false, terminosDiasRestantes: dias, ...extra });
+
+  test('mientras hay plazo, muestra los días que dice el servidor', () => {
+    expect(franjaDeTerminos(sinAceptar(30))).toEqual({ dias: 30, cerrable: true });
+    expect(franjaDeTerminos(sinAceptar(8))).toEqual({ dias: 8, cerrable: true });
+  });
+
+  test('en los últimos 7 días ya no se puede cerrar (decisión del PO)', () => {
+    expect(DIAS_SIN_CERRAR).toBe(7);
+    expect(franjaDeTerminos(sinAceptar(7))).toEqual({ dias: 7, cerrable: false });
+    expect(franjaDeTerminos(sinAceptar(1))).toEqual({ dias: 1, cerrable: false });
+    expect(franjaDeTerminos(sinAceptar(0))).toEqual({ dias: 0, cerrable: false });
+  });
+
+  test('cerrada por la sesión, desaparece... salvo en los últimos 7 días', () => {
+    expect(franjaDeTerminos(sinAceptar(20), true)).toBeNull();
+    expect(franjaDeTerminos(sinAceptar(7), true)).toEqual({ dias: 7, cerrable: false });
+  });
+
+  test('ya aceptada la vigente: no hay nada que avisar', () => {
+    expect(franjaDeTerminos(sinAceptar(20, { terminosVersion: V }))).toBeNull();
+  });
+
+  test('vencido el plazo la ocupa la compuerta, no la franja', () => {
+    expect(franjaDeTerminos(sinAceptar(0, { terminosExigidos: true }))).toBeNull();
+  });
+
+  test('sin sesión, sin versión vigente o sin días del servidor: nada (no se adivina)', () => {
+    expect(franjaDeTerminos(null)).toBeNull();
+    expect(franjaDeTerminos({ terminosVersion: null, terminosDiasRestantes: 10 })).toBeNull();
+    expect(franjaDeTerminos(sinAceptar(undefined))).toBeNull();
+    expect(franjaDeTerminos(sinAceptar(null))).toBeNull();
   });
 });

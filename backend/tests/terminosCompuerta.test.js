@@ -47,16 +47,16 @@ module.exports = async function run() {
   _vaciarMemoria();
   try {
     console.log('\n  — La regla, sin base de datos —');
-    const ANTES = new Date('2026-11-18T18:00:00Z');   // 12:00 en México
-    const DESPUES = new Date('2026-11-19T18:00:00Z');
-    check('el límite por defecto es 30 días después del aviso (2026-11-19)', LIMITE_POR_DEFECTO === '2026-11-19');
-    check('antes del límite NO se exige a nadie', terminosExigidos(null, ANTES, '2026-11-19') === false);
-    check('desde el límite SÍ se exige a quien no tiene versión', terminosExigidos(null, DESPUES, '2026-11-19') === true);
-    check('...y a quien tiene una versión vieja', terminosExigidos('2020-01-01', DESPUES, '2026-11-19') === true);
-    check('quien aceptó la vigente nunca está bloqueado', terminosExigidos(TERMINOS_VIGENTES, new Date('2040-01-01T12:00:00Z'), '2026-11-19') === false);
-    check('el límite se mide en el día de MÉXICO, no en UTC (04:00Z del 19 todavía es el 18 allá)',
-      terminosExigidos(null, new Date('2026-11-19T04:00:00Z'), '2026-11-19') === false &&
-      terminosExigidos(null, new Date('2026-11-19T06:30:00Z'), '2026-11-19') === true);
+    const ANTES = new Date('2026-11-19T18:00:00Z');   // 12:00 en México
+    const DESPUES = new Date('2026-11-20T18:00:00Z');
+    check('el límite por defecto es publicación + 30 días (2026-11-20)', LIMITE_POR_DEFECTO === '2026-11-20');
+    check('antes del límite NO se exige a nadie', terminosExigidos(null, ANTES, '2026-11-20') === false);
+    check('desde el límite SÍ se exige a quien no tiene versión', terminosExigidos(null, DESPUES, '2026-11-20') === true);
+    check('...y a quien tiene una versión vieja', terminosExigidos('2020-01-01', DESPUES, '2026-11-20') === true);
+    check('quien aceptó la vigente nunca está bloqueado', terminosExigidos(TERMINOS_VIGENTES, new Date('2040-01-01T12:00:00Z'), '2026-11-20') === false);
+    check('el límite se mide en el día de MÉXICO, no en UTC (04:00Z del 20 todavía es el 19 allá)',
+      terminosExigidos(null, new Date('2026-11-20T04:00:00Z'), '2026-11-20') === false &&
+      terminosExigidos(null, new Date('2026-11-20T06:30:00Z'), '2026-11-20') === true);
     check('TERMINOS_LIMITE lo sobreescribe', limiteDeTerminos({ TERMINOS_LIMITE: '2099-12-31' }) === '2099-12-31');
     check('un valor inválido se IGNORA: no se apaga la compuerta con un typo', limiteDeTerminos({ TERMINOS_LIMITE: 'nunca' }) === LIMITE_POR_DEFECTO && limiteDeTerminos({}) === LIMITE_POR_DEFECTO);
     check('el runner de pruebas aleja el límite (sin bomba de tiempo)', limiteDeTerminos() >= '2099-01-01', `(es ${limiteDeTerminos()})`);
@@ -84,15 +84,15 @@ module.exports = async function run() {
     const aceptada = await mkUser('acept', { terminosVersion: TERMINOS_VIGENTES, terminosAceptadosEn: new Date() });
     const vieja = await mkUser('vieja', { terminosVersion: '2020-01-01', terminosAceptadosEn: new Date() });
     const borrada = await mkUser('borrada', { deletedAt: new Date() });
-    const antes = crearRequireAuth({ ahora: () => ANTES, limite: () => '2026-11-19' });
-    const despues = crearRequireAuth({ ahora: () => DESPUES, limite: () => '2026-11-19' });
+    const antes = crearRequireAuth({ ahora: () => ANTES, limite: () => '2026-11-20' });
+    const despues = crearRequireAuth({ ahora: () => DESPUES, limite: () => '2026-11-20' });
 
     let x = await correr(antes, previa, 'GET', '/api/posts|/');
     check('ANTES del límite: quien no aceptó pasa', x.paso === true && x.estado === null);
     x = await correr(despues, sinAceptar, 'GET', '/api/posts|/');
     check('DESDE el límite: quien no aceptó recibe 403', x.paso === false && x.estado === 403);
     check('...con el código TERMINOS_PENDIENTES, la versión vigente y el límite',
-      x.cuerpo?.code === 'TERMINOS_PENDIENTES' && x.cuerpo?.terminosVigentes === TERMINOS_VIGENTES && x.cuerpo?.terminosLimite === '2026-11-19');
+      x.cuerpo?.code === 'TERMINOS_PENDIENTES' && x.cuerpo?.terminosVigentes === TERMINOS_VIGENTES && x.cuerpo?.terminosLimite === '2026-11-20');
     x = await correr(despues, vieja, 'POST', '/api/posts|/');
     check('quien tiene una versión VIEJA también', x.paso === false && x.estado === 403);
     x = await correr(despues, aceptada, 'GET', '/api/posts|/');

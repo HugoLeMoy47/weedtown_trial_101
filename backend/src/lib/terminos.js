@@ -7,7 +7,9 @@
 // la medición de actividad (19A) y los avisos por correo (ciclo 20) son
 // precisamente el tipo de cambio que exige poder responder esa pregunta.
 //
-// LA VERSIÓN ES LA FECHA en que se publicó el texto, 'AAAA-MM-DD'. No es un
+// LA VERSIÓN ES LA FECHA desde la que rige el texto, 'AAAA-MM-DD' (la del día que
+// se publica, o la siguiente si se publica de noche: lo único que importa es que
+// sea DISTINTA de la anterior). No es un
 // número que alguien tenga que acordarse de subir: es el día del cambio, y
 // subirla es lo que vuelve a pedirle aceptación a todo el mundo. **Cámbiala
 // SOLO cuando cambie el texto de Terms.jsx, y siempre en el mismo commit.**
@@ -27,13 +29,18 @@
 // acceso a una finalidad opcional.
 const { diaMexicoISO } = require('./diaMexico');
 
-const TERMINOS_VIGENTES = '2026-10-20';
+// 2026-10-21 (ciclo 21): se agregó la sección «Aceptación y acceso» y la de decisiones
+// opcionales. Subir la versión vuelve a pedir aceptación a todas las cuentas.
+const TERMINOS_VIGENTES = '2026-10-21';
 
 const FORMATO = /^\d{4}-\d{2}-\d{2}$/;
 
 // El primer día en que la versión vigente se EXIGE (inclusive, día de México):
-// 30 días después de publicar el aviso con esta fecha a la vista (2026-10-20).
-const LIMITE_POR_DEFECTO = '2026-11-19';
+// 30 días después de que el aviso con esta fecha esté a la vista. Decisión del PO
+// (2026-10-20): el plazo cuenta desde la publicación del texto nuevo, no desde el
+// primer aviso — publicado el 2026-10-21, son 30 días: el 2026-11-20. (Era
+// 2026-11-19 hasta el ciclo 21.)
+const LIMITE_POR_DEFECTO = '2026-11-20';
 
 /**
  * El límite vigente. `TERMINOS_LIMITE` lo sobreescribe (formato AAAA-MM-DD);
@@ -59,4 +66,14 @@ function terminosExigidos(versionAceptada, ahora = new Date(), limite = limiteDe
   return diaMexicoISO(ahora) >= limite;
 }
 
-module.exports = { TERMINOS_VIGENTES, FORMATO, LIMITE_POR_DEFECTO, limiteDeTerminos, terminosExigidos };
+/**
+ * Días que le quedan a esta cuenta antes de que se le exija. 0 el día del límite
+ * (ya se exige); nunca negativo. Se cuenta en días de calendario de México.
+ */
+function diasParaLimite(ahora = new Date(), limite = limiteDeTerminos()) {
+  const hoy = Date.parse(`${diaMexicoISO(ahora)}T00:00:00Z`);
+  const fin = Date.parse(`${limite}T00:00:00Z`);
+  return Math.max(0, Math.round((fin - hoy) / 86400000));
+}
+
+module.exports = { TERMINOS_VIGENTES, FORMATO, LIMITE_POR_DEFECTO, limiteDeTerminos, terminosExigidos, diasParaLimite };

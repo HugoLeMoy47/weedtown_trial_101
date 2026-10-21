@@ -5,7 +5,7 @@
 // archivo y falla si divergen. Es la fecha de publicación del texto de
 // Terms.jsx; **cámbiala solo cuando cambie ese texto, y en el mismo commit.**
 // Subirla vuelve a pedirle aceptación a todas las cuentas.
-export const TERMINOS_VIGENTES = '2026-10-20';
+export const TERMINOS_VIGENTES = '2026-10-21';
 
 // La marca «acepté los Términos en la pantalla de acceso». Vive en
 // localStorage por la misma razón que `altaNueva.js` y `attribution.js`: entre
@@ -84,4 +84,34 @@ export function modoDePuerta(user, marca) {
 export function fechaLarga(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-MX', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// La franja con la cuenta regresiva (ciclo 21): se cierra por la sesión, salvo en
+// los últimos 7 días, cuando ya no se puede cerrar. Decisión del PO.
+const CLAVE_FRANJA = 'weedtown_franja_terminos_cerrada';
+export const DIAS_SIN_CERRAR = 7;
+
+export function cerrarFranjaDeTerminos() {
+  try { sessionStorage.setItem(CLAVE_FRANJA, '1'); } catch { /* sin storage */ }
+}
+export function franjaDeTerminosCerrada() {
+  try { return sessionStorage.getItem(CLAVE_FRANJA) === '1'; } catch { return false; }
+}
+
+/**
+ * Qué muestra la franja, o null si no hay que mostrarla. Función pura.
+ * Solo aparece mientras queda plazo: ya aceptada no hay nada que avisar, y vencido
+ * el plazo la pantalla de la compuerta ocupa su lugar. Los días los cuenta el
+ * SERVIDOR (`terminosDiasRestantes`): el navegador no recalcula fechas.
+ *
+ * @returns {{dias: number, cerrable: boolean} | null}
+ */
+export function franjaDeTerminos(user, cerrada = false) {
+  if (!user || !user.terminosVigentes) return null;
+  if (user.terminosVersion === user.terminosVigentes) return null;
+  if (user.terminosExigidos) return null;
+  if (typeof user.terminosDiasRestantes !== 'number') return null;
+  const cerrable = user.terminosDiasRestantes > DIAS_SIN_CERRAR;
+  if (cerrable && cerrada) return null;
+  return { dias: user.terminosDiasRestantes, cerrable };
 }

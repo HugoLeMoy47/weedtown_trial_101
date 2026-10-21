@@ -9,7 +9,8 @@ import { useAuth } from '../hooks/useAuth';
 import ConsentimientosPanel from './ConsentimientosPanel';
 import AccountPrivacy from './AccountPrivacy';
 import {
-  modoDePuerta, tomarMarcaDeTerminos, posponerAvisoDeTerminos, avisoDeTerminosPospuesto, fechaLarga
+  modoDePuerta, tomarMarcaDeTerminos, posponerAvisoDeTerminos, avisoDeTerminosPospuesto, fechaLarga,
+  franjaDeTerminos, cerrarFranjaDeTerminos, franjaDeTerminosCerrada
 } from '../lib/terminos';
 
 // La capa base de los Términos: registro, aviso y compuerta (ciclos 19.5 y 20).
@@ -53,6 +54,7 @@ const PuertaTerminos = ({ children }) => {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
+  const [franjaCerrada, setFranjaCerrada] = useState(franjaDeTerminosCerrada());
   // `tomarMarcaDeTerminos()` CONSUME la marca, y en desarrollo StrictMode monta
   // dos veces: sin esta guarda la segunda pasada vería la marca ya consumida y
   // pediría lo que acaba de registrar. Una decisión por cuenta y sesión.
@@ -187,8 +189,29 @@ const PuertaTerminos = ({ children }) => {
     );
   }
 
+  // La franja con la cuenta regresiva (ciclo 21). Arriba y en el flujo normal, no
+  // flotando: así no tapa la navegación ni el contenido. Solo mientras hay plazo.
+  const franja = franjaDeTerminos(user, franjaCerrada);
+  const cerrarFranja = () => { cerrarFranjaDeTerminos(); setFranjaCerrada(true); };
+
   return (
     <>
+      {franja && (
+        <Alert
+          severity="info"
+          role="status"
+          sx={{ borderRadius: 0, alignItems: 'center' }}
+          action={
+            <Stack direction="row" spacing={1}>
+              <Button color="inherit" size="small" onClick={() => setDialogoAbierto(true)}>Leer y aceptar</Button>
+              {franja.cerrable && <Button color="inherit" size="small" onClick={cerrarFranja}>Cerrar</Button>}
+            </Stack>
+          }
+        >
+          <strong>{franja.dias === 1 ? 'Queda 1 día' : `Quedan ${franja.dias} días`}</strong> para aceptar los Términos
+          actualizados{limite ? ` (hasta el ${limite})` : ''}. Tu cuenta no se borra si no lo haces, pero no podrás usar la red.
+        </Alert>
+      )}
       {children}
       <Dialog open={dialogoAbierto} onClose={masTarde} aria-labelledby="titulo-terminos" maxWidth="sm" fullWidth>
         <DialogTitle id="titulo-terminos">Actualizamos los Términos</DialogTitle>

@@ -5,7 +5,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const prisma = require('../lib/prisma');
-const { TERMINOS_VIGENTES, limiteDeTerminos, terminosExigidos } = require('../lib/terminos');
+const { TERMINOS_VIGENTES, limiteDeTerminos, terminosExigidos, diasParaLimite } = require('../lib/terminos');
 const avatar = require('../lib/avatar');
 const { generarUnico: generarHandleUnico, esValido: esHandleValido, normalizar: normalizarHandle } = require('../lib/handle');
 const { requireAuth } = require('../middlewares/requireAuth');
@@ -254,6 +254,8 @@ router.get('/me', requireAuth, async (req, res) => {
       // decide; el navegador solo pinta (no hay dos copias de la regla que desfasar).
       terminosLimite: limiteDeTerminos(),
       terminosExigidos: terminosExigidos(user.terminosVersion),
+      // Ciclo 21: cuántos días quedan (la franja de cuenta regresiva). null si ya aceptó.
+      terminosDiasRestantes: user.terminosVersion === TERMINOS_VIGENTES ? null : diasParaLimite(),
       suspendedUntil: vigente ? user.suspendedUntil : null,
       suspendedReason: vigente ? user.suspendedReason : null
     });

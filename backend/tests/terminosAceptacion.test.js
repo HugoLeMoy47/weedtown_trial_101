@@ -30,6 +30,10 @@ module.exports = async function run() {
     check('...y dice que se borra y se exporta', terms.includes('esa fecha se borra') && terms.includes('exportación de tus datos'));
     check('Terms.jsx declara el registro de aceptación (qué versión y cuándo, se borra y se exporta)',
       terms.includes('Registro de aceptación') && terms.includes('qué versión de estos Términos aceptaste y cuándo'));
+    check('Terms.jsx lleva la sección «Aceptación y acceso» con el plazo de 30 días y la cuenta intacta (ciclo 21)',
+      terms.includes('Aceptación y acceso') && terms.includes('30 días de anticipación') && terms.includes('tu cuenta no se borra'));
+    check('...y la de «Decisiones opcionales»: apagadas por defecto y sin limitar el acceso',
+      terms.includes('Decisiones opcionales') && terms.includes('apagado por defecto') && terms.includes('nunca limita tu acceso'));
     check('Terms.jsx sigue prometiendo no guardar historiales persistentes (la cláusula no lo contradice)', terms.includes('historiales de navegación persistentes'));
 
     const ana = await mkUser('ana');

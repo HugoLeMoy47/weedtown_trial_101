@@ -203,6 +203,12 @@ const Terms = () => {
                     <Typography variant="body2" color="text.secondary" paragraph>
                       * <strong>Registro de aceptación.</strong> Guardamos qué versión de estos Términos aceptaste y cuándo, para poder avisarte cuando cambien. Se borra si eliminas tu cuenta y sale en la exportación de tus datos.
                     </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      * <strong>Aceptación y acceso.</strong> Para operar la red necesitamos que aceptes la versión vigente de estos Términos, que incluye el medidor general y anónimo de uso descrito arriba. Cuando una versión nueva exija tu aceptación, te avisamos con <strong>30 días de anticipación</strong>. Pasado ese plazo, si no la has aceptado no podrás usar la red; <strong>tu cuenta no se borra</strong>: puedes descargar tus datos, eliminarla en cualquier momento o volver cuando aceptes.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      * <strong>Decisiones opcionales.</strong> Todo lo demás —avisos por correo, novedades de WeedTown, medición personal de tu actividad, reconocimientos y resúmenes— es <strong>opcional</strong>, está apagado por defecto y se decide en «Mis decisiones de privacidad». Cada decisión se guarda con la versión de su texto y la fecha, y puedes cambiarla cuando quieras. <strong>No aceptar una decisión opcional nunca limita tu acceso a la red.</strong>
+                    </Typography>
                   </Box>
 
                   <Divider />

@@ -12,6 +12,21 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 21 — Términos con la compuerta declarada, franja con cuenta regresiva y aviso por correo (2026-10-21)
+
+### Añadido
+- **Dos secciones nuevas en `Terms.jsx`**, con el texto aprobado por el PO: «Aceptación y acceso» (la base se acepta para operar la red; **30 días de anticipación**; pasado el plazo no se usa la red pero **la cuenta no se borra**: se puede descargar, eliminar o volver) y «Decisiones opcionales» (todo lo demás está apagado por defecto, se decide en «Mis decisiones de privacidad» y **no aceptarlo nunca limita el acceso**). Ahora los Términos dicen lo que la pantalla ya hacía.
+- **Franja con cuenta regresiva** arriba de la app mientras hay plazo: «Quedan N días para aceptar los Términos actualizados (hasta el …)». Se puede cerrar por la sesión, **salvo en los últimos 7 días**. Los días los calcula el servidor (`terminosDiasRestantes` en `/auth/me`); el navegador no recalcula fechas.
+- **Aviso único por correo** (`scripts/enviar-aviso-terminos.js` y `src/lib/avisoTerminos.js`): correo de **servicio**, no comercial, con el texto aprobado. **Por defecto es una prueba** (dice a quién le escribiría y cómo se vería; no manda nada ni toca ningún registro). Para enviar hacen falta tres cosas a la vez: `--enviar`, `--confirmo=<N>` (el total de pendientes que la prueba mostró) y `MAIL_DRIVER=resend` (con el driver `log` se niega, porque daría por enviado lo que solo se imprimió). No manda dos veces a la misma dirección (el registro guarda el **hash**, no la dirección), tiene tope por corrida (80; el tier gratuito de Resend admite ~100 al día) y un fallo no se marca como enviado. `mailer.js` suma `enviarAviso` y `RESEND_REPLY_TO` opcional.
+
+### Cambiado
+- **Versión de los Términos: `2026-10-21`** (en backend y frontend; vuelve a pedir aceptación a todas las cuentas, dentro del plazo). La versión es la fecha **desde la que rige** el texto.
+- **Límite de la compuerta: `2026-11-20`** (publicación + 30 días; era 2026-11-19), decisión del PO.
+
+### No se hizo, a propósito
+- **No se envió ningún correo.** El envío lo ordena el PO, aparte, con credenciales de producción.
+- La ruta de Resend de `enviarAviso` **no se ejercitó contra la API real** (no hay credenciales aquí); su cuerpo es el del envío del enlace mágico, que sí funciona en producción.
+
 ## Ciclo 20 — Consentimientos por finalidad, Centro de privacidad y compuerta de la capa base (2026-10-20)
 
 ### Añadido
