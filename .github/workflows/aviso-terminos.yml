@@ -1,7 +1,7 @@
 name: Aviso de actualización de los Términos
 
-# Ciclo 22.1. Programa el envío del correo informativo del cambio de Términos para el 21
-# y el 22 de octubre de 2026 (10:00 en México). Lo manda el BACKEND, no este workflow:
+# Ciclo 22.1. Programa el envío del correo informativo del cambio de Términos para el viernes 23
+# y el sábado 24 de octubre de 2026 (10:00 en México). Lo manda el BACKEND, no este workflow:
 # esto solo llama a `POST /api/interno/aviso-terminos` con `{"enviar": true}`.
 #
 # ESTÁ PROGRAMADO PERO NO ARMADO. El envío real solo funciona si el PO puso en Render
@@ -13,12 +13,12 @@ name: Aviso de actualización de los Términos
 # ~100 al día) y lo que no cupió se manda en la del día siguiente. No repite a nadie: deja
 # constancia en la base de a quién ya se le avisó.
 #
-# DESPUÉS DEL 22 de octubre este workflow ya no hace nada útil: si cambia la versión de los
+# DESPUÉS DEL 24 de octubre este workflow ya no hace nada útil: si cambia la versión de los
 # Términos, el armado deja de valer y hay que volver a armarlo a propósito. Conviene borrarlo.
 on:
   schedule:
-    # 16:00 UTC = 10:00 en México, los días 21 y 22 de octubre.
-    - cron: '0 16 21,22 10 *'
+    # 16:00 UTC = 10:00 en México, los días 23 y 24 de octubre.
+    - cron: '0 16 23,24 10 *'
   workflow_dispatch:
     inputs:
       modo:
