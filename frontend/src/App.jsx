@@ -23,6 +23,7 @@ import RequireRole from './components/RequireRole';
 import PrimeraPregunta from './components/PrimeraPregunta';
 import PuertaTerminos from './components/PuertaTerminos';
 import Privacidad from './pages/Privacidad';
+import Baja from './pages/Baja';
 import { AuthProvider } from './hooks/useAuth';
 import { ColorModeProvider } from './theme';
 import { SocketProvider } from './context/SocketContext';
@@ -64,6 +65,8 @@ function App() {
             <Route path="/cerca" element={<RequireAuth><Nearby /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
             <Route path="/privacidad" element={<RequireAuth><Privacidad /></RequireAuth>} />
+            {/* Ciclo 22. Baja en un clic desde un correo: PÚBLICA, no pide sesión. */}
+            <Route path="/baja" element={<Baja />} />
             <Route path="/amigos" element={<RequireAuth><Friends /></RequireAuth>} />
             {/* Perfil ajeno (ciclo 10A). `/@handle` es la forma compartible;
                 `/perfil/:id` se conserva porque hay enlaces viejos, y los dos

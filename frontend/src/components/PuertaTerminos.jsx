@@ -39,7 +39,7 @@ import {
 //
 // `/terms` queda siempre accesible: no se puede exigir aceptar un texto que no se
 // puede leer.
-const RUTAS_ABIERTAS = ['/terms'];
+const RUTAS_ABIERTAS = ['/terms', '/baja']; // `/baja` (ciclo 22): darse de baja de un correo nunca puede quedar detrás de la compuerta
 
 const Cargando = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }} role="status" aria-label="Cargando">

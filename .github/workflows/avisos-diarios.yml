@@ -1,0 +1,48 @@
+name: Avisos diarios por correo
+
+# Ciclo 22. Una vez al día llama a la ruta interna del backend que manda el resumen de
+# actividad (reacciones, respuestas y mensajes sin leer) a quien activó «Avisos por
+# correo». El backend gratuito de Render se duerme sin tráfico, así que un temporizador
+# dentro del proceso no serviría: este cron externo lo despierta y corre UNA vez (y aunque
+# corriera dos, el tope de un correo al día por persona lo impide).
+#
+# CONFIGURACIÓN, y NO está hecha: hacen falta DOS secretos del repositorio (Settings →
+# Secrets and variables → Actions) y UNA variable en Render.
+#   · Render:   CRON_SECRET        una cadena larga y al azar. SIN ella la ruta no existe.
+#   · GitHub:   CRON_SECRET        la MISMA cadena.
+#   · GitHub:   BACKEND_URL        la URL pública del backend, sin barra final.
+# Mientras falte alguno, este trabajo NO falla: avisa y termina, para no dejar el repositorio
+# en rojo por algo que no es un error. Y mientras la finalidad `avisos_correo` siga como
+# «próximamente» (src/lib/consentimientos.js), nadie puede activarla y esto no manda nada.
+on:
+  schedule:
+    # 15:00 UTC = 09:00 en México.
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  avisos:
+    name: Resumen diario
+    runs-on: ubuntu-latest
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      BACKEND_URL: ${{ secrets.BACKEND_URL }}
+    steps:
+      - name: Llamar al backend
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$BACKEND_URL" ]; then
+            echo "::notice::Faltan los secretos CRON_SECRET y/o BACKEND_URL: no se llamó al backend. Ver el encabezado de este workflow."
+            exit 0
+          fi
+          # --max-time alto: el backend gratuito de Render tarda en despertar.
+          codigo=$(curl -sS --max-time 120 -o respuesta.json -w "%{http_code}" -X POST \
+            -H "x-cron-secret: $CRON_SECRET" "${BACKEND_URL%/}/api/interno/avisos-diarios")
+          echo "HTTP $codigo"
+          cat respuesta.json; echo
+          if [ "$codigo" != "200" ]; then
+            echo "::error::El backend respondió $codigo"
+            exit 1
+          fi

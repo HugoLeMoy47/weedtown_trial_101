@@ -1250,6 +1250,125 @@
         }
       }
     },
+    "/api/baja/info": {
+      "get": {
+        "tags": [
+          "Privacidad"
+        ],
+        "summary": "Qué finalidad apaga un enlace de baja, sin cambiar nada (ciclo 22)",
+        "description": "Pública. La autorización es el token firmado del enlace. No revela si la cuenta existe.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "La finalidad y su título",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "finalidad": { "type": "string" },
+                    "titulo": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "El enlace no es válido"
+          }
+        }
+      }
+    },
+    "/api/baja": {
+      "post": {
+        "tags": [
+          "Privacidad"
+        ],
+        "summary": "Baja en un clic de una finalidad de correo (ciclo 22)",
+        "description": "Pública: la autorización es el token firmado del enlace (en la URL, como exige RFC 8058 para List-Unsubscribe-Post). Apaga ESA finalidad, es idempotente y responde igual exista o no la cuenta. Es POST y no GET para que un escáner que visite el enlace no dé de baja a nadie.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Baja registrada (o ya registrada)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "finalidad": { "type": "string" },
+                    "titulo": { "type": "string" },
+                    "estado": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "El enlace no es válido"
+          }
+        }
+      }
+    },
+    "/api/interno/avisos-diarios": {
+      "post": {
+        "tags": [
+          "Interno"
+        ],
+        "summary": "Corre el resumen diario de actividad por correo (ciclo 22)",
+        "description": "Para el cron (GitHub Actions), NO para la app. Exige la cabecera x-cron-secret igual a CRON_SECRET del backend. SIN CRON_SECRET configurado la ruta no existe (404). La respuesta lleva solo cuentas, nunca a quién se le escribió.",
+        "parameters": [
+          {
+            "name": "x-cron-secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cuentas del envío",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "candidatas": { "type": "integer" },
+                    "enviados": { "type": "integer" },
+                    "omitidos": { "type": "object", "additionalProperties": { "type": "integer" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Secreto incorrecto"
+          },
+          "404": {
+            "description": "La ruta está cerrada: no hay CRON_SECRET configurado"
+          }
+        }
+      }
+    },
     "/api/consentimientos": {
       "get": {
         "tags": [

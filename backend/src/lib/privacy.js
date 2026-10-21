@@ -31,6 +31,7 @@ const CAMPOS_ANONIMIZADOS = {
   ultimaActividadDia: null,
   terminosVersion: null,
   terminosAceptadosEn: null,
+  ultimoCorreoDia: null,
   role: 'USER'
 };
 
@@ -55,7 +56,9 @@ async function exportarDatos(userId) {
         // Ciclo 19A: la única fecha de actividad que se guarda sobre la persona.
         ultimaActividadDia: true,
         // Ciclo 19.5: qué versión de los Términos aceptó y cuándo.
-        terminosVersion: true, terminosAceptadosEn: true
+        terminosVersion: true, terminosAceptadosEn: true,
+        // Ciclo 22: el último día que se te mandó un correo (sostiene el tope de uno al día).
+        ultimoCorreoDia: true
       }
     }),
     prisma.identity.findMany({

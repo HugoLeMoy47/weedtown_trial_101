@@ -56,13 +56,13 @@ const FINALIDADES = {
     queNoHacemos: 'No hay ranking público ni presión por entrar todos los días.'
   },
   avisos_correo: {
-    version: '2026-10-20',
+    version: '2026-10-21',
     disponible: false,
     requiereCorreo: true,
     titulo: 'Avisos por correo',
-    paraQue: 'Escribirte cuando alguien reaccione a tu publicación, te responda o te mande un mensaje.',
-    comoSeTrata: 'Usamos el correo de tu cuenta. Como máximo un correo al día. Nunca incluimos lo que otras personas escribieron: solo te avisamos que pasó algo. Cada correo lleva un enlace para apagarlo.',
-    queNoHacemos: 'No compartimos tu correo con nadie.'
+    paraQue: 'Escribirte, una vez al día como máximo, si en las últimas 24 horas alguien reaccionó a tus publicaciones, te respondió o te escribió.',
+    comoSeTrata: 'Usamos el correo de tu cuenta. Te decimos CUÁNTAS reacciones, respuestas y mensajes tienes sin leer, nunca quién ni qué dijeron. Guardamos la fecha del último correo que te mandamos, para no pasar de uno al día. Cada correo lleva un enlace para apagarlo en un clic.',
+    queNoHacemos: 'No compartimos tu correo con nadie ni incluimos lo que otras personas escribieron.'
   },
   mensajes_comunitarios: {
     version: '2026-10-20',
@@ -83,12 +83,12 @@ const FINALIDADES = {
     queNoHacemos: 'No revelamos ubicaciones ni identidades.'
   },
   comunicaciones_comerciales: {
-    version: '2026-10-20',
+    version: '2026-10-21',
     disponible: true,
     requiereCorreo: true,
     titulo: 'Novedades y propuestas de WeedTown',
     paraQue: 'Mandarte por correo novedades, campañas y propuestas de WeedTown. Es comunicación comercial y por eso necesita tu permiso.',
-    comoSeTrata: 'Usamos el correo de tu cuenta. Cada mensaje dice quién lo envía y lleva un enlace para darte de baja en un clic. Guardamos cuándo y con qué texto lo aceptaste.',
+    comoSeTrata: 'Usamos el correo de tu cuenta. Como máximo un correo al día. Cada mensaje dice quién lo envía y lleva un enlace para darte de baja en un clic. Guardamos cuándo y con qué texto lo aceptaste, y la fecha del último correo que te mandamos, para no pasar de uno al día.',
     queNoHacemos: 'No compartimos ni vendemos tu correo ni tus datos con terceros.'
   }
 };

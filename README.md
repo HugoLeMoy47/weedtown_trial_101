@@ -572,6 +572,14 @@ El job levanta el mismo Postgres 16 efímero, compila el frontend y lo sirve **e
 
 Al fallar, el job sube las trazas y capturas de Playwright como artefacto (7 días). Sin eso, un fallo en CI es un mensaje sin nada que mirar.
 
+#### Correo que no es de servicio: campañas y avisos (ciclo 22)
+
+El correo de **servicio** (enlace mágico, aviso de cambio de Términos) no necesita permiso. Todo lo demás —**campañas comerciales** y **avisos de actividad**— sale por un único camino, `backend/src/lib/correos.js`, que **no tiene atajos**: antes de tocar el mailer comprueba un **consentimiento activo de la versión vigente** (ciclo 20), que la cuenta esté viva, tenga correo y no esté suspendida, **un correo al día por persona** y un **tope diario para toda la plataforma** (80 por defecto, `CORREOS_MAX_DIA`; el tier gratuito de Resend admite ~100). Todo correo lleva el **pie con quién lo envía y la baja en un clic**, más las cabeceras `List-Unsubscribe` de RFC 8058: ningún llamador puede olvidarlos.
+
+- **Baja en un clic** (`/baja?token=…`, pública): el token firmado dice «esta persona, esta finalidad» y no caduca. La baja es un **POST** —un antivirus que visite el enlace no da de baja a nadie—, apaga **solo esa finalidad**, es idempotente y responde igual exista o no la cuenta. La clave sale de `BAJA_SECRET` (o `JWT_SECRET`): **fíjala en producción y no la rotes**, o los enlaces de los correos ya enviados dejan de funcionar.
+- **Campañas comerciales:** una campaña es un archivo JSON que escribe el PO (`backend/scripts/campanas/ejemplo.json` muestra el formato; un `ejemplo-…` no se puede enviar). `node scripts/enviar-comercial.js --campana=<archivo> [--env=.env.produccion]` es una **prueba por defecto**: dice a cuántas personas y a quiénes (enmascarados) les escribiría y cómo se vería. Para enviar hacen falta tres cosas a la vez: `--enviar`, `--confirmo=<N>` (los pendientes que la prueba mostró) y `MAIL_DRIVER=resend`. El registro de lo enviado (`.planeacion/envios/`) guarda hashes, no direcciones.
+- **Avisos de actividad:** un correo al día, **solo con números** («3 reacciones, 1 respuesta, 2 mensajes sin leer»), nunca quién ni qué dijeron. Los manda `POST /api/interno/avisos-diarios`, que llama el workflow `avisos-diarios.yml` cada día. **La ruta no existe sin `CRON_SECRET`** en el backend, y el workflow no falla mientras falten los secretos (`CRON_SECRET` y `BACKEND_URL` del repositorio). La finalidad `avisos_correo` sigue como «próximamente» hasta que el PO confirme esa configuración.
+
 #### Pruebas rápidas en local (ciclo 19.5)
 
 `npm test` corre contra el Supabase remoto: ~25 minutos por pasada, y una caída de red a mitad de corrida la mata sin que el código tenga la culpa. **`npm run test:local`** (desde `backend/`) corre la **misma suite** contra un Postgres 16 en Docker —el mismo que usa el CI—: **~2 minutos**.

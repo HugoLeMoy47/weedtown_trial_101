@@ -69,6 +69,10 @@ if (!process.env.JWT_SECRET) abortar(`Falta JWT_SECRET en ${fuenteEntorno}.`);
 // aleja salvo que quien corra las pruebas ponga otra a propósito.
 process.env.TERMINOS_LIMITE = process.env.TERMINOS_LIMITE || '2099-12-31';
 
+// La ruta interna de los avisos diarios (ciclo 22) solo existe con CRON_SECRET. Las pruebas la
+// necesitan abierta; el driver de correo de pruebas es `log`, así que no sale ningún correo.
+process.env.CRON_SECRET = process.env.CRON_SECRET || 'secreto-de-pruebas-cron';
+
 const PORT = process.env.PORT || 4010;
 const entornoHijo = { ...process.env };
 

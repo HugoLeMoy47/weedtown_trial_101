@@ -17,8 +17,8 @@ const log = {
   async enviarEnlaceMagico(email, url) {
     console.log(`[mailer:log] Enlace de acceso para ${email} → ${url}`);
   },
-  async enviarAviso({ email, asunto }) {
-    console.log(`[mailer:log] Aviso «${asunto}» para ${email} (no se envió: MAIL_DRIVER=log)`);
+  async enviarAviso({ email, asunto, headers }) {
+    console.log(`[mailer:log] Aviso «${asunto}» para ${email}${headers && headers['List-Unsubscribe'] ? ' (con baja de un clic)' : ''} (no se envió: MAIL_DRIVER=log)`);
   }
 };
 
@@ -64,11 +64,14 @@ const resend = {
   // Aviso de servicio (ciclo 21): asunto y cuerpo los arma quien llama. Lanza si
   // Resend no confirma el envío, para que el script no marque como enviado lo que
   // no salió. `RESEND_REPLY_TO` es opcional: a dónde llegan las respuestas.
-  async enviarAviso({ email, asunto, texto, html }) {
+  async enviarAviso({ email, asunto, texto, html, headers }) {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) throw new Error('MAIL_DRIVER=resend requiere RESEND_API_KEY en el entorno');
     const from = process.env.RESEND_FROM || 'WeedTown <onboarding@resend.dev>';
     const cuerpo = { from, to: [email], subject: asunto, text: texto, html };
+    // Cabeceras opcionales: las de baja de un clic (List-Unsubscribe, RFC 8058) de los correos
+    // que no son de servicio. Ver src/lib/correos.js.
+    if (headers && Object.keys(headers).length) cuerpo.headers = headers;
     if (process.env.RESEND_REPLY_TO) cuerpo.reply_to = process.env.RESEND_REPLY_TO;
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',

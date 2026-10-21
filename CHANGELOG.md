@@ -12,6 +12,22 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 22 — Baja en un clic y envío de correo con consentimiento (2026-10-20)
+
+### Añadido
+- **Baja en un clic** (B25): enlaces firmados (`src/lib/bajaCorreo.js`, HMAC con clave propia derivada de `BAJA_SECRET` o `JWT_SECRET`, con separación de dominio: un token de baja no es una sesión ni al revés). No caducan. `POST /api/baja?token=` apaga **solo esa finalidad** (idempotente; igual exista o no la cuenta) y `GET /api/baja/info` dice cuál es sin cambiar nada. **Es un POST**: un antivirus que visite el enlace no da de baja a nadie. Acepta el POST de un clic del propio cliente de correo (RFC 8058). Página pública `/baja`, fuera de la compuerta de Términos.
+- **Un solo camino para el correo que no es de servicio** (B26, `src/lib/correos.js`): exige consentimiento activo de la versión vigente, cuenta viva con correo y sin suspensión, **un correo al día por persona** y un **tope diario global** (80; `CORREOS_MAX_DIA`). Los topes se **reclaman antes de enviar** (dos envíos simultáneos a la misma persona: pasa uno) y se **devuelven si el envío falla**. Agrega solo el pie (quién lo envía, enlace firmado de baja) y las cabeceras `List-Unsubscribe`. Guarda `User.ultimoCorreoDia` (una fecha que se sobrescribe) y `ConteoCorreo` (un número por día, sin identidades); migración `20261022120000_correos`; entra al respaldo, a «mis datos» y se borra con la cuenta.
+- **Campañas comerciales** por script (`scripts/enviar-comercial.js`, `src/lib/campanas.js`): el texto es un archivo del PO. **Prueba por defecto**; enviar exige `--enviar`, `--confirmo=N` y `MAIL_DRIVER=resend`. Rechaza una campaña de ejemplo y una que traiga su propio enlace de baja. Solo a quien tiene el consentimiento comercial activo y vigente. No repite (registro con hashes).
+- **Avisos de actividad** (`src/lib/avisosActividad.js`): un correo al día **solo con números** (reacciones, respuestas y mensajes sin leer de las últimas 24 h), nunca quién ni qué dijeron. `POST /api/interno/avisos-diarios` (para el cron): **no existe sin `CRON_SECRET`** y compara el secreto en tiempo constante. Workflow `avisos-diarios.yml`, que no falla mientras falten los secretos.
+
+### Cambiado
+- Los textos de `avisos_correo` y `comunicaciones_comerciales` ahora dicen lo que de verdad se hace (cuántas, nunca quién; un correo al día; se guarda la fecha del último correo) y **suben a la versión `2026-10-21`**. Es el mecanismo del ciclo 20 funcionando: quien hubiera activado la comercial con el texto viejo queda «desactualizada» y vuelve a confirmar; ninguna otra finalidad se ve afectada.
+- `mailer.enviarAviso` acepta cabeceras.
+
+### No se hizo, a propósito
+- **No se envió ningún correo**, ni comercial ni de aviso. `avisos_correo` **sigue «próximamente»**: nadie puede activarla hasta que el PO configure los secretos del cron y la variable en Render. Voltear `disponible` es un cambio de una línea.
+- La ruta real de Resend con cabeceras no se ejercitó contra la API.
+
 ## Ciclo 21 — Términos con la compuerta declarada, franja con cuenta regresiva y aviso por correo (2026-10-21)
 
 ### Añadido

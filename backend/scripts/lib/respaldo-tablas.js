@@ -50,7 +50,9 @@ const DEPENDE_DE = {
   // sin identidades.
   ConteoAtribucion: [],
   // Igual que ConteoAtribucion: un número por día, sin identidades (ciclo 19A).
-  ConteoActividad: []
+  ConteoActividad: [],
+  // Un número por día, sin identidades (ciclo 22).
+  ConteoCorreo: []
 };
 
 // Orden de exportación = orden de restauración. Las tablas sin llaves foráneas
@@ -84,7 +86,7 @@ const MODELOS = [
   'Chat', 'Message',
   'Report', 'ModerationAction', 'Notification', 'PushSubscription',
   'MarketItem', 'PrivacyAction', 'Media',
-  'ConteoAtribucion', 'ConteoActividad'
+  'ConteoAtribucion', 'ConteoActividad', 'ConteoCorreo'
 ];
 
 // Grupos con nombre, para no tener que acordarse de qué tablas componen una
@@ -99,7 +101,7 @@ const GRUPOS = {
   // Métricas de la red que no cuelgan de ninguna cuenta. Grupo propio para que
   // un recorte de "cuentas" o "feed" no las arrastre sin querer, y para poder
   // pedirlas solas.
-  metricas: ['ConteoAtribucion', 'ConteoActividad']
+  metricas: ['ConteoAtribucion', 'ConteoActividad', 'ConteoCorreo']
 };
 
 /** Resuelve una lista de nombres (tablas y/o grupos) a un Set de tablas reales. */
