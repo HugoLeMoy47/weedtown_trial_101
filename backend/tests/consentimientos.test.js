@@ -26,9 +26,10 @@ module.exports = async function run() {
     check('todas llevan título, para qué, cómo se trata y qué no hacemos',
       Object.values(FINALIDADES).every(f => f.titulo && f.paraQue && f.comoSeTrata && f.queNoHacemos));
     check('todas llevan su propia versión con forma de fecha', Object.values(FINALIDADES).every(f => /^\d{4}-\d{2}-\d{2}$/.test(f.version)));
-    check('la comercial está disponible; las demás son «próximamente» (no se consiente lo que no existe)',
-      FINALIDADES.comunicaciones_comerciales.disponible === true &&
-      APROBADAS.filter(f => f !== 'comunicaciones_comerciales').every(f => FINALIDADES[f].disponible === false));
+    const DISPONIBLES = ['comunicaciones_comerciales', 'avisos_correo'];
+    check('solo están disponibles las que YA existen (la comercial y, desde que el cron está configurado, los avisos por correo); las demás son «próximamente»',
+      DISPONIBLES.every(f => FINALIDADES[f].disponible === true) &&
+      APROBADAS.filter(f => !DISPONIBLES.includes(f)).every(f => FINALIDADES[f].disponible === false));
     check('las que usan el correo lo declaran', ['avisos_correo', 'mensajes_comunitarios', 'resumen_cerca', 'comunicaciones_comerciales'].every(f => FINALIDADES[f].requiereCorreo));
     check('la comercial promete no compartir ni vender el correo', /no compartimos ni vendemos/i.test(FINALIDADES.comunicaciones_comerciales.queNoHacemos));
 

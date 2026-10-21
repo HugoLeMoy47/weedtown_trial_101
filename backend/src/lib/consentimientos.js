@@ -57,7 +57,9 @@ const FINALIDADES = {
   },
   avisos_correo: {
     version: '2026-10-21',
-    disponible: false,
+    // `true` desde que el cron diario está configurado (CRON_SECRET en Render y en GitHub) y
+    // comprobado de punta a punta con el PO. Mientras fue `false` nadie podía activarla.
+    disponible: true,
     requiereCorreo: true,
     titulo: 'Avisos por correo',
     paraQue: 'Escribirte, una vez al día como máximo, si en las últimas 24 horas alguien reaccionó a tus publicaciones, te respondió o te escribió.',

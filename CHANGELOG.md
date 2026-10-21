@@ -12,6 +12,11 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Activación de los avisos por correo (2026-10-20)
+
+### Cambiado
+- **`avisos_correo` pasa a «disponible».** El PO configuró `CRON_SECRET` (Render y repositorio) y `BACKEND_URL`; se comprobó de punta a punta: la ruta interna responde 200 con el secreto, y el workflow `avisos-diarios.yml` la llama y termina en verde. Desde ahora, quien tenga correo en su perfil puede activarlos en «Mis decisiones de privacidad». El primer resumen sale a las 09:00 (México) del día siguiente, solo para quien los haya activado, con un correo al día como máximo y solo números (nunca quién ni qué dijeron).
+
 ## Ciclo 22 — Baja en un clic y envío de correo con consentimiento (2026-10-20)
 
 ### Añadido
