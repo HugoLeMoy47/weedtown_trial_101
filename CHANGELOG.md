@@ -12,6 +12,10 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## B30 — Agregar un correo es visible (2026-10-20)
+
+- En el Centro de privacidad, quien no tiene correo ve un enlace opcional a su perfil para agregar uno. En Accesos, el campo «Correo de respaldo» explica para qué sirve, que es opcional, que no se publica y que se confirma con un enlace. El mecanismo ya existía; solo faltaba hacerlo descubrible. Sin migración. No se agregó pista en la compuerta de Términos (decisión: no mezclar un aviso opcional con una pantalla de aceptación).
+
 ## Ajuste 2026-10-20 — Límite de la compuerta al 23 de noviembre
 
 - El aviso por correo se reprogramó al 23 y 24 de octubre; el **límite pasa de `2026-11-20` a `2026-11-23`** (30 días tras el último envío) para que quien se entere por correo tenga sus 30 días completos. No cambia el texto de los Términos ni su versión; el correo toma la fecha de `limiteDeTerminos()`.

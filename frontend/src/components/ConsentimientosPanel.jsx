@@ -98,7 +98,8 @@ const ConsentimientosPanel = ({ enlacePerfil = true }) => {
                 <strong>A dónde:</strong>{' '}
                 {correo
                   ? <>te escribiremos a <strong>{correo}</strong>, la dirección con la que entras.</>
-                  : 'tu cuenta no tiene un correo asociado (entras con llave de acceso o con Mastodon), así que no podemos escribirte.'}
+                  : <>tu cuenta no tiene un correo asociado (entras con llave de acceso o con Mastodon), así que no podemos escribirte.
+                    {enlacePerfil && <> Si quieres, puedes <Link component={RouterLink} to="/profile" underline="always">agregar un correo en tu perfil</Link> (es opcional).</>}</>}
               </Typography>
             )}
             {activa && f.decididoEn && (
