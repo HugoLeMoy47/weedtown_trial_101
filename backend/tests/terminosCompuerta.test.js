@@ -49,7 +49,7 @@ module.exports = async function run() {
     console.log('\n  — La regla, sin base de datos —');
     const ANTES = new Date('2026-11-19T18:00:00Z');   // 12:00 en México
     const DESPUES = new Date('2026-11-20T18:00:00Z');
-    check('el límite por defecto es publicación + 30 días (2026-11-20)', LIMITE_POR_DEFECTO === '2026-11-20');
+    check('el límite por defecto es 30 días tras el último envío del aviso (2026-11-23)', LIMITE_POR_DEFECTO === '2026-11-23');
     check('antes del límite NO se exige a nadie', terminosExigidos(null, ANTES, '2026-11-20') === false);
     check('desde el límite SÍ se exige a quien no tiene versión', terminosExigidos(null, DESPUES, '2026-11-20') === true);
     check('...y a quien tiene una versión vieja', terminosExigidos('2020-01-01', DESPUES, '2026-11-20') === true);

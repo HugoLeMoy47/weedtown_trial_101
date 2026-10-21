@@ -12,6 +12,10 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ajuste 2026-10-20 — Límite de la compuerta al 23 de noviembre
+
+- El aviso por correo se reprogramó al 23 y 24 de octubre; el **límite pasa de `2026-11-20` a `2026-11-23`** (30 días tras el último envío) para que quien se entere por correo tenga sus 30 días completos. No cambia el texto de los Términos ni su versión; el correo toma la fecha de `limiteDeTerminos()`.
+
 ## Ciclo 22.1 — La dirección de contacto real, aviso de Términos desde el backend y cuenta oficial (2026-10-20)
 
 ### Corregido

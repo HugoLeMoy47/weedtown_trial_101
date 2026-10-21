@@ -31,7 +31,7 @@ module.exports = async function run() {
   await cleanup();
   try {
     console.log('\n  — Los días que quedan —');
-    check('el límite por defecto es publicación + 30 días (2026-11-20)', LIMITE_POR_DEFECTO === '2026-11-20');
+    check('el límite por defecto es 30 días tras el último envío del aviso (2026-11-23)', LIMITE_POR_DEFECTO === '2026-11-23');
     check('el día de la publicación (21-oct) quedan 30', diasParaLimite(new Date('2026-10-21T18:00:00Z'), '2026-11-20') === 30);
     check('el 19 de noviembre queda 1', diasParaLimite(new Date('2026-11-19T18:00:00Z'), '2026-11-20') === 1);
     check('el día del límite quedan 0 (ya se exige)', diasParaLimite(new Date('2026-11-20T18:00:00Z'), '2026-11-20') === 0);
