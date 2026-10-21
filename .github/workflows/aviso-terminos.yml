@@ -1,0 +1,63 @@
+name: Aviso de actualización de los Términos
+
+# Ciclo 22.1. Programa el envío del correo informativo del cambio de Términos para el 21
+# y el 22 de octubre de 2026 (10:00 en México). Lo manda el BACKEND, no este workflow:
+# esto solo llama a `POST /api/interno/aviso-terminos` con `{"enviar": true}`.
+#
+# ESTÁ PROGRAMADO PERO NO ARMADO. El envío real solo funciona si el PO puso en Render
+# `AVISO_TERMINOS_ACTIVO` igual a la versión vigente de los Términos (`2026-10-21`). Sin ese
+# valor el backend responde 409 y NO manda nada; este workflow lo toma como un aviso, no como
+# un error. Armar el envío es, entonces, un acto explícito del PO: nada sale por inercia.
+#
+# DOS DÍAS, no uno: el backend manda hasta 80 por llamada (el tier gratuito de Resend admite
+# ~100 al día) y lo que no cupió se manda en la del día siguiente. No repite a nadie: deja
+# constancia en la base de a quién ya se le avisó.
+#
+# DESPUÉS DEL 22 de octubre este workflow ya no hace nada útil: si cambia la versión de los
+# Términos, el armado deja de valer y hay que volver a armarlo a propósito. Conviene borrarlo.
+on:
+  schedule:
+    # 16:00 UTC = 10:00 en México, los días 21 y 22 de octubre.
+    - cron: '0 16 21,22 10 *'
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'simulacion (cuenta y no manda nada), o enviar (envío real; exige estar armado)'
+        type: choice
+        options: [simulacion, enviar]
+        default: simulacion
+
+permissions:
+  contents: read
+
+jobs:
+  aviso:
+    name: Aviso de Términos
+    runs-on: ubuntu-latest
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      BACKEND_URL: ${{ secrets.BACKEND_URL }}
+      MODO: ${{ github.event_name == 'schedule' && 'enviar' || inputs.modo }}
+    steps:
+      - name: Llamar al backend
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$BACKEND_URL" ]; then
+            echo "::notice::Faltan los secretos CRON_SECRET y/o BACKEND_URL: no se llamó al backend."
+            exit 0
+          fi
+          if [ "$MODO" = "enviar" ]; then CUERPO='{"enviar": true}'; else CUERPO='{}'; fi
+          echo "Modo: $MODO"
+          # --max-time alto: el backend gratuito de Render tarda en despertar.
+          codigo=$(curl -sS --max-time 180 -o respuesta.json -w "%{http_code}" -X POST \
+            -H "x-cron-secret: $CRON_SECRET" -H "Content-Type: application/json" \
+            -d "$CUERPO" "${BACKEND_URL%/}/api/interno/aviso-terminos")
+          echo "HTTP $codigo"
+          cat respuesta.json; echo
+          if [ "$codigo" = "409" ]; then
+            echo "::warning::El envío NO está armado (AVISO_TERMINOS_ACTIVO en Render no coincide con la versión vigente). No se mandó nada."
+            exit 0
+          fi
+          if [ "$codigo" != "200" ]; then
+            echo "::error::El backend respondió $codigo"
+            exit 1
+          fi

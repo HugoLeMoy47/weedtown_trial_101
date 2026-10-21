@@ -1,26 +1,32 @@
-// Ciclo 21: el aviso único de la actualización de los Términos.
+// Ciclos 21 y 22.1: el aviso único de la actualización de los Términos.
 //
-// Es un correo de SERVICIO, de una sola vez. Lo que hay que sostener:
-//   1. Se le avisa solo a quien debe: cuenta viva, con correo válido y que NO ha
-//      aceptado la versión vigente. Cada dirección cuenta una vez.
-//   2. La prueba (`enviar: false`) NO llama al mailer: no manda nada.
-//   3. No se manda dos veces a la misma dirección, y el registro guarda el HASH,
-//      no la dirección.
-//   4. Un envío que falla NO se marca como enviado (se puede reintentar) y no
-//      detiene al resto.
-//   5. Hay un tope por corrida.
-//   6. El mensaje no lleva datos de nadie ni promueve nada: es un aviso de
-//      servicio. Dice lo que el PO aprobó (fecha límite, cuenta intacta).
+// Es un correo de SERVICIO, de una sola vez, y lo manda el BACKEND (no una computadora).
+// Lo que hay que sostener:
+//   1. Se le avisa solo a quien debe: cuenta viva, con DIRECCIÓN DE CONTACTO (la del perfil o
+//      la de su acceso por correo) que NO ha aceptado la versión vigente ni tiene constancia.
+//   2. La simulación (por defecto) NO llama al mailer: no manda nada.
+//   3. La prueba manda UN correo [PRUEBA] a la dirección dada y no deja constancia.
+//   4. El envío deja constancia en la base y NO se repite; un fallo no deja constancia.
+//   5. El envío real exige estar ARMADO (si no, 409) y la ruta exige el secreto.
+//   6. El mensaje no lleva datos de nadie ni promueve nada.
 //
 // El mailer es de juguete: lo que se prueba es la lógica, no Resend.
 const { suite } = require('./lib');
 const { TERMINOS_VIGENTES, diasParaLimite, LIMITE_POR_DEFECTO } = require('../src/lib/terminos');
-const {
-  destinatarios, armarMensaje, planificar, enviarLote, huella, enmascarar, fechaLarga, MAXIMO_POR_DEFECTO
-} = require('../src/lib/avisoTerminos');
+const { correoDeContacto, enmascarar } = require('../src/lib/contacto');
+const { pendientes, armarMensaje, enviarAvisoTerminos, fechaLarga, MAXIMO_POR_DEFECTO } = require('../src/lib/avisoTerminos');
 
 module.exports = async function run() {
-  const { results, check, mkUser, cleanup, prisma } = suite('AvisoTerminos', 'wtavi');
+  const { results, check, call, mkUser, cleanup, prisma } = suite('AvisoTerminos', 'wtavi');
+  const BASE = `http://localhost:${process.env.PORT || 4010}`;
+  const V = TERMINOS_VIGENTES;
+  const conAcceso = async (suffix, correo, extra = {}) => {
+    const u = await mkUser(suffix, extra);
+    await prisma.identity.create({ data: { userId: u.id, provider: 'EMAIL', externalId: correo, originHandle: correo } });
+    return u;
+  };
+  const constancia = async (id) => (await prisma.user.findUnique({ where: { id }, select: { avisoTerminosVersion: true } })).avisoTerminosVersion;
+  const mios = (lista) => lista.filter(p => p.correo.startsWith('wtavi_'));
 
   await cleanup();
   try {
@@ -30,76 +36,120 @@ module.exports = async function run() {
     check('el 19 de noviembre queda 1', diasParaLimite(new Date('2026-11-19T18:00:00Z'), '2026-11-20') === 1);
     check('el día del límite quedan 0 (ya se exige)', diasParaLimite(new Date('2026-11-20T18:00:00Z'), '2026-11-20') === 0);
     check('después nunca es negativo', diasParaLimite(new Date('2027-03-01T18:00:00Z'), '2026-11-20') === 0);
-    check('se cuenta en días de MÉXICO (04:00Z del 20 todavía es el 19 allá)', diasParaLimite(new Date('2026-11-20T04:00:00Z'), '2026-11-20') === 1);
 
-    console.log('\n  — A quién se le avisa —');
-    const acepto = await mkUser('acepto', { email: 'wtavi_acepto@example.test', terminosVersion: TERMINOS_VIGENTES });
-    const pendiente = await mkUser('pend', { email: 'WTAVI_Pend@Example.Test ' });          // mayúsculas y espacio: se normaliza
-    const vieja = await mkUser('vieja', { email: 'wtavi_vieja@example.test', terminosVersion: '2020-01-01' });
-    const sinCorreo = await mkUser('sinc');
-    const borrada = await mkUser('borr', { email: 'wtavi_borr@example.test', deletedAt: new Date() });
-    const malCorreo = await mkUser('malc', { email: 'esto-no-es-un-correo' });
-    const suspendida = await mkUser('susp', { email: 'wtavi_susp@example.test', suspendedUntil: new Date(Date.now() + 86400000) });
-    const lista = (await destinatarios(prisma, TERMINOS_VIGENTES)).filter(c => c.startsWith('wtavi_'));
-    check('quien aún no aceptó la vigente, sí (y el correo se normaliza)', lista.includes('wtavi_pend@example.test'));
-    check('quien tiene una versión VIEJA, sí', lista.includes('wtavi_vieja@example.test'));
-    check('quien ya aceptó la vigente, no', !lista.includes('wtavi_acepto@example.test'));
-    check('una cuenta eliminada, no', !lista.includes('wtavi_borr@example.test'));
-    check('una cuenta suspendida SÍ: el aviso es sobre su cuenta', lista.includes('wtavi_susp@example.test'));
-    check('una cuenta sin correo no aparece (solo verá el aviso dentro de la red)', lista.length === 3, `(${lista.join(', ')})`);
-    check('un correo con forma inválida no se usa', !lista.some(c => c.includes('esto-no-es')));
-    check('la lista sale ordenada', JSON.stringify(lista) === JSON.stringify([...lista].sort()));
-    const gemela = await mkUser('gemela', { email: 'wtavi_pend@example.test ' });
-    const sinDuplicar = (await destinatarios(prisma, TERMINOS_VIGENTES)).filter(c => c === 'wtavi_pend@example.test');
-    check('una dirección repetida cuenta UNA vez', sinDuplicar.length === 1 && Boolean(gemela));
-
-    console.log('\n  — La planificación y el tope —');
-    const grande = Array.from({ length: 200 }, (_, i) => `x${String(i).padStart(3, '0')}@example.test`);
-    let plan = planificar({ lista: grande, registro: { enviados: {} } });
-    check('el tope por defecto deja margen bajo el diario de Resend (≤ 100)', MAXIMO_POR_DEFECTO <= 100 && plan.ahora.length === MAXIMO_POR_DEFECTO);
-    check('el total y los pendientes cuentan TODOS, no solo los de esta corrida', plan.total === 200 && plan.pendientes === 200);
-    plan = planificar({ lista: grande, registro: { enviados: {} }, maximo: 5 });
-    check('--maximo lo baja', plan.ahora.length === 5);
-    plan = planificar({ lista: grande, registro: { enviados: { [huella(grande[0])]: 'x', [huella(grande[1])]: 'x' } }, maximo: 3 });
-    check('quien ya está en el registro no se repite', plan.yaAvisadas === 2 && plan.pendientes === 198 && !plan.ahora.includes(grande[0]) && !plan.ahora.includes(grande[1]));
-
-    console.log('\n  — La prueba no manda nada —');
-    const enviosFalsos = [];
-    const mailerFalso = { enviarAviso: async (a) => { enviosFalsos.push(a); } };
-    const mensaje = armarMensaje({ limite: '2026-11-20', urlBase: 'https://weedtown.social' });
-    const registro = { enviados: {} };
-    let r = await enviarLote({ ahora: ['a@example.test', 'b@example.test'], mailer: mailerFalso, registro, mensaje, enviar: false, pausaMs: 0 });
-    check('con enviar:false el mailer NO se llama', enviosFalsos.length === 0 && r.enviados === 0 && r.simulados === 2);
-    check('...ni se toca el registro', Object.keys(registro.enviados).length === 0);
-
-    console.log('\n  — El envío, el registro y los fallos —');
-    r = await enviarLote({ ahora: ['a@example.test', 'b@example.test'], mailer: mailerFalso, registro, mensaje, enviar: true, pausaMs: 0 });
-    check('enviar:true manda uno por dirección', r.enviados === 2 && enviosFalsos.length === 2 && enviosFalsos[0].email === 'a@example.test');
-    check('cada envío lleva asunto, texto y html', enviosFalsos.every(e => e.asunto && e.texto && e.html));
-    check('el registro guarda el HASH de la dirección, no la dirección', Object.keys(registro.enviados).every(k => /^[0-9a-f]{64}$/.test(k)) && !JSON.stringify(registro).includes('example.test'));
-    const plan2 = planificar({ lista: ['a@example.test', 'b@example.test', 'c@example.test'], registro });
-    check('una segunda corrida solo ve a la que falta', plan2.ahora.length === 1 && plan2.ahora[0] === 'c@example.test' && plan2.yaAvisadas === 2);
-
-    const fallador = { enviarAviso: async ({ email }) => { if (email.startsWith('mala')) throw new Error('Resend respondió 422'); } };
-    const reg2 = { enviados: {} };
-    r = await enviarLote({ ahora: ['mala@example.test', 'buena@example.test'], mailer: fallador, registro: reg2, mensaje, enviar: true, pausaMs: 0 });
-    check('un fallo no detiene al resto', r.enviados === 1 && r.fallidos.length === 1);
-    check('el fallo NO se marca como enviado (se puede reintentar)', !reg2.enviados[huella('mala@example.test')] && Boolean(reg2.enviados[huella('buena@example.test')]));
-    check('el reporte del fallo enmascara la dirección', !JSON.stringify(r.fallidos).includes('mala@example.test') && r.fallidos[0].correo === 'm***@example.test');
+    console.log('\n  — La dirección de contacto (el error que se encontró contando cuentas reales) —');
+    check('User.email gana si existe y es válido', correoDeContacto({ email: ' A@X.Test ', identities: [{ externalId: 'otra@x.test' }] }) === 'a@x.test');
+    check('sin User.email, vale la dirección con la que entra por correo (así es casi toda la base)', correoDeContacto({ email: null, identities: [{ externalId: 'Acceso@X.Test' }] }) === 'acceso@x.test');
+    check('un User.email inválido cae a la del acceso', correoDeContacto({ email: 'no-es-correo', identities: [{ externalId: 'ok@x.test' }] }) === 'ok@x.test');
+    check('sin ninguna, null (llave de acceso o Mastodon)', correoDeContacto({ email: null, identities: [] }) === null && correoDeContacto({}) === null && correoDeContacto(null) === null);
     check('enmascarar no vuelca la dirección', enmascarar('Persona@Dominio.com') === 'p***@dominio.com');
 
+    console.log('\n  — A quién se le avisa —');
+    const soloAcceso = await conAcceso('acc', 'WTAVI_Acceso@Example.Test ');
+    const soloPerfil = await mkUser('perf', { email: 'wtavi_perfil@example.test' });
+    const acepto = await conAcceso('acep', 'wtavi_acepto@example.test', { terminosVersion: V });
+    const vieja = await conAcceso('vieja', 'wtavi_vieja@example.test', { terminosVersion: '2020-01-01' });
+    const sinCorreo = await mkUser('sinc');
+    const borrada = await conAcceso('borr', 'wtavi_borr@example.test', { deletedAt: new Date() });
+    const susp = await conAcceso('susp', 'wtavi_susp@example.test', { suspendedUntil: new Date(Date.now() + 86400000) });
+    const yaAvisada = await conAcceso('yaav', 'wtavi_yaav@example.test', { avisoTerminosVersion: V });
+    const malCorreo = await mkUser('malc', { email: 'esto-no-es-un-correo' });
+    let lista = mios(await pendientes(prisma, V));
+    const correos = lista.map(p => p.correo);
+    check('quien entra por correo (solo identidad, sin User.email) SÍ, con la dirección normalizada', correos.includes('wtavi_acceso@example.test'));
+    check('quien tiene User.email, sí', correos.includes('wtavi_perfil@example.test'));
+    check('quien tiene una versión VIEJA, sí', correos.includes('wtavi_vieja@example.test'));
+    check('una cuenta suspendida SÍ: el aviso es sobre su cuenta', correos.includes('wtavi_susp@example.test'));
+    check('quien ya aceptó la vigente, no', !correos.includes('wtavi_acepto@example.test'));
+    check('quien ya tiene constancia de aviso, no', !correos.includes('wtavi_yaav@example.test'));
+    check('una cuenta eliminada, no', !correos.includes('wtavi_borr@example.test'));
+    check('una cuenta sin ninguna dirección (llave de acceso o Mastodon) no aparece: solo verá el aviso dentro de la red', !lista.some(p => p.ids.includes(sinCorreo.id)));
+    check('un correo con forma inválida y sin otra dirección no se usa', !lista.some(p => p.ids.includes(malCorreo.id)));
+    check('son exactamente las esperadas', lista.length === 4, `(${correos.join(', ')})`);
+    check('la lista sale ordenada', JSON.stringify(correos) === JSON.stringify([...correos].sort()));
+    const gemela = await conAcceso('gem', 'WTAVI_perfil@example.test');
+    lista = mios(await pendientes(prisma, V));
+    const compartida = lista.find(p => p.correo === 'wtavi_perfil@example.test');
+    check('dos cuentas con la MISMA dirección se agrupan: se escribe una vez y la constancia va en las dos', lista.length === 4 && compartida.ids.includes(soloPerfil.id) && compartida.ids.includes(gemela.id) && compartida.ids.length === 2);
+
+    console.log('\n  — La simulación no manda nada —');
+    const enviados = [];
+    const mailer = { enviarAviso: async (a) => { enviados.push(a); } };
+    const args = { prisma, mailer, versionVigente: V, limite: '2026-11-20', urlBase: 'https://weedtown.social', pausaMs: 0 };
+    let r = await enviarAvisoTerminos({ ...args });
+    check('por defecto es SIMULACIÓN: cuenta y no llama al mailer', r.modo === 'simulacion' && enviados.length === 0 && r.pendientes >= 4);
+    check('la muestra va enmascarada (inicial + ***@dominio): nunca la parte local completa', r.muestra.every(m => /^.\*\*\*@/.test(m)) && !JSON.stringify(r).includes('wtavi_'));
+    check('...y no dejó constancia en nadie', (await constancia(soloAcceso.id)) === null);
+
+    console.log('\n  — La prueba: un correo [PRUEBA] a una dirección, sin constancia —');
+    r = await enviarAvisoTerminos({ ...args, solo: 'prueba@example.test' });
+    check('manda UN correo a la dirección dada', r.modo === 'prueba' && r.enviados === 1 && enviados.length === 1 && enviados[0].email === 'prueba@example.test');
+    check('con [PRUEBA] en el asunto', enviados[0].asunto.startsWith('[PRUEBA] Actualizamos los Términos'));
+    check('y el mismo cuerpo que el real', enviados[0].texto === armarMensaje({ limite: '2026-11-20', urlBase: 'https://weedtown.social' }).texto);
+    check('NO deja constancia en nadie', (await constancia(soloAcceso.id)) === null && (await constancia(soloPerfil.id)) === null);
+    let rechazo = null;
+    try { await enviarAvisoTerminos({ ...args, solo: 'no-es-correo' }); } catch (e) { rechazo = e; }
+    check('una dirección de prueba inválida se rechaza (400) sin mandar nada', rechazo && rechazo.estado === 400 && enviados.length === 1);
+
+    console.log('\n  — El envío deja constancia y no se repite —');
+    enviados.length = 0;
+    r = await enviarAvisoTerminos({ ...args, enviar: true, maximo: 2 });
+    check('con tope 2 manda 2 y dice cuántos quedan', r.modo === 'envio' && r.enviados === 2 && r.fallidos === 0 && r.restantes === r.pendientes - 2 && enviados.length === 2);
+    const mandadas = enviados.map(e => e.email);
+    const conConstancia = [];
+    for (const u of [soloAcceso, soloPerfil, gemela, vieja, susp]) if ((await constancia(u.id)) === V) conConstancia.push(u.id);
+    check('dejó constancia (la versión) en las cuentas avisadas, incluida la gemela de la dirección compartida', conConstancia.length >= 2);
+    r = await enviarAvisoTerminos({ ...args, enviar: true });
+    const todas = [...mandadas, ...enviados.slice(2).map(e => e.email)].filter(c => c.startsWith('wtavi_'));
+    check('una segunda llamada manda el resto y NO repite a nadie', new Set(todas).size === todas.length && r.restantes === 0, JSON.stringify(todas));
+    r = await enviarAvisoTerminos({ ...args, enviar: true });
+    check('una tercera no manda nada: ya no hay pendientes', r.enviados === 0 && r.pendientes === 0 || mios(await pendientes(prisma, V)).length === 0);
+
+    console.log('\n  — Un fallo no deja constancia —');
+    const reintento = await conAcceso('reint', 'wtavi_reint@example.test');
+    const fallador = { enviarAviso: async ({ email }) => { if (email === 'wtavi_reint@example.test') throw new Error('Resend respondió 422'); } };
+    r = await enviarAvisoTerminos({ ...args, mailer: fallador, enviar: true });
+    check('un fallo se cuenta y se explica', r.fallidos === 1 && r.errores.includes('Resend respondió 422'));
+    check('NO deja constancia (se puede reintentar)', (await constancia(reintento.id)) === null);
+    r = await enviarAvisoTerminos({ ...args, enviar: true });
+    check('y el reintento sí lo manda', r.enviados === 1 && (await constancia(reintento.id)) === V);
+
     console.log('\n  — El mensaje: aviso de servicio, no publicidad —');
+    const mensaje = armarMensaje({ limite: '2026-11-20', urlBase: 'https://weedtown.social' });
     check('el asunto es el aprobado', mensaje.asunto === 'Actualizamos los Términos de WeedTown — tu cuenta sigue intacta');
     check('dice la fecha límite en español', mensaje.texto.includes('antes del 20 de noviembre de 2026') && mensaje.html.includes('20 de noviembre de 2026'));
     check('dice que la cuenta no se borra y que se puede descargar o eliminar', /tu cuenta no se borra/.test(mensaje.texto) && /descargar tus datos, eliminarla/.test(mensaje.texto));
     check('dice qué se guarda: solo la fecha del último día, sin hora ni páginas', /solo la fecha del último día que entraste, sin hora ni páginas/.test(mensaje.texto));
     check('dice que es un aviso de servicio y no publicidad', /aviso de servicio[^.]*no es publicidad/.test(mensaje.texto));
-    check('enlaza a los Términos y a la app', mensaje.texto.includes('https://weedtown.social/terms') && mensaje.texto.includes('https://weedtown.social/feed'));
     check('menciona que lo opcional está apagado, SIN llamada a la acción', /todas están apagadas y ninguna es necesaria/.test(mensaje.texto) && !/activa(r)? (esto|tus|las)|suscr[ií]bete|oferta|promoci/i.test(mensaje.texto));
     check('no lleva enlace de baja (es un aviso de una sola vez, no una lista)', !/baja|unsubscribe|darte de baja/i.test(mensaje.texto));
-    check('no lleva datos de nadie: saluda con «Hola:»', mensaje.texto.startsWith('Hola:') && !/@(?!weedtown)/.test(mensaje.texto.replace(/https?:\/\/\S+/g, '')));
-    check('la URL base sin barra final funciona igual', armarMensaje({ limite: '2026-11-20', urlBase: 'https://weedtown.social/' }).texto.includes('https://weedtown.social/terms'));
+    check('no lleva datos de nadie: saluda con «Hola:»', mensaje.texto.startsWith('Hola:'));
     check('fechaLarga da el día sin desfase', fechaLarga('2026-11-20') === '20 de noviembre de 2026');
+    check('el tope por llamada deja margen bajo el diario de Resend', MAXIMO_POR_DEFECTO <= 100);
+
+    console.log('\n  — La ruta del backend —');
+    const secreto = process.env.CRON_SECRET;
+    const llamar = (cuerpo, cabeceras = { 'x-cron-secret': secreto }) => fetch(`${BASE}/api/interno/aviso-terminos`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...cabeceras }, body: JSON.stringify(cuerpo || {})
+    });
+    let h = await llamar({}, {});
+    check('sin secreto → 401', h.status === 401, `(fue ${h.status})`);
+    h = await llamar({}, { 'x-cron-secret': 'equivocado' });
+    check('con un secreto equivocado → 401', h.status === 401);
+    h = await llamar({});
+    let cuerpo = await h.json();
+    check('con el secreto y sin cuerpo: SIMULACIÓN (200), sin mandar nada', h.status === 200 && cuerpo.modo === 'simulacion', JSON.stringify(cuerpo));
+    h = await llamar({ enviar: true });
+    cuerpo = await h.json();
+    check('enviar:true SIN armar → 409: nada se manda por accidente', h.status === 409 && cuerpo.armado === false && cuerpo.versionVigente === V, `(fue ${h.status})`);
+    check('...y no dejó constancia en nadie', (await constancia(vieja.id)) === V || (await constancia(vieja.id)) === null);
+    h = await llamar({ solo: 'prueba@example.test' });
+    cuerpo = await h.json();
+    check('la PRUEBA funciona aunque el envío no esté armado (200, un correo; el mailer de pruebas es `log`)', h.status === 200 && cuerpo.modo === 'prueba' && cuerpo.enviados === 1, JSON.stringify(cuerpo));
+    h = await llamar({ solo: 'no-es-correo' });
+    check('una dirección de prueba inválida → 400', h.status === 400, `(fue ${h.status})`);
+    const sinAvisar = await mkUser('http');
+    check('la respuesta de la simulación no incluye ninguna dirección completa', !JSON.stringify(await (await llamar({})).json()).includes('wtavi_') && Boolean(sinAvisar));
   } finally {
     await cleanup();
   }

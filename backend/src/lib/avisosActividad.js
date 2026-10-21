@@ -23,6 +23,7 @@
 // `correos.enviarCorreo`, que exige el consentimiento, el tope diario y el pie de baja.
 const { FINALIDADES } = require('./consentimientos');
 const { enviarCorreo } = require('./correos');
+const { DONDE_HAY_CORREO } = require('./contacto');
 
 const FINALIDAD = 'avisos_correo';
 const VENTANA_MS = 24 * 60 * 60 * 1000;
@@ -48,7 +49,7 @@ async function resumenesPendientes(prisma, ahora = new Date()) {
       type: { in: Object.keys(CLASE) },
       recipient: {
         deletedAt: null,
-        email: { not: null },
+        AND: [DONDE_HAY_CORREO],
         consentimientos: { some: { finalidad: FINALIDAD, otorgado: true, version: FINALIDADES[FINALIDAD].version } }
       }
     },

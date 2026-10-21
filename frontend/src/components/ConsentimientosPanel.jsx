@@ -23,12 +23,14 @@ function fechaCorta(iso) {
 }
 
 const MENSAJES = {
-  requiere_correo: 'Para activar esto necesitas un correo en tu perfil.',
+  requiere_correo: 'Tu cuenta no tiene un correo al que podamos escribirte (entras con llave de acceso o con Mastodon).',
   no_disponible: 'Esta opción todavía no está lista.'
 };
 
 const ConsentimientosPanel = ({ enlacePerfil = true }) => {
   const [finalidades, setFinalidades] = useState(null);
+  // A dónde se le escribiría, enmascarado (a***@dominio.com), o null si su cuenta no tiene ninguna.
+  const [correo, setCorreo] = useState(null);
   const [error, setError] = useState('');
   const [errorPor, setErrorPor] = useState({});
   const [guardando, setGuardando] = useState(null);
@@ -36,7 +38,7 @@ const ConsentimientosPanel = ({ enlacePerfil = true }) => {
   useEffect(() => {
     let vivo = true;
     api.get('/consentimientos')
-      .then(res => { if (vivo) setFinalidades(res.data.finalidades || []); })
+      .then(res => { if (vivo) { setFinalidades(res.data.finalidades || []); setCorreo(res.data.correo || null); } })
       .catch(() => { if (vivo) setError('No se pudieron cargar tus decisiones. Intenta de nuevo.'); });
     return () => { vivo = false; };
   }, []);
@@ -66,7 +68,9 @@ const ConsentimientosPanel = ({ enlacePerfil = true }) => {
           <Box component="li" key={f.finalidad}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} flexWrap="wrap">
               <Typography variant="subtitle1" component="h3" fontWeight="bold">{f.titulo}</Typography>
-              {f.disponible ? (
+              {f.disponible && f.requiereCorreo && !correo && !activa ? (
+                <Chip size="small" label="Sin correo en tu cuenta" variant="outlined" />
+              ) : f.disponible ? (
                 <FormControlLabel
                   sx={{ m: 0 }}
                   labelPlacement="start"
@@ -89,6 +93,14 @@ const ConsentimientosPanel = ({ enlacePerfil = true }) => {
             <Typography variant="body2" color="text.secondary"><strong>Cómo se trata:</strong> {f.comoSeTrata}</Typography>
             <Typography variant="body2" color="text.secondary"><strong>Qué no hacemos:</strong> {f.queNoHacemos}</Typography>
 
+            {f.requiereCorreo && (
+              <Typography variant="body2" color="text.secondary">
+                <strong>A dónde:</strong>{' '}
+                {correo
+                  ? <>te escribiremos a <strong>{correo}</strong>, la dirección con la que entras.</>
+                  : 'tu cuenta no tiene un correo asociado (entras con llave de acceso o con Mastodon), así que no podemos escribirte.'}
+              </Typography>
+            )}
             {activa && f.decididoEn && (
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
                 Activada el {fechaCorta(f.decididoEn)}. Puedes apagarla cuando quieras.

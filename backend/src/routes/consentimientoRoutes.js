@@ -8,14 +8,15 @@ const express = require('express');
 const router = express.Router();
 
 const { requireAuth } = require('../middlewares/requireAuth');
-const { listar, establecer, ErrorDeConsentimiento } = require('../lib/consentimientos');
+const { listar, establecer, correoEnmascaradoDe, ErrorDeConsentimiento } = require('../lib/consentimientos');
 const { log } = require('../lib/logger');
 
 // GET /api/consentimientos — todas las finalidades, con su texto y el estado de
 // quien pregunta.
 router.get('/', requireAuth, async (req, res) => {
   try {
-    res.json({ finalidades: await listar(req.user.id) });
+    // `correo`: a dónde se le escribiría, enmascarado (null si su cuenta no tiene ninguno).
+    res.json({ finalidades: await listar(req.user.id), correo: await correoEnmascaradoDe(req.user.id) });
   } catch (e) {
     console.error('Error al listar consentimientos:', e);
     res.status(500).json({ error: 'Error al obtener tus decisiones de privacidad' });

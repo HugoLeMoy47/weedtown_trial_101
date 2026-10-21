@@ -45,8 +45,12 @@ module.exports = async function run() {
     check('el archivo de ejemplo del repositorio tiene la forma correcta pero NO se puede enviar', ejemplo.id.startsWith('ejemplo') && rechaza(ejemplo) && !rechaza({ ...ejemplo, id: 'ya-no-es-ejemplo' }));
 
     console.log('\n  — A quién se le escribe —');
-    const activo = await mkUser('act', { email: 'WTCAM_Act@Example.Test ' });
+    // Una cuenta que solo entra por correo (sin User.email: así es casi toda la base real) y otra con User.email.
+    const activo = await mkUser('act');
+    await prisma.identity.create({ data: { userId: activo.id, provider: 'EMAIL', externalId: 'WTCAM_Act@Example.Test ', originHandle: 'x' } });
     await dar(activo.id);
+    const conPerfil = await mkUser('perf', { email: 'wtcam_perf@example.test' });
+    await dar(conPerfil.id);
     const sinFila = await mkUser('sinf', { email: 'wtcam_sinf@example.test' });
     const apagado = await mkUser('apag', { email: 'wtcam_apag@example.test' });
     await dar(apagado.id, { otorgado: false });
@@ -63,14 +67,15 @@ module.exports = async function run() {
     const malCorreo = await mkUser('malc', { email: 'no-es-correo' });
     await dar(malCorreo.id);
     const lista = (await destinatariosComerciales(prisma)).filter(p => p.email.startsWith('wtcam_'));
-    check('quien tiene el consentimiento comercial ACTIVO y vigente, sí (y el correo se normaliza)', lista.some(p => p.email === 'wtcam_act@example.test'));
+    check('quien entra por correo y tiene el consentimiento comercial ACTIVO y vigente, sí (con la dirección de su acceso, normalizada)', lista.some(p => p.email === 'wtcam_act@example.test'));
+    check('quien tiene User.email, también', lista.some(p => p.email === 'wtcam_perf@example.test'));
     check('quien nunca lo dio, no', !lista.some(p => p.id === sinFila.id));
     check('quien lo apagó (o se dio de baja), no', !lista.some(p => p.id === apagado.id));
     check('quien aceptó un texto que ya CAMBIÓ, no, hasta confirmar de nuevo', !lista.some(p => p.id === vieja.id));
     check('un consentimiento de OTRA finalidad no vale para esta', !lista.some(p => p.id === otraFinalidad.id));
     check('sin correo, cuenta eliminada o suspendida, no', !lista.some(p => [sinCorreo.id, borrada.id, suspendida.id].includes(p.id)));
     check('un correo con forma inválida no se usa', !lista.some(p => p.id === malCorreo.id));
-    check('son exactamente las personas esperadas', lista.length === 1, `(${lista.map(p => p.email).join(', ')})`);
+    check('son exactamente las personas esperadas', lista.length === 2, `(${lista.map(p => p.email).join(', ')})`);
 
     console.log('\n  — La planificación —');
     const gente = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, email: `x${i}@example.test`, recibioHoy: i < 2 }));

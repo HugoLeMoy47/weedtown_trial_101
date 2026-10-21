@@ -31,6 +31,7 @@
 // «¿puedo usar este dato para esto?». Quien construya una función de las de
 // abajo tiene que preguntarlo aquí (`tieneConsentimiento`) antes de tocar nada.
 const prisma = require('./prisma');
+const { SELECT_CONTACTO, correoDeContacto, enmascarar } = require('./contacto');
 
 // El catálogo es la ÚNICA fuente de los textos: el navegador los pide a la API y
 // no tiene copia. Cambiar el texto de una finalidad exige subir SU `version`
@@ -132,6 +133,16 @@ function presentar(finalidad, fila) {
   };
 }
 
+/**
+ * La dirección a la que se le escribiría a esta persona, ENMASCARADA (a***@dominio.com), o
+ * null si su cuenta no tiene ninguna. Se le muestra antes de activar una finalidad de correo.
+ */
+async function correoEnmascaradoDe(userId) {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: SELECT_CONTACTO });
+  const correo = correoDeContacto(u);
+  return correo ? enmascarar(correo) : null;
+}
+
 /** Todas las finalidades con el estado de esta persona. */
 async function listar(userId) {
   const filas = await prisma.consentimiento.findMany({ where: { userId } });
@@ -155,8 +166,8 @@ async function establecer(userId, finalidad, otorgado) {
       throw new ErrorDeConsentimiento(409, 'no_disponible', 'Esta opción todavía no existe: te avisaremos y te lo preguntaremos cuando esté lista');
     }
     if (def.requiereCorreo) {
-      const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
-      if (!u?.email) throw new ErrorDeConsentimiento(400, 'requiere_correo', 'Para activar esto necesitas un correo en tu perfil');
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: SELECT_CONTACTO });
+      if (!correoDeContacto(u)) throw new ErrorDeConsentimiento(400, 'requiere_correo', 'Tu cuenta no tiene un correo al que podamos escribirte: entras con llave de acceso o con Mastodon');
     }
     if (actual && actual.otorgado && actual.version === def.version) return presentar(finalidad, actual);
     const fila = await prisma.consentimiento.upsert({
@@ -192,5 +203,5 @@ async function tieneConsentimiento(userId, finalidad) {
 
 module.exports = {
   FINALIDADES, FORMATO_VERSION, ErrorDeConsentimiento,
-  listar, establecer, tieneConsentimiento, estadoDe
+  listar, establecer, tieneConsentimiento, estadoDe, correoEnmascaradoDe
 };

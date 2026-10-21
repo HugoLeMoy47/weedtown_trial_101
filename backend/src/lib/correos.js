@@ -26,6 +26,7 @@ const prisma = require('./prisma');
 const { diaMexicoISO } = require('./diaMexico');
 const { FINALIDADES, tieneConsentimiento } = require('./consentimientos');
 const { urlsDeBaja } = require('./bajaCorreo');
+const { SELECT_CONTACTO, correoDeContacto } = require('./contacto');
 const { log } = require('./logger');
 
 const MAX_DIA_POR_DEFECTO = 80;
@@ -125,9 +126,10 @@ async function enviarCorreo({ userId, finalidad, asunto, texto, html, mailer, ah
   if (!(await tieneConsentimiento(userId, finalidad))) return { enviado: false, motivo: 'sin_consentimiento' };
 
   // 3. La cuenta.
-  const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, deletedAt: true, suspendedUntil: true } });
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { ...SELECT_CONTACTO, deletedAt: true, suspendedUntil: true } });
   if (!u || u.deletedAt) return { enviado: false, motivo: 'cuenta_no_disponible' };
-  if (!u.email) return { enviado: false, motivo: 'sin_correo' };
+  const destino = correoDeContacto(u);
+  if (!destino) return { enviado: false, motivo: 'sin_correo' };
   if (u.suspendedUntil && u.suspendedUntil > ahora) return { enviado: false, motivo: 'cuenta_suspendida' };
 
   // 4 y 5. Los topes, reclamados ANTES de enviar.
@@ -137,7 +139,7 @@ async function enviarCorreo({ userId, finalidad, asunto, texto, html, mailer, ah
   const urls = urlsDeBaja(userId, finalidad);
   const conPie = agregarPie({ texto, html, finalidad, urls });
   try {
-    await mailer.enviarAviso({ email: u.email, asunto, texto: conPie.texto, html: conPie.html, headers: cabecerasDeBaja(urls) });
+    await mailer.enviarAviso({ email: destino, asunto, texto: conPie.texto, html: conPie.html, headers: cabecerasDeBaja(urls) });
   } catch (e) {
     await liberar(userId, reclamo, ahora);
     return { enviado: false, motivo: 'fallo', error: e.message };

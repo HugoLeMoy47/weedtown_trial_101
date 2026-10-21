@@ -80,7 +80,9 @@ module.exports = async function run() {
     console.log('\n  — Enviar —');
     const enviados = [];
     const mailer = { enviarAviso: async (a) => { enviados.push(a); } };
-    const otra = await mkUser('otra', { email: 'wtavs_otra@example.test' });
+    // Entra solo por correo (sin User.email): así es casi toda la base real.
+    const otra = await mkUser('otra');
+    await prisma.identity.create({ data: { userId: otra.id, provider: 'EMAIL', externalId: 'wtavs_otra@example.test', originHandle: 'x' } });
     await dar(otra.id);
     await notif(otra.id, actor.id, 'CHAT_MESSAGE', { createdAt: hace(1) });
     let salida = await enviarAvisosDiarios({ prisma, mailer, ahora: AHORA });

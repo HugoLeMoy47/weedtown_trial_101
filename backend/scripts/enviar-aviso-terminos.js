@@ -1,73 +1,37 @@
-// Aviso único de la actualización de los Términos (ciclo 21).
+// Simulación del aviso de actualización de los Términos (ciclos 21 y 22.1).
 //
-// ES UNA PRUEBA, SALVO QUE SE DIGA LO CONTRARIO. Sin banderas, este script solo
-// dice a quién le escribiría y cómo se vería el correo. No manda nada y no toca
-// ningún registro.
+// ESTE SCRIPT YA NO ENVÍA. Solo cuenta a quién se le avisaría y muestra el correo, contra la
+// base a la que apunte el entorno. El ENVÍO real (y la prueba a tu propia dirección) lo hace el
+// propio backend en producción, porque ahí viven la clave de Resend y la base viva, y porque deja
+// constancia en la base: ver `POST /api/interno/aviso-terminos` y `src/lib/avisoTerminos.js`.
 //
 // Uso (desde backend/):
-//   node scripts/enviar-aviso-terminos.js                          prueba (no manda nada)
-//   node scripts/enviar-aviso-terminos.js --env=.env.produccion    prueba contra otro entorno
-//   node scripts/enviar-aviso-terminos.js --env=.env.produccion --enviar --confirmo=<N>
+//   node scripts/enviar-aviso-terminos.js                          contra el entorno por defecto (.env)
+//   node scripts/enviar-aviso-terminos.js --env=.env.test.local    contra otro entorno
 //
-// PARA ENVIAR DE VERDAD hacen falta TRES cosas a la vez, a propósito:
-//   1. --enviar
-//   2. --confirmo=<N>, con N igual al total de pendientes que la prueba mostró.
-//      Obliga a haber visto el tamaño de la lista: si cambió, no manda.
-//   3. MAIL_DRIVER=resend en el entorno elegido. Con el driver `log` el «envío»
-//      solo imprimiría, y el registro lo daría por enviado: el script se niega.
-//
-// QUÉ GUARDA Y DÓNDE. `.planeacion/envios/aviso_terminos_<versión>.json` (carpeta
-// sin versionar): el hash de cada dirección ya avisada y la fecha. No guarda
-// direcciones. Si se vuelve a correr, no repite a nadie; si hay más pendientes
-// que el tope por corrida (--maximo, 80 por defecto: el tier gratuito de Resend
-// admite ~100 al día), se corre de nuevo al día siguiente.
-//
-// QUÉ LEE. La base a la que apunte el entorno elegido: DATABASE_URL. La prueba
-// imprime el host y el schema para que se vea ANTES de enviar contra qué base se
-// va a trabajar.
+// Qué imprime: la base a la que apunta (host y schema, para que se vea ANTES de confiar en el
+// número), cuántas cuentas con dirección de contacto aún no aceptan la versión vigente, cuántas ya
+// tienen constancia de aviso, y el texto exacto del correo. No toca nada.
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const REPO = path.join(ROOT, '..');
-
 const argumentos = Object.fromEntries(process.argv.slice(2).map(a => {
   const [k, v] = a.replace(/^--/, '').split('=');
   return [k, v === undefined ? true : v];
 }));
 
-function abortar(mensaje) {
-  console.error(`\n✗ ${mensaje}\n`);
+const archivoEnv = path.resolve(ROOT, argumentos.env || '.env');
+if (!fs.existsSync(archivoEnv)) {
+  console.error(`\n✗ No existe el archivo de entorno ${archivoEnv}.\n`);
   process.exit(1);
 }
-
-const archivoEnv = path.resolve(ROOT, argumentos.env || '.env');
-if (!fs.existsSync(archivoEnv)) abortar(`No existe el archivo de entorno ${archivoEnv}.`);
 require('dotenv').config({ path: archivoEnv, override: true });
 
 const prisma = require('../src/lib/prisma');
 const mailer = require('../src/lib/mailer');
 const { TERMINOS_VIGENTES, limiteDeTerminos } = require('../src/lib/terminos');
-const { MAXIMO_POR_DEFECTO, destinatarios, armarMensaje, planificar, enviarLote, enmascarar, fechaLarga } = require('../src/lib/avisoTerminos');
-
-const enviar = argumentos.enviar === true;
-const maximo = argumentos.maximo ? Number(argumentos.maximo) : MAXIMO_POR_DEFECTO;
-if (!Number.isInteger(maximo) || maximo < 1 || maximo > 100) abortar('--maximo debe ser un entero entre 1 y 100.');
-
-const carpeta = path.join(REPO, '.planeacion', 'envios');
-const rutaRegistro = path.join(carpeta, `aviso_terminos_${TERMINOS_VIGENTES}.json`);
-
-function cargarRegistro() {
-  if (!fs.existsSync(rutaRegistro)) return { version: TERMINOS_VIGENTES, enviados: {} };
-  const r = JSON.parse(fs.readFileSync(rutaRegistro, 'utf8'));
-  if (r.version !== TERMINOS_VIGENTES) abortar(`El registro ${rutaRegistro} es de otra versión de los Términos.`);
-  return r;
-}
-
-function guardarRegistro(r) {
-  fs.mkdirSync(carpeta, { recursive: true });
-  fs.writeFileSync(rutaRegistro, JSON.stringify(r, null, 2));
-}
+const { armarMensaje, enviarAvisoTerminos, fechaLarga } = require('../src/lib/avisoTerminos');
 
 (async () => {
   const url = process.env.DATABASE_URL || '';
@@ -75,43 +39,22 @@ function guardarRegistro(r) {
   const schema = /[?&]schema=([^&]+)/.exec(url)?.[1] || 'public';
   const limite = limiteDeTerminos();
 
-  console.log('\n— Aviso de actualización de los Términos —');
-  console.log(`  entorno     : ${path.basename(archivoEnv)}`);
-  console.log(`  base        : ${host} · schema "${schema}"`);
-  console.log(`  correo      : driver "${mailer.driver}"`);
-  console.log(`  versión     : ${TERMINOS_VIGENTES}   ·   límite: ${limite} (${fechaLarga(limite)})`);
+  console.log('\n— Aviso de actualización de los Términos (SIMULACIÓN) —');
+  console.log(`  entorno : ${path.basename(archivoEnv)}`);
+  console.log(`  base    : ${host} · schema "${schema}"`);
+  console.log(`  versión : ${TERMINOS_VIGENTES}   ·   límite: ${limite} (${fechaLarga(limite)})`);
 
-  const lista = await destinatarios(prisma, TERMINOS_VIGENTES);
-  const registro = cargarRegistro();
-  const plan = planificar({ lista, registro, maximo });
-  const mensaje = armarMensaje({ limite, urlBase: process.env.FRONTEND_URL });
+  const resultado = await enviarAvisoTerminos({
+    prisma, mailer, versionVigente: TERMINOS_VIGENTES, limite, urlBase: process.env.FRONTEND_URL, enviar: false
+  });
+  console.log(`\n  Cuentas con dirección que aún no aceptan y sin constancia de aviso: ${resultado.pendientes}`);
+  console.log(`  Se avisarían en la primera llamada (tope por llamada)              : ${resultado.seEnviarianAhora}`);
+  console.log(`  Primeras direcciones (enmascaradas)                                : ${resultado.muestra.join(', ') || '(ninguna)'}`);
 
-  console.log(`\n  Cuentas con correo que aún no aceptan la versión vigente: ${plan.total}`);
-  console.log(`  Ya avisadas (registro)                                  : ${plan.yaAvisadas}`);
-  console.log(`  Pendientes                                              : ${plan.pendientes}`);
-  console.log(`  Se enviarían en esta corrida (tope ${maximo})             : ${plan.ahora.length}`);
-  console.log(`\n  Primeras direcciones: ${plan.ahora.slice(0, 8).map(enmascarar).join(', ') || '(ninguna)'}`);
-  console.log(`\n  Asunto: ${mensaje.asunto}\n  ────────\n${mensaje.texto.split('\n').map(l => `  ${l}`).join('\n')}\n  ────────`);
-
-  if (!enviar) {
-    console.log('\n  PRUEBA: no se envió nada y no se tocó ningún registro.');
-    console.log(`  Para enviar: --enviar --confirmo=${plan.pendientes}  (con MAIL_DRIVER=resend)\n`);
-    await prisma.$disconnect();
-    return;
-  }
-
-  if (mailer.driver !== 'resend') abortar(`MAIL_DRIVER es "${mailer.driver}": con ese driver no se envía nada y el registro lo daría por enviado. Usa un entorno con MAIL_DRIVER=resend.`);
-  if (String(argumentos.confirmo) !== String(plan.pendientes)) abortar(`--confirmo debe ser ${plan.pendientes} (los pendientes que acabas de ver). Recibido: ${argumentos.confirmo ?? '(nada)'}.`);
-  if (plan.ahora.length === 0) { console.log('\n  No hay nada que enviar.\n'); await prisma.$disconnect(); return; }
-
-  console.log(`\n  Enviando ${plan.ahora.length} correos…`);
-  const resultado = await enviarLote({ ahora: plan.ahora, mailer, registro, mensaje, enviar: true });
-  guardarRegistro(registro);
-  console.log(`\n  Enviados: ${resultado.enviados}  ·  Fallidos: ${resultado.fallidos.length}`);
-  for (const f of resultado.fallidos) console.log(`    ✗ ${f.correo}: ${f.error}`);
-  console.log(`  Registro: ${rutaRegistro}\n`);
+  const m = armarMensaje({ limite, urlBase: process.env.FRONTEND_URL });
+  console.log(`\n  Asunto: ${m.asunto}\n  ────────\n${m.texto.split('\n').map(l => `  ${l}`).join('\n')}\n  ────────`);
+  console.log('\n  No se envió nada. El envío real se arma y se dispara desde el backend (ver README).\n');
   await prisma.$disconnect();
-  if (resultado.fallidos.length) process.exit(1);
 })().catch(async (e) => {
   console.error('\n✗ Error:', e.message);
   try { await prisma.$disconnect(); } catch { /* nada */ }

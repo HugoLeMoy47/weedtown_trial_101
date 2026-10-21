@@ -32,6 +32,7 @@ const CAMPOS_ANONIMIZADOS = {
   terminosVersion: null,
   terminosAceptadosEn: null,
   ultimoCorreoDia: null,
+  avisoTerminosVersion: null,
   role: 'USER'
 };
 
@@ -58,7 +59,9 @@ async function exportarDatos(userId) {
         // Ciclo 19.5: qué versión de los Términos aceptó y cuándo.
         terminosVersion: true, terminosAceptadosEn: true,
         // Ciclo 22: el último día que se te mandó un correo (sostiene el tope de uno al día).
-        ultimoCorreoDia: true
+        ultimoCorreoDia: true,
+        // Ciclo 22.1: la versión de los Términos de la que se te avisó por correo (constancia).
+        avisoTerminosVersion: true
       }
     }),
     prisma.identity.findMany({

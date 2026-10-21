@@ -12,6 +12,18 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 22.1 — La dirección de contacto real, aviso de Términos desde el backend y cuenta oficial (2026-10-20)
+
+### Corregido
+- **Nadie podía activar una finalidad de correo, y el aviso de Términos no habría llegado a nadie.** Los ciclos 20 a 22 daban por hecho que el correo de contacto vive en `User.email`, pero **ninguna de las 113 cuentas lo tiene** (el perfil no tiene forma de ponerlo): las 87 que entran por correo guardan su dirección solo como identidad de acceso. Las pruebas sembraban `User.email` a mano y todo pasaba en verde; se descubrió contando cuentas reales antes de mandar el aviso. Nuevo `src/lib/contacto.js`: la dirección de contacto es `User.email` si existe y, si no, la de su acceso por correo. Lo usan el consentimiento, `enviarCorreo`, las campañas, el aviso de actividad y el aviso de Términos. Quien activa una finalidad ve **a qué dirección** se le escribiría (enmascarada); las cuentas sin dirección (llave de acceso o Mastodon) ven por qué no pueden. **`avisos_correo` estuvo «disponible» sin que nadie pudiera activarla.**
+
+### Añadido
+- **El aviso de Términos lo manda el backend** (`POST /api/interno/aviso-terminos`), no una computadora: ahí viven la clave de Resend y la base viva, y un archivo de registro local no sobrevive en Render. Deja constancia en la base (`User.avisoTerminosVersion`, migración `20261023120000_aviso_terminos`; se exporta y se borra con la cuenta). Tres modos: **simulación** (por defecto), **prueba** (`{solo: correo}`: un correo `[PRUEBA]` a una dirección, sin constancia) y **envío real** (`{enviar: true}`), que exige que el PO lo **arme** con `AVISO_TERMINOS_ACTIVO` igual a la versión vigente (si no, 409; un cambio de texto lo desarma solo). Workflow `aviso-terminos.yml`, programado para el 21 y el 22 de octubre y **sin efecto mientras no esté armado**.
+- **`scripts/crear-cuenta-oficial.js`**: crea `@weedtown` (handle reservado) una sola vez. Prueba por defecto; crear exige `--crear --confirmo=weedtown`.
+
+### Cambiado
+- `scripts/enviar-aviso-terminos.js` deja de enviar: ahora es una **simulación de solo lectura**.
+
 ## Activación de los avisos por correo (2026-10-20)
 
 ### Cambiado

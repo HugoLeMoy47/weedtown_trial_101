@@ -14,6 +14,7 @@
 const crypto = require('crypto');
 const { FINALIDADES } = require('./consentimientos');
 const { diaMexicoISO } = require('./diaMexico');
+const { SELECT_CONTACTO, DONDE_HAY_CORREO, correoDeContacto } = require('./contacto');
 
 const FINALIDAD = 'comunicaciones_comerciales';
 const ID_VALIDO = /^[a-z0-9][a-z0-9-]{2,60}$/;
@@ -51,18 +52,17 @@ async function destinatariosComerciales(prisma, { ahora = new Date() } = {}) {
   const filas = await prisma.user.findMany({
     where: {
       deletedAt: null,
-      email: { not: null },
-      OR: [{ suspendedUntil: null }, { suspendedUntil: { lte: ahora } }],
+      AND: [DONDE_HAY_CORREO, { OR: [{ suspendedUntil: null }, { suspendedUntil: { lte: ahora } }] }],
       consentimientos: { some: { finalidad: FINALIDAD, otorgado: true, version: FINALIDADES[FINALIDAD].version } }
     },
-    select: { id: true, email: true, ultimoCorreoDia: true },
+    select: { id: true, ultimoCorreoDia: true, ...SELECT_CONTACTO },
     orderBy: { id: 'asc' }
   });
   const vistos = new Set();
   const lista = [];
   for (const f of filas) {
-    const correo = String(f.email).trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo) || vistos.has(correo)) continue;
+    const correo = correoDeContacto(f);
+    if (!correo || vistos.has(correo)) continue;
     vistos.add(correo);
     lista.push({ id: f.id, email: correo, recibioHoy: Boolean(f.ultimoCorreoDia && f.ultimoCorreoDia >= dia) });
   }

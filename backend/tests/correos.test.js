@@ -101,10 +101,18 @@ module.exports = async function run() {
     check('guarda el día del último correo y sube el contador del día', (await ultimo(ana.id)) === '2031-04-10' && (await conteo('2031-04-10')) === 1);
     check('no guarda a quién se le escribió: el contador es un número', typeof (await conteo('2031-04-10')) === 'number');
 
+    console.log('\n  — La dirección de contacto: sin User.email, se usa la de su acceso por correo —');
+    const acc = await mkUser('acc');
+    await prisma.identity.create({ data: { userId: acc.id, provider: 'EMAIL', externalId: 'WTCOR_Acceso@Example.Test', originHandle: 'x' } });
+    await dar(acc.id, F);
+    const antesAcc = enviados.length;
+    r = await enviarCorreo({ userId: acc.id, finalidad: F, ...mensaje, mailer, ahora: DIA('2031-04-10') });
+    check('una cuenta que solo entra por correo SÍ recibe, en la dirección de su acceso (normalizada)', r.enviado === true && enviados.length === antesAcc + 1 && enviados[antesAcc].email === 'wtcor_acceso@example.test', JSON.stringify(r));
+
     console.log('\n  — Uno al día por persona —');
     r = await enviarCorreo({ userId: ana.id, finalidad: F, ...mensaje, mailer, ahora: DIA('2031-04-10', '23:00:00') });
     check('un segundo correo el MISMO día → tope_diario_persona', r.motivo === 'tope_diario_persona');
-    check('...y no salió ni gastó presupuesto', enviados.length === 1 && (await conteo('2031-04-10')) === 1);
+    check('...y no salió ni gastó presupuesto', enviados.length === antesAcc + 1 && (await conteo('2031-04-10')) === 2);
     await dar(ana.id, 'avisos_correo');
     r = await enviarCorreo({ userId: ana.id, finalidad: 'avisos_correo', ...mensaje, mailer, ahora: DIA('2031-04-10') });
     check('...con consentimiento para el otro tipo, sigue siendo el MISMO tope', r.motivo === 'tope_diario_persona');

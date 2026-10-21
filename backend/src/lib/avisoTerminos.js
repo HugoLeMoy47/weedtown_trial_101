@@ -1,44 +1,50 @@
-// Aviso único de la actualización de los Términos (ciclo 21).
+// Aviso único de la actualización de los Términos (ciclos 21 y 22.1).
 //
-// QUÉ ES. Un correo de SERVICIO, una sola vez, a las cuentas que tienen correo y
-// aún no aceptan la versión vigente: avisa que los Términos cambiaron, cuál es la
-// fecha límite y qué pasa si no se aceptan. NO es comunicación comercial.
+// QUÉ ES. Un correo de SERVICIO, una sola vez, a las cuentas con una dirección de
+// contacto que aún no aceptan la versión vigente: avisa que los Términos cambiaron,
+// cuál es la fecha límite y qué pasa si no se aceptan. NO es comunicación comercial.
 //
-// LA LÍNEA QUE NO SE CRUZA. Este mensaje informa; no promueve y no pide activar
-// nada. Menciona que existen decisiones opcionales (porque la gente tiene derecho
-// a saberlo) pero sin llamada a la acción sobre ellas: si las promoviera
-// («activa esto para…») pasaría a ser comunicación comercial, y esa exige
-// consentimiento previo (finalidad `comunicaciones_comerciales`, ciclo 20). Por
-// eso tampoco lleva enlace de baja: un aviso de servicio de una sola vez no es una
-// lista a la que te suscribes. Cualquier correo que SÍ promueva algo tiene que
-// consultar `tieneConsentimiento` y llevar su baja en un clic.
+// LA LÍNEA QUE NO SE CRUZA. Este mensaje informa; no promueve y no pide activar nada.
+// Menciona que existen decisiones opcionales (porque la gente tiene derecho a saberlo)
+// pero sin llamada a la acción sobre ellas: si las promoviera («activa esto para…»)
+// pasaría a ser comunicación comercial, y esa exige consentimiento previo (ciclo 20).
+// Por eso tampoco lleva enlace de baja: un aviso de servicio de una sola vez no es una
+// lista a la que te suscribes. Cualquier correo que SÍ promueva algo sale por
+// `correos.enviarCorreo`, que exige consentimiento y lleva su baja en un clic.
 //
-// QUÉ NO LLEVA. Ningún dato de la persona más allá de su dirección: ni handle, ni
-// nombre, ni actividad, ni contenido ajeno. El saludo es «Hola».
+// QUÉ NO LLEVA. Ningún dato de la persona más allá de su dirección: ni handle, ni nombre,
+// ni actividad, ni contenido ajeno. El saludo es «Hola».
 //
-// CÓMO SE MANDA SIN ACCIDENTES (lo orquesta scripts/enviar-aviso-terminos.js):
-//   · Por defecto es una PRUEBA: dice a quién le escribiría y no manda nada.
-//   · No manda dos veces a la misma dirección: guarda un registro con el hash de
-//     cada dirección ya avisada, no la dirección.
-//   · Tiene un tope por corrida (el tier gratuito de Resend admite ~100 al día).
-//   · Un envío que falla NO se marca como enviado.
-const crypto = require('crypto');
+// DESDE EL BACKEND, NO DESDE UNA COMPUTADORA. Hasta el ciclo 22 esto se mandaba con un
+// script local y un archivo de registro. Pero el correo y la base de producción viven en
+// Render: una computadora no tiene la clave de Resend, y un archivo local no sobrevive
+// en un servidor sin disco persistente. Ahora lo manda el propio backend
+// (`POST /api/interno/aviso-terminos`) y deja constancia en la base
+// (`User.avisoTerminosVersion`: la versión de los Términos de la que ya se le avisó).
+// Es también una prueba de que se avisó, que es lo que importa si alguien pregunta.
+//
+// CÓMO SE EVITAN LOS ACCIDENTES:
+//   · Por defecto es una SIMULACIÓN: cuenta a quién le escribiría y no manda nada.
+//   · Enviar de verdad exige `enviar: true` Y que el PO haya ARMADO el envío en el
+//     entorno (`AVISO_TERMINOS_ACTIVO` igual a la versión vigente de los Términos): si el
+//     texto cambia y la versión sube, el armado deja de valer y hay que volver a armar.
+//   · Un modo de PRUEBA manda UN correo a una dirección dada, marcado `[PRUEBA]`, sin tocar
+//     la constancia: es la forma de ver llegar el correo de verdad antes de armar nada.
+//   · No repite: quien ya tiene constancia de esta versión no se vuelve a incluir.
+//   · Tope por llamada (80; el tier gratuito de Resend admite ~100 al día). Un fallo no
+//     deja constancia y se reintenta en la siguiente llamada.
+const { SELECT_CONTACTO, DONDE_HAY_CORREO, correoDeContacto, enmascarar, FORMATO_CORREO, normalizar } = require('./contacto');
 const { diaMexicoISO } = require('./diaMexico');
 
-const FORMATO_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Cuántos correos como máximo por corrida: por debajo del tope diario de Resend. */
+/** Cuántos correos como máximo por llamada: por debajo del tope diario de Resend. */
 const MAXIMO_POR_DEFECTO = 80;
 
-const normalizar = (correo) => String(correo || '').trim().toLowerCase();
-
-/** El registro guarda esto, no la dirección. */
-const huella = (correo) => crypto.createHash('sha256').update(normalizar(correo)).digest('hex');
-
-/** 'a***@gmail.com': para que quien revisa la lista vea de qué se trata sin volcar direcciones. */
-function enmascarar(correo) {
-  const [local, dominio] = normalizar(correo).split('@');
-  return `${(local || '')[0] || '?'}***@${dominio || '?'}`;
+class ErrorDeAviso extends Error {
+  constructor(estado, codigo, mensaje) {
+    super(mensaje);
+    this.estado = estado;
+    this.codigo = codigo;
+  }
 }
 
 /** 'AAAA-MM-DD' → «20 de noviembre de 2026». Mediodía UTC: sin desfase de zona. */
@@ -48,29 +54,32 @@ function fechaLarga(iso) {
 }
 
 /**
- * A quién se le avisa: cuentas vivas, con un correo válido, que no han aceptado la
- * versión vigente. Se incluyen las suspendidas: es un aviso sobre su cuenta.
- * Direcciones repetidas se cuentan una vez.
- * @returns {Promise<string[]>} correos normalizados
+ * A quién se le avisa: cuentas vivas con dirección de contacto que no han aceptado la
+ * versión vigente y de las que aún no hay constancia de aviso. Las cuentas que comparten
+ * dirección se agrupan: se escribe una vez y la constancia se deja en todas.
+ * @returns {Promise<{correo: string, ids: number[]}[]>} ordenado por dirección
  */
-async function destinatarios(prisma, versionVigente) {
+async function pendientes(prisma, versionVigente) {
   const filas = await prisma.user.findMany({
     where: {
       deletedAt: null,
-      email: { not: null },
-      OR: [{ terminosVersion: null }, { terminosVersion: { not: versionVigente } }]
+      AND: [
+        DONDE_HAY_CORREO,
+        { OR: [{ terminosVersion: null }, { terminosVersion: { not: versionVigente } }] },
+        { OR: [{ avisoTerminosVersion: null }, { avisoTerminosVersion: { not: versionVigente } }] }
+      ]
     },
-    select: { email: true }
+    select: { id: true, ...SELECT_CONTACTO },
+    orderBy: { id: 'asc' }
   });
-  const vistos = new Set();
-  const lista = [];
-  for (const { email } of filas) {
-    const c = normalizar(email);
-    if (!FORMATO_CORREO.test(c) || vistos.has(c)) continue;
-    vistos.add(c);
-    lista.push(c);
+  const porCorreo = new Map();
+  for (const f of filas) {
+    const correo = correoDeContacto(f);
+    if (!correo) continue;
+    if (!porCorreo.has(correo)) porCorreo.set(correo, []);
+    porCorreo.get(correo).push(f.id);
   }
-  return lista.sort();
+  return [...porCorreo.entries()].map(([correo, ids]) => ({ correo, ids })).sort((a, b) => a.correo.localeCompare(b.correo));
 }
 
 /**
@@ -118,40 +127,49 @@ function armarMensaje({ limite, urlBase }) {
   return { asunto, texto, html };
 }
 
-/** Decide qué se manda ahora, sin mandar nada. */
-function planificar({ lista, registro, maximo = MAXIMO_POR_DEFECTO }) {
-  const yaAvisadas = new Set(Object.keys(registro?.enviados || {}));
-  const pendientes = lista.filter(c => !yaAvisadas.has(huella(c)));
-  return {
-    total: lista.length,
-    yaAvisadas: lista.length - pendientes.length,
-    pendientes: pendientes.length,
-    ahora: pendientes.slice(0, Math.max(0, maximo))
-  };
-}
-
 /**
- * Manda (o simula) el lote. Con `enviar: false` NO llama al mailer.
- * Un fallo no se marca como enviado y no detiene al resto.
- * @param {{ahora: string[], mailer: {enviarAviso: Function}, registro: {enviados: Object}, mensaje: Object, enviar: boolean, pausaMs?: number, dormir?: Function}} o
+ * Simula, prueba o envía el aviso.
+ *
+ *  · `solo`   → PRUEBA: un correo a esa dirección, con `[PRUEBA]` en el asunto. No toca la constancia.
+ *  · `enviar` → ENVÍO real (el llamador ya comprobó que está armado). Sin esto, SIMULACIÓN.
+ *
+ * @returns {Promise<Object>} solo CUENTAS (y, en la simulación, una muestra enmascarada): nunca a quién se le escribió
  */
-async function enviarLote({ ahora, mailer, registro, mensaje, enviar, pausaMs = 600, dormir = (ms) => new Promise(r => setTimeout(r, ms)) }) {
-  const resultado = { enviados: 0, fallidos: [], simulados: 0 };
-  for (const correo of ahora) {
-    if (!enviar) { resultado.simulados++; continue; }
+async function enviarAvisoTerminos({
+  prisma, mailer, versionVigente, limite, urlBase, enviar = false, maximo = MAXIMO_POR_DEFECTO, solo = null,
+  pausaMs = 600, dormir = (ms) => new Promise(r => setTimeout(r, ms))
+}) {
+  const mensaje = armarMensaje({ limite, urlBase });
+
+  if (solo !== null && solo !== undefined) {
+    const correo = normalizar(solo);
+    if (!FORMATO_CORREO.test(correo)) throw new ErrorDeAviso(400, 'correo_invalido', 'La dirección de prueba no tiene forma de correo');
+    await mailer.enviarAviso({ email: correo, ...mensaje, asunto: `[PRUEBA] ${mensaje.asunto}` });
+    return { modo: 'prueba', enviados: 1 };
+  }
+
+  const lista = await pendientes(prisma, versionVigente);
+  const ahora = lista.slice(0, Math.max(0, maximo));
+  if (!enviar) {
+    return { modo: 'simulacion', pendientes: lista.length, seEnviarianAhora: ahora.length, muestra: ahora.slice(0, 5).map(p => enmascarar(p.correo)) };
+  }
+
+  const salida = { modo: 'envio', pendientes: lista.length, enviados: 0, fallidos: 0, restantes: 0, errores: [] };
+  for (const p of ahora) {
     try {
-      await mailer.enviarAviso({ email: correo, ...mensaje });
-      registro.enviados[huella(correo)] = new Date().toISOString();
-      resultado.enviados++;
+      await mailer.enviarAviso({ email: p.correo, ...mensaje });
+      await prisma.user.updateMany({ where: { id: { in: p.ids } }, data: { avisoTerminosVersion: versionVigente } });
+      salida.enviados++;
     } catch (e) {
-      resultado.fallidos.push({ correo: enmascarar(correo), error: e.message });
+      salida.fallidos++;
+      if (salida.errores.length < 3 && !salida.errores.includes(e.message)) salida.errores.push(e.message);
     }
     if (pausaMs) await dormir(pausaMs);
   }
-  return resultado;
+  salida.restantes = lista.length - salida.enviados;
+  return salida;
 }
 
 module.exports = {
-  MAXIMO_POR_DEFECTO, destinatarios, armarMensaje, planificar, enviarLote,
-  huella, enmascarar, fechaLarga, normalizar, diaMexicoISO
+  MAXIMO_POR_DEFECTO, ErrorDeAviso, pendientes, armarMensaje, enviarAvisoTerminos, fechaLarga, enmascarar, diaMexicoISO
 };

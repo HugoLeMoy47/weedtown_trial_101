@@ -71,6 +71,21 @@ module.exports = async function run() {
     check('sin correo en el perfil → 400 requiere_correo', r.status === 400 && r.data?.codigo === 'requiere_correo', `(fue ${r.status})`);
     check('...y no deja fila', (await prisma.consentimiento.count({ where: { userId: sinCorreo.id } })) === 0);
 
+    console.log('\n  — El correo de contacto: el del perfil O el de su acceso por correo —');
+    const soloAcceso = await mkUser('acc');
+    await prisma.identity.create({ data: { userId: soloAcceso.id, provider: 'EMAIL', externalId: 'wtcons_Acceso@Example.Test', originHandle: 'x' } });
+    const tAcc = token(soloAcceso.id);
+    r = await call('GET', '/api/consentimientos', { tok: tAcc });
+    check('quien entra por correo (sin User.email, así es casi toda la base real) ve a qué dirección se le escribiría, ENMASCARADA', r.data?.correo === 'w***@example.test', JSON.stringify(r.data?.correo));
+    r = await call('PUT', '/api/consentimientos/comunicaciones_comerciales', { tok: tAcc, body: { otorgado: true } });
+    check('...y SÍ puede activar una finalidad de correo (antes de este arreglo nadie podía)', r.status === 200 && r.data?.estado === 'activa', `(fue ${r.status})`);
+    r = await call('GET', '/api/consentimientos', { tok: tSin });
+    check('quien no tiene ninguna dirección (llave de acceso o Mastodon) ve correo null', r.data?.correo === null);
+    r = await call('PUT', '/api/consentimientos/comunicaciones_comerciales', { tok: tSin, body: { otorgado: true } });
+    check('...y no puede activarla: el mensaje explica por qué', r.status === 400 && r.data?.codigo === 'requiere_correo' && /llave de acceso|Mastodon/.test(r.data?.error), JSON.stringify(r.data));
+    r = await call('GET', '/api/consentimientos', { tok: tCon });
+    check('con User.email el correo también sale enmascarado, nunca entero', r.data?.correo === 'w***@example.test' && !JSON.stringify(r.data).includes('wtcons_conc'));
+
     console.log('\n  — Activar, idempotencia y revocar —');
     r = await call('PUT', '/api/consentimientos/comunicaciones_comerciales', { tok: tCon, body: { otorgado: true } });
     check('con correo se activa → 200', r.status === 200 && r.data?.estado === 'activa', `(fue ${r.status})`);

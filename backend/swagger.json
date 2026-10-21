@@ -1369,6 +1369,56 @@
         }
       }
     },
+    "/api/interno/aviso-terminos": {
+      "post": {
+        "tags": [
+          "Interno"
+        ],
+        "summary": "Aviso único de la actualización de los Términos (ciclo 22.1)",
+        "description": "Para el cron y para el PO, NO para la app. Exige x-cron-secret (la ruta no existe sin CRON_SECRET). Tres modos: simulación (por defecto, no manda nada), prueba ({solo: correo}: un correo [PRUEBA] sin dejar constancia) y envío real ({enviar: true}), que solo funciona si el PO lo armó con AVISO_TERMINOS_ACTIVO igual a la versión vigente de los Términos (si no, 409). Deja constancia en User.avisoTerminosVersion y no repite. La respuesta lleva solo cuentas.",
+        "parameters": [
+          {
+            "name": "x-cron-secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "solo": { "type": "string", "description": "Dirección a la que mandar UN correo de prueba" },
+                  "enviar": { "type": "boolean", "description": "true para el envío real (requiere estar armado)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cuentas del resultado (modo: simulacion, prueba o envio)"
+          },
+          "400": {
+            "description": "La dirección de prueba no es válida"
+          },
+          "401": {
+            "description": "Secreto incorrecto"
+          },
+          "404": {
+            "description": "La ruta está cerrada: no hay CRON_SECRET configurado"
+          },
+          "409": {
+            "description": "El envío real no está armado para la versión vigente"
+          }
+        }
+      }
+    },
     "/api/consentimientos": {
       "get": {
         "tags": [

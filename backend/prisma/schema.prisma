@@ -54,6 +54,9 @@ model User {
   // Último DÍA en que se le mandó un correo (campañas o avisos). Se sobrescribe: es lo
   // que sostiene el tope de uno al día. Ver src/lib/correos.js.
   ultimoCorreoDia      DateTime? @db.Date
+  // La versión de los Términos de la que ya se le AVISÓ por correo (aviso de servicio, una
+  // sola vez). Es la constancia de que se avisó. Ver src/lib/avisoTerminos.js.
+  avisoTerminosVersion String?
   handlesReservados HandleReservado[]
   displayName      String?
   email            String?      @unique
