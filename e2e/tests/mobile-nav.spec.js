@@ -100,6 +100,22 @@ test('la barra se retrae con una conversación de chat abierta y el compositor q
   await page.getByLabel('Volver a la lista de conversaciones').click();
   await expect(page.getByRole('link', { name: new RegExp('(^|\\s)Feed$') })).toBeVisible();
 
+  // LA CARRERA QUE HACÍA INTERMITENTE ESTA PRUEBA. La interfaz pinta el mensaje enviado al
+  // instante (optimista), antes de que el servidor lo guarde, y la notificación se crea
+  // DESPUÉS de guardarlo. Si la limpieza de abajo corre en ese hueco, el `deleteMany` no ve
+  // lo que el servidor escribe un instante después y `chat.delete` truena por la llave
+  // foránea (`Message_chatId_fkey`). Pasó en CI en el ciclo 22 con el mismo commit que luego
+  // pasó al re-ejecutarlo. Se espera a que el mensaje esté de verdad en la base, y un poco
+  // a su notificación (que puede no existir: se tolera).
+  await expect.poll(
+    () => prisma.message.count({ where: { chatId: chat.id, senderId: yo.id } }),
+    { timeout: 10000, message: 'el mensaje enviado desde la interfaz nunca llegó a la base' }
+  ).toBeGreaterThan(0);
+  await expect.poll(
+    () => prisma.notification.count({ where: { recipientId: otra.id, type: 'CHAT_MESSAGE' } }),
+    { timeout: 3000 }
+  ).toBeGreaterThan(0).catch(() => {});
+
   // El mensaje real que mandó "yo" por la API (a diferencia del sembrado
   // directo de arriba) sí generó una notificación CHAT_MESSAGE para "otra" —
   // hay que limpiarla antes de poder borrar la cuenta (FK).
