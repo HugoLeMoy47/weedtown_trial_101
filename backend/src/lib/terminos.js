@@ -38,9 +38,11 @@ const FORMATO = /^\d{4}-\d{2}-\d{2}$/;
 // El primer día en que la versión vigente se EXIGE (inclusive, día de México):
 // 30 días después de que el aviso con esta fecha esté a la vista. Decisión del PO
 // (2026-10-20): el plazo cuenta desde la publicación del texto nuevo, no desde el
-// primer aviso — publicado el 2026-10-21, son 30 días: el 2026-11-20. (Era
+// primer aviso. El correo informativo sale el 23 y 24 de octubre, así que el límite
+// se movió (2026-10-20) a 30 días después del último envío: el 2026-11-23, para que la
+// promesa de 30 días valga también para quien se entere por correo. (Era 2026-11-20;
 // 2026-11-19 hasta el ciclo 21.)
-const LIMITE_POR_DEFECTO = '2026-11-20';
+const LIMITE_POR_DEFECTO = '2026-11-23';
 
 /**
  * El límite vigente. `TERMINOS_LIMITE` lo sobreescribe (formato AAAA-MM-DD);
