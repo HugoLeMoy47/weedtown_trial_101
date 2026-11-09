@@ -12,6 +12,13 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Seguridad — Dependencias vulnerables (2026-11-09)
+
+### Corregido
+- **Backend:** `body-parser` 1.20.9 (vía `express` 4.22.3) y `multer` 2.5.0; quitan dos avisos altos de denegación de servicio (GHSA-27r3-jxmh-p828, GHSA-q7qp-rjg7-q26m). `npm audit --omit=dev` queda en 0.
+- **Frontend:** `follow-redirects`, `undici` (vía `wrangler`) y `zod` a versiones corregidas dentro de los rangos ya declarados; `npm audit` queda sin altas.
+- Solo cambian los `package-lock.json`; ningún `package.json` ni código. Queda abierto `react-router` (moderada, GHSA-wrjc-x8rr-h8h6 y GHSA-337j-9hxr-rhxg): la corrección exige pasar de la v6 a la v7 y se decide aparte.
+
 ## B30 — Agregar un correo es visible (2026-10-20)
 
 - En el Centro de privacidad, quien no tiene correo ve un enlace opcional a su perfil para agregar uno. En Accesos, el campo «Correo de respaldo» explica para qué sirve, que es opcional, que no se publica y que se confirma con un enlace. El mecanismo ya existía; solo faltaba hacerlo descubrible. Sin migración. No se agregó pista en la compuerta de Términos (decisión: no mezclar un aviso opcional con una pantalla de aceptación).
