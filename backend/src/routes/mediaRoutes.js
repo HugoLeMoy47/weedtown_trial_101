@@ -1,6 +1,8 @@
 // Subida de imágenes para posts y comentarios (HU-WT-IMG-001)
 // El front envía la imagen ya anonimizada (sin EXIF/GPS); aquí se valida de nuevo
-// tamaño y tipo como defensa en profundidad, y se guarda con nombre aleatorio.
+// tamaño y tipo como defensa en profundidad, se le vuelven a quitar los
+// metadatos (23B: quien llama a la API sin el navegador se saltaba el
+// anonimizado) y se guarda con nombre aleatorio.
 //
 // El archivo se recibe en memoria y lo persiste src/lib/storage.js según el
 // driver configurado (disco local en desarrollo, Supabase Storage en producción).
@@ -11,6 +13,7 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 const storage = require('../lib/storage');
 const { requireAuth, requireNotSuspended } = require('../middlewares/requireAuth');
+const { depurarMetadatos } = require('../lib/metadatosImagen');
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 const ALLOWED = {
@@ -63,9 +66,18 @@ router.post('/upload', requireAuth, requireNotSuspended, (req, res) => {
       return res.status(400).json({ error: 'El contenido del archivo no coincide con un formato de imagen válido' });
     }
 
+    // 23B. Falla cerrado: lo que no se puede revisar de principio a fin no se guarda.
+    let limpio;
+    try {
+      limpio = depurarMetadatos(req.file.buffer, req.file.mimetype);
+    } catch (e) {
+      if (e.code !== 'IMAGEN_NO_ANALIZABLE') console.error('Error al depurar metadatos:', e);
+      return res.status(400).json({ error: 'No pudimos procesar la imagen. Prueba con otra foto o vuelve a exportarla' });
+    }
+
     try {
       const { url } = await storage.save({
-        buffer: req.file.buffer,
+        buffer: limpio,
         mimetype: req.file.mimetype,
         ext: ALLOWED[req.file.mimetype]
       });
