@@ -46,3 +46,22 @@ jobs:
             echo "::error::El backend respondió $codigo"
             exit 1
           fi
+
+      # B8. El saludo a quien lleva 21 días sin entrar y activó «Mensajes de la comunidad».
+      # Mientras esa finalidad siga como «próximamente» nadie puede activarla: responde 200
+      # con cero candidatas. Corre aunque el paso anterior haya fallado.
+      - name: Mensajes de la comunidad
+        if: always()
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$BACKEND_URL" ]; then
+            echo "::notice::Faltan los secretos CRON_SECRET y/o BACKEND_URL: no se llamó al backend."
+            exit 0
+          fi
+          codigo=$(curl -sS --max-time 120 -o respuesta-comunidad.json -w "%{http_code}" -X POST \
+            -H "x-cron-secret: $CRON_SECRET" "${BACKEND_URL%/}/api/interno/mensajes-comunitarios")
+          echo "HTTP $codigo"
+          cat respuesta-comunidad.json; echo
+          if [ "$codigo" != "200" ]; then
+            echo "::error::El backend respondió $codigo"
+            exit 1
+          fi

@@ -12,6 +12,18 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## B8 — Correo «¿cómo estás?» a quien lleva 21 días sin entrar, apagado (2026-11-11)
+
+### Añadido
+- **El saludo de la comunidad** (`src/lib/mensajeComunitario.js`): a quien activó «Mensajes de la comunidad» y lleva **21 días o más sin actividad** (criterio del PO, sobre `User.ultimaActividadDia`). **Uno solo por ausencia:** `User.avisoAusenciaDia` (migración aditiva `20261111120000_aviso_ausencia`) guarda el último día de actividad de la ausencia por la que ya se escribió; solo una ausencia nueva genera otro. La constancia se guarda solo si el correo salió. Pasa por `enviarCorreo`: consentimiento vigente, un correo al día, tope global, pie con baja en un clic. No lleva nada de nadie más ni dice cuántos días lleva la persona sin entrar. El campo nuevo entra a «mis datos» y se borra con la cuenta.
+- `POST /api/interno/mensajes-comunitarios` (mismo secreto y mismas reglas que `/avisos-diarios`) y un segundo paso en `avisos-diarios.yml` que la llama a diario.
+
+### Cambiado
+- El texto de `mensajes_comunitarios` dice «tres semanas o más» y que se guarda por cuál ausencia ya se escribió; **sube a la versión `2026-11-11`**. Nadie la tenía activa (nunca estuvo disponible).
+
+### No se hizo, a propósito
+- **No se envió ningún correo y la finalidad sigue «próximamente».** El texto del correo es un borrador que espera la revisión del PO; prenderla es voltear `disponible` en una línea.
+
 ## Ciclo 23A — Personas activas en el panel (2026-11-11)
 
 ### Añadido

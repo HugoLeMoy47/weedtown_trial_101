@@ -1,7 +1,8 @@
 // Rutas internas, para tareas programadas (ciclo 22). NO son de la app: las llama un
 // cron (el workflow `avisos-diarios.yml` de GitHub Actions) con un secreto compartido.
 //
-//   POST /api/interno/avisos-diarios      corre el resumen diario de actividad por correo
+//   POST /api/interno/avisos-diarios          corre el resumen diario de actividad por correo
+//   POST /api/interno/mensajes-comunitarios   corre el saludo a quien lleva 21 días sin entrar (B8)
 //
 // POR QUÉ UNA RUTA Y NO UN TEMPORIZADOR DENTRO DEL PROCESO. El backend gratuito de
 // Render se duerme sin tráfico: un `setInterval` dentro del proceso no corre cuando no
@@ -21,6 +22,7 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 const mailer = require('../lib/mailer');
 const { enviarAvisosDiarios } = require('../lib/avisosActividad');
+const { enviarMensajesComunitarios } = require('../lib/mensajeComunitario');
 const { enviarAvisoTerminos, ErrorDeAviso, MAXIMO_POR_DEFECTO } = require('../lib/avisoTerminos');
 const { TERMINOS_VIGENTES, limiteDeTerminos } = require('../lib/terminos');
 const { log } = require('../lib/logger');
@@ -57,6 +59,19 @@ router.post('/avisos-diarios', limitador, exigirSecreto, async (req, res) => {
   } catch (e) {
     console.error('Error en los avisos diarios:', e);
     res.status(500).json({ error: 'Error al correr los avisos diarios' });
+  }
+});
+
+// B8. El saludo «¿cómo estás?» a quien activó «Mensajes de la comunidad» y lleva 21 días
+// sin entrar. Uno solo por ausencia; ver src/lib/mensajeComunitario.js. Solo cuentas.
+router.post('/mensajes-comunitarios', limitador, exigirSecreto, async (req, res) => {
+  try {
+    const resumen = await enviarMensajesComunitarios({ prisma, mailer });
+    log('mensajes_comunitarios', { ...resumen, requestId: req.id });
+    res.json(resumen);
+  } catch (e) {
+    console.error('Error en los mensajes comunitarios:', e);
+    res.status(500).json({ error: 'Error al correr los mensajes comunitarios' });
   }
 });
 
