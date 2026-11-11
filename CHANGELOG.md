@@ -21,6 +21,7 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 ### A saber
 - La orientación vive en el EXIF: una foto subida directo a la API puede quedar girada. El navegador ya la aplica antes de subir, así que el uso normal no cambia.
 - Las imágenes ya guardadas no se reprocesan.
+
 ## Ciclo 23A — Personas activas en el panel (2026-11-11)
 
 ### Añadido
