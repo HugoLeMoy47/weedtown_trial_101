@@ -389,7 +389,7 @@ const IconoTendencia = ({ valor }) => {
 
 // Serie diaria con tendencia contra el periodo anterior (CA4). `datos` es la
 // forma que arma `conTendencia()` en el backend: { serie, total, totalPeriodoAnterior, tendencia }
-const MiniSerie = ({ titulo, datos }) => {
+const MiniSerie = ({ titulo, datos, ayuda }) => {
   if (!datos) return null;
   const max = Math.max(1, ...datos.serie.map(d => d.valor));
   const resumen = `Serie diaria de ${titulo}, ${datos.serie.length} días, total ${datos.total}, ` +
@@ -422,6 +422,7 @@ const MiniSerie = ({ titulo, datos }) => {
         <IconoTendencia valor={datos.tendencia} />
         {Math.abs(datos.tendencia)} vs. periodo anterior ({datos.totalPeriodoAnterior})
       </Typography>
+      {ayuda && <Typography variant="caption" color="text.secondary" display="block">{ayuda}</Typography>}
       {/* Tabla equivalente para lectores de pantalla — mismos datos que las barras */}
       <Box component="table" sx={srOnlySx}>
         <caption>{titulo} por día</caption>
@@ -617,6 +618,12 @@ const Indicadores = () => {
           </Bloque>
 
           <Bloque titulo="Actividad por superficie">
+            {/* 23A. La línea base del ciclo 23: el backend la calcula desde el 19A. */}
+            <MiniSerie
+              titulo="Personas activas"
+              datos={datos.actividad.personasActivasPorDia}
+              ayuda="Cuenta cualquier visita con sesión, no solo escribir. El total suma personas por día (quien entra tres días cuenta tres). Los días anteriores al ciclo 19 salen en 0."
+            />
             <MiniSerie titulo="Posteos (feed)" datos={datos.actividad.postsPorDia} />
             <MiniSerie titulo="Comentarios (feed)" datos={datos.actividad.comentariosPorDia} />
             <MiniSeriesPorSubclave titulo="Reacciones por tipo" porSubclave={datos.actividad.reaccionesPorDiaYTipo} etiquetas={ETIQUETAS_REACCION} />
