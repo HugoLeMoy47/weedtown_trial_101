@@ -12,6 +12,11 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 23A — Personas activas en el panel (2026-11-11)
+
+### Añadido
+- **«Personas activas» es la primera tarjeta de «Actividad por superficie»** en `/admin` → Indicadores (B36). El backend la entrega desde el ciclo 19 (`actividad.personasActivasPorDia`) y el panel no la pintaba. Cuenta cualquier visita con sesión; el total suma personas por día; los días anteriores al ciclo 19 salen en 0. Es la línea base para medir el ciclo 23. Solo frontend; `MiniSerie` acepta un texto de ayuda opcional.
+
 ## Seguridad — Dependencias vulnerables (2026-11-09)
 
 ### Corregido
