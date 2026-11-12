@@ -33,6 +33,7 @@ const CAMPOS_ANONIMIZADOS = {
   terminosAceptadosEn: null,
   ultimoCorreoDia: null,
   avisoTerminosVersion: null,
+  avisoAusenciaDia: null,
   role: 'USER'
 };
 
@@ -61,7 +62,9 @@ async function exportarDatos(userId) {
         // Ciclo 22: el último día que se te mandó un correo (sostiene el tope de uno al día).
         ultimoCorreoDia: true,
         // Ciclo 22.1: la versión de los Términos de la que se te avisó por correo (constancia).
-        avisoTerminosVersion: true
+        avisoTerminosVersion: true,
+        // B8: el último día de actividad de la ausencia por la que ya se te escribió.
+        avisoAusenciaDia: true
       }
     }),
     prisma.identity.findMany({

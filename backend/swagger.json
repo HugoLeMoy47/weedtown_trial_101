@@ -1369,6 +1369,48 @@
         }
       }
     },
+    "/api/interno/mensajes-comunitarios": {
+      "post": {
+        "tags": [
+          "Interno"
+        ],
+        "summary": "Corre el saludo «¿cómo estás?» a quien lleva 21 días sin entrar (B8)",
+        "description": "Para el cron (GitHub Actions), NO para la app. Exige la cabecera x-cron-secret igual a CRON_SECRET del backend. SIN CRON_SECRET configurado la ruta no existe (404). Solo escribe a quien tiene activa la finalidad mensajes_comunitarios, una sola vez por ausencia. La respuesta lleva solo cuentas, nunca a quién se le escribió.",
+        "parameters": [
+          {
+            "name": "x-cron-secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cuentas del envío",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "candidatas": { "type": "integer" },
+                    "enviados": { "type": "integer" },
+                    "omitidos": { "type": "object", "additionalProperties": { "type": "integer" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Secreto incorrecto"
+          },
+          "404": {
+            "description": "La ruta está cerrada: no hay CRON_SECRET configurado"
+          }
+        }
+      }
+    },
     "/api/interno/aviso-terminos": {
       "post": {
         "tags": [

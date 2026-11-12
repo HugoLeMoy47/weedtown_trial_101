@@ -57,6 +57,10 @@ model User {
   // La versión de los Términos de la que ya se le AVISÓ por correo (aviso de servicio, una
   // sola vez). Es la constancia de que se avisó. Ver src/lib/avisoTerminos.js.
   avisoTerminosVersion String?
+  // El último día de actividad de la AUSENCIA por la que ya se le mandó el correo
+  // «¿cómo estás?» (B8). Mientras coincida con `ultimaActividadDia` no se repite: uno solo
+  // por ausencia. Se sobrescribe. Ver src/lib/mensajeComunitario.js.
+  avisoAusenciaDia     DateTime? @db.Date
   handlesReservados HandleReservado[]
   displayName      String?
   email            String?      @unique
