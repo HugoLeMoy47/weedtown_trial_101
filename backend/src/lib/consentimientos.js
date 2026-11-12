@@ -68,12 +68,15 @@ const FINALIDADES = {
     queNoHacemos: 'No compartimos tu correo con nadie ni incluimos lo que otras personas escribieron.'
   },
   mensajes_comunitarios: {
-    version: '2026-10-20',
+    // B8 (2026-11-11): el envío ya está construido (src/lib/mensajeComunitario.js) y el cron
+    // lo llama a diario. Sigue en `false` hasta que el PO apruebe el texto del correo:
+    // mientras tanto nadie puede activarla y no sale nada. Prenderla es esta línea.
+    version: '2026-11-11',
     disponible: false,
     requiereCorreo: true,
     titulo: 'Mensajes de la comunidad',
-    paraQue: 'Escribirte si llevas mucho tiempo sin entrar, para saber cómo estás. Es un mensaje de cuidado entre la comunidad, no una campaña.',
-    comoSeTrata: 'Para saber quién lleva tiempo sin entrar usamos la fecha del último día que usaste WeedTown. Mandamos uno solo por ausencia, con un enlace para apagarlo.',
+    paraQue: 'Escribirte si llevas tres semanas o más sin entrar, para saber cómo estás. Es un mensaje de cuidado entre la comunidad, no una campaña.',
+    comoSeTrata: 'Para saber quién lleva tiempo sin entrar usamos la fecha del último día que usaste WeedTown. Mandamos uno solo por ausencia, con un enlace para apagarlo. Guardamos por cuál ausencia ya te escribimos, para no repetirlo.',
     queNoHacemos: 'No insistimos ni te escribimos en cadena.'
   },
   resumen_cerca: {
