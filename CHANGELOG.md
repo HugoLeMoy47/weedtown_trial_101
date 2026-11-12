@@ -12,6 +12,12 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Dependencias — react-router a la versión 7 (2026-11-12)
+
+### Cambiado
+- **`react-router-dom` pasa de 6.30 a 7.18.5** en el frontend (decisión del PO). Corrige los dos avisos moderados de `npm audit` que quedaban (GHSA-wrjc-x8rr-h8h6 y GHSA-337j-9hxr-rhxg); el frontend queda con 0 avisos. Las importaciones siguen desde `react-router-dom`, que en la v7 reexporta `react-router`.
+- Sin cambios de código: la app usa `BrowserRouter` con rutas planas, todos los enlaces son absolutos y la única ruta comodín redirige a `/feed`, así que los cambios de comportamiento de la v7 (rutas relativas dentro de comodines, transiciones) no la tocan. La v7 pide Node 20 o más; el repo usa 22.
+
 ## Ciclo 23B — El servidor vuelve a quitar los metadatos de las imágenes (2026-11-11)
 
 ### Corregido
