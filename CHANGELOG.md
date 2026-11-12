@@ -12,6 +12,16 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 23B — El servidor vuelve a quitar los metadatos de las imágenes (2026-11-11)
+
+### Corregido
+- **Una subida directa a la API guardaba la foto con sus metadatos** (B37). Solo el navegador los quitaba; quien llamara a `POST /api/media/upload` por fuera conservaba coordenadas, modelo del equipo y fecha. Nuevo `src/lib/metadatosImagen.js`: recorre el contenedor y copia solo lo necesario para pintar la imagen (lista de permitidos), sin recodificar y sin dependencia nueva. JPEG: fuera EXIF, XMP, IPTC, comentarios, miniaturas y lo que venga tras el fin de la imagen; se conservan JFIF, el perfil ICC y el segmento de Adobe. PNG: fuera `eXIf`, `tEXt`, `iTXt`, `zTXt`, `tIME` y cualquier bloque desconocido. WebP: fuera `EXIF` y `XMP `, con sus banderas apagadas en `VP8X` y el tamaño del contenedor corregido. Aplica a **toda** subida.
+- **Falla cerrado:** un archivo que no se puede recorrer de principio a fin (truncado, longitudes imposibles, sin datos de imagen) o cuyo contenido no corresponde al tipo declarado se rechaza con 400 y no se guarda.
+
+### A saber
+- La orientación vive en el EXIF: una foto subida directo a la API puede quedar girada. El navegador ya la aplica antes de subir, así que el uso normal no cambia.
+- Las imágenes ya guardadas no se reprocesan.
+
 ## B8 — Correo «¿cómo estás?» a quien lleva 21 días sin entrar, apagado (2026-11-11)
 
 ### Añadido
