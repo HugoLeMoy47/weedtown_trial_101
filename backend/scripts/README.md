@@ -14,6 +14,7 @@ Se versionan a propósito. Una herramienta que solo vive en la máquina de quien
 | [`respaldo.js`](#respaldojs) | Copia a un JSON cualquiera de las dos bases, entera o por tablas/grupos | **Producción no tiene respaldos automáticos** — con la frecuencia que aguantes perder |
 | [`respaldo-gui.js`](#respaldo-guijs) | La misma herramienta, con clics en vez de banderas | Cuando no quieras recordar la sintaxis |
 | [`restaurar.js`](#restaurarjs) | Carga un respaldo y verifica que quedó igual | Al probar un respaldo, y el día de una recuperación real |
+| [`depurar-imagenes-guardadas.js`](#depurar-imagenes-guardadasjs) | Quita los metadatos de las imágenes que ya están en el almacenamiento (B42) | Una vez, tras el ciclo 23B; después, solo si se sospecha de subidas viejas |
 | [`avatar-hoja.js`](#avatar-hojajs) | Hoja de contactos del catálogo de avatares | Al revisar o rediseñar el arte del avatar |
 | [`avatar-plantillas.js`](#avatar-plantillasjs) | Plantillas de 32×32 para redibujar piezas | Al redibujar el catálogo (`wt2`) |
 | [`avatar-convertidor.html`](#avatar-convertidorhtml) | PNG de pixel art → arreglo de rectángulos | Al integrar cada pieza dibujada |
@@ -23,6 +24,24 @@ Se versionan a propósito. Una herramienta que solo vive en la máquina de quien
 ---
 
 ## Operación
+
+### `depurar-imagenes-guardadas.js`
+
+Desde el ciclo 23B el servidor quita los metadatos de toda subida nueva. Lo que entró **antes** por la API directa pudo quedarse con coordenadas, fabricante o comentarios. Este script recorre el bucket de Supabase Storage, en serie, y decide imagen por imagen (lógica en `lib/depurar-guardadas.js`, prueba en `tests/depurarGuardadas.test.js`).
+
+```powershell
+cd backend
+$env:SUPABASE_URL = 'https://<proyecto>.supabase.co'
+$env:SUPABASE_SERVICE_KEY = '<llave de servicio>'   # la misma de Render; solo en esta ventana
+npm run depurar-imagenes                                        # solo mira: no cambia nada
+npm run depurar-imagenes -- --aplicar --respaldo "D:\_Para_Revision_y_Purga\AAAA-MM-DD_imagenes_wt"
+```
+
+- **Por omisión solo mira** y reporta cuántas imágenes están `limpia`, `con_metadatos`, `orientacion` o `no_analizable`.
+- **`--aplicar` exige `--respaldo`** fuera de OneDrive: guarda cada original antes de reemplazarlo, y deja `informe.json` ahí mismo.
+- **No toca** las imágenes con orientación EXIF distinta de 1 (sin el EXIF se verían giradas) ni las que no puede recorrer: las lista para decidir aparte.
+- Las URL públicas llevan `max-age` de 30 días: puede tardar en verse la versión limpia donde ya estaba en caché.
+- La llave nunca se escribe en un archivo del repo ni se imprime.
 
 ### `rol.js`
 

@@ -17,6 +17,7 @@
     "respaldo": "node scripts/respaldo.js",
     "restaurar": "node scripts/restaurar.js",
     "respaldo:gui": "node scripts/respaldo-gui.js",
+    "depurar-imagenes": "node scripts/depurar-imagenes-guardadas.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate"
   },

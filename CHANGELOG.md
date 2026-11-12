@@ -12,6 +12,11 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## B42 — Depurar las imágenes ya guardadas (2026-11-12)
+
+### Añadido
+- **`backend/scripts/depurar-imagenes-guardadas.js`** (`npm run depurar-imagenes`): recorre el bucket de Supabase Storage y quita los metadatos de las imágenes guardadas antes del ciclo 23B, con la misma `depurarMetadatos`. Por omisión **solo mira**; `--aplicar` exige `--respaldo` fuera de OneDrive y guarda cada original antes de reemplazarlo. No toca las fotos con orientación EXIF distinta de 1 (se verían giradas) ni las que no puede recorrer; las reporta. Decisión del PO del 2026-11-12. Lógica pura en `scripts/lib/depurar-guardadas.js` con su prueba (`tests/depurarGuardadas.test.js`, sin base ni red).
+
 ## Ciclo 23B — El servidor vuelve a quitar los metadatos de las imágenes (2026-11-11)
 
 ### Corregido
