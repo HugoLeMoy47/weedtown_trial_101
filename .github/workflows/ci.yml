@@ -239,3 +239,10 @@ jobs:
       - name: Compilar
         working-directory: frontend
         run: npm run build
+
+      - name: Comprobar marcador de versión
+        working-directory: frontend
+        run: |
+          test -f build/index.html
+          test -f build/version.json
+          node -e "const v=require('./build/version.json'); if(!/^[0-9a-f]{7}$/.test(v.commit)) { console.error('version.json sin commit válido:', v); process.exit(1) } console.log('version.json', v)"

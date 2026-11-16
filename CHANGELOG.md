@@ -12,6 +12,11 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Publicación — Marcador de versión en `/version.json` (2026-11-15)
+
+### Añadido
+- **`/version.json` en el build del frontend** (`frontend/vite.config.mjs` y comprobación en `.github/workflows/ci.yml`): emite un archivo estático con `version` (ciclo actual), `commit` (7 caracteres) y `built` (fecha ISO de compilación) para comprobar desde fuera si lo publicado en Cloudflare corresponde a `main`.
+
 ## B42 — Depurar las imágenes ya guardadas (2026-11-12)
 
 ### Añadido
