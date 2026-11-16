@@ -42,15 +42,33 @@ function cicloDelChangelog() {
 // avisos de `npm audit` viniendo del toolchain (32 altos y 2 críticos, contra
 // 0 en el backend), y cada dependencia nueva entrando con la duda de si CRA la
 // soporta.
+const cicloActual = cicloDelChangelog();
+const commitActual = commitCorto();
+const construidoEn = new Date().toISOString();
+
+function marcadorDeVersion() {
+  return {
+    name: 'wt-version-json',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ version: cicloActual, commit: commitActual, built: construidoEn }),
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), marcadorDeVersion()],
 
   // Constantes de compilación (ver arriba). `src/lib/version.js` las lee con
   // `typeof`, así que un entorno que no pase por Vite no falla.
   define: {
-    __WT_CICLO__: JSON.stringify(cicloDelChangelog()),
-    __WT_COMMIT__: JSON.stringify(commitCorto()),
-    __WT_CONSTRUIDO_EN__: JSON.stringify(new Date().toISOString())
+    __WT_CICLO__: JSON.stringify(cicloActual),
+    __WT_COMMIT__: JSON.stringify(commitActual),
+    __WT_CONSTRUIDO_EN__: JSON.stringify(construidoEn)
   },
 
   // `build` y no el `dist` por defecto de Vite. NO es preferencia estética:
