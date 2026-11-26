@@ -12,6 +12,14 @@ Una tanda de CI falla si hay commits que tocan `backend/src/` o
 `backend/tests/changelogAlDia.test.js`), salvo que el commit lleve
 `[skip changelog]` en el mensaje.
 
+## Ciclo 24 — El login presenta a WeedTown (2026-11-26)
+
+### Añadido
+- **Presentación en `/login`** (`frontend/src/components/PresentacionWeedTown.jsx`): qué es WeedTown, cuatro diferenciales (sin contraseñas y con seudónimo, fotos sin metadatos, consentimiento por finalidad, bloqueo y moderación), seis funciones (feed, foros, chat, Cerca, amistades, avatar), tarjeta del Estudio de etiquetado con enlace a `/etiquetas` (se puede probar sin cuenta) y los subforos sembrados. Solo menciona lo que ya funciona; sin cifras ni peticiones al backend.
+
+### Cambiado
+- **`Login.jsx`**: en escritorio, presentación a la izquierda y acceso a la derecha (fijo al desplazarse); en móvil, acceso primero con enlace «¿Qué es WeedTown?» a la presentación. El botón «Crear mi cuenta» del final regresa al formulario en la pestaña «Crear cuenta». Los métodos de acceso y sus textos no cambian.
+
 ## Publicación — Marcador de versión en `/version.json` (2026-11-15)
 
 ### Añadido
