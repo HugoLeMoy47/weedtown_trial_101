@@ -7,6 +7,7 @@ import {
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { BrandMark, BrandWordmark } from '../components/BrandLogo';
 import Footer from '../components/Footer';
+import PresentacionWeedTown from '../components/PresentacionWeedTown';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
@@ -198,7 +199,16 @@ const Login = () => {
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
-      <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+      {/* Ciclo 24: en pantalla ancha, presentación a la izquierda y acceso a
+          la derecha; en móvil el acceso va primero (quien ya tiene cuenta no
+          debe desplazarse) y la presentación queda debajo. */}
+      <Box
+        sx={{
+          flexGrow: 1, display: 'flex', alignItems: { xs: 'center', md: 'flex-start' }, justifyContent: 'center',
+          flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 6 },
+          p: 2, pt: { md: 8 }, maxWidth: 1200, mx: 'auto', width: '100%', boxSizing: 'border-box'
+        }}
+      >
         <Tooltip title={mode === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}>
           <IconButton
             onClick={toggle}
@@ -210,7 +220,11 @@ const Login = () => {
           </IconButton>
         </Tooltip>
 
-        <Card sx={{ maxWidth: 440, width: '100%', my: 4 }} component="main">
+        <Card
+          sx={{ maxWidth: 440, width: '100%', my: { xs: 4, md: 0 }, flexShrink: 0, order: { xs: 0, md: 1 }, position: { md: 'sticky' }, top: { md: 32 } }}
+          component="main"
+          id="acceso"
+        >
           <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
             <Stack spacing={3} alignItems="center">
               <Stack spacing={1.5} alignItems="center">
@@ -220,6 +234,14 @@ const Login = () => {
               <Typography variant="body1" color="text.secondary" textAlign="center">
                 La red de la comunidad cannábica mexicana. Un espacio seguro y con respeto.
               </Typography>
+              <Link
+                href="#presentacion"
+                variant="body2"
+                underline="hover"
+                sx={{ display: { md: 'none' }, mt: '8px !important' }}
+              >
+                ¿Qué es WeedTown? Conócela abajo ↓
+              </Link>
 
               {/* Casilla obligatoria de 18+ y TyCyP — bloquea los seis caminos (3 métodos × 2 pestañas) */}
               <Box sx={{ width: '100%', bgcolor: 'action.hover', p: 1.5, borderRadius: 1 }}>
@@ -394,6 +416,15 @@ const Login = () => {
             </Stack>
           </CardContent>
         </Card>
+
+        <Box id="presentacion" sx={{ flex: 1, minWidth: 0, maxWidth: { xs: 440, md: 680 }, width: '100%', order: { xs: 1, md: 0 }, pb: 4, scrollMarginTop: 16 }}>
+          <PresentacionWeedTown
+            onCrearCuenta={() => {
+              setTab(1);
+              document.getElementById('acceso')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          />
+        </Box>
       </Box>
       <Footer />
     </Box>
